@@ -9,7 +9,7 @@ const config = {
   database: process.env.LFSQL_Database,
   options: {
     encrypt: false, 
-    trustServerCertificate: true 
+    trustServerCertificate: true
   }
 };
 
