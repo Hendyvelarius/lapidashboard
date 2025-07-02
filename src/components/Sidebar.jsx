@@ -24,7 +24,7 @@ function Sidebar() {
 
       {/* Main Menu Section */}
       <div className="sidebar-section">
-        <div className="sidebar-section-title">MAIN MENU</div>
+        <div className="sidebar-section-title">MENU UTAMA</div>
         <nav className="sidebar-nav">
           <button className="sidebar-btn active">
             <LayoutDashboard size={20} />
