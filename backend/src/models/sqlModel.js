@@ -147,4 +147,34 @@ DROP TABLE #tmp;
   return result.recordset;
 }
 
-module.exports = { WorkInProgress };
+
+// Fetch t_alur_proses rows for batches in the last 12 months (Batch_Date as string 'yyyy/mm/dd')
+async function WorkInProgressAlur() {
+  const query = `
+    SELECT *
+    FROM t_alur_proses
+    WHERE 
+      LEN(Batch_Date) = 10
+      AND Batch_Date LIKE '[1-2][0-9][0-9][0-9]/[0-1][0-9]/[0-3][0-9]'
+      AND ISDATE(Batch_Date) = 1
+      AND CONVERT(date, Batch_Date, 111) >= DATEADD(month, -12, GETDATE())
+  `;
+  const db = await connect();
+  const result = await db.request().query(query);
+  return result.recordset;
+}
+
+
+// Fetch all rows from t_alur_proses where Batch_No matches a given value (string)
+async function AlurProsesBatch(batchNo) {
+  const db = await connect();
+  const request = db.request();
+  request.input('batchNo', batchNo);
+  const query = `
+    SELECT * FROM t_alur_proses WHERE Batch_No = @batchNo
+  `;
+  const result = await request.query(query);
+  return result.recordset;
+}
+
+module.exports = { WorkInProgress, WorkInProgressAlur, AlurProsesBatch };

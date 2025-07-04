@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import DashboardLoading from './components/DashboardLoading';
 import { Line, Bar, Pie } from 'react-chartjs-2'
 import {
   Chart as ChartJS,
@@ -13,6 +14,8 @@ import {
   ArcElement // <-- Add this for Pie chart
 } from 'chart.js'
 import Sidebar from './components/Sidebar'
+import WipTable from './components/WipTable';
+import { apiUrl } from './api';
 import './App.css'
 
 ChartJS.register(
@@ -27,96 +30,7 @@ ChartJS.register(
   ArcElement // <-- Register ArcElement for Pie chart
 )
 
-// Fake HR dashboard data
-const summaryData = {
-  totalAbsence: 18,
-  pendingMeetings: 3,
-  totalEmployees: 32,
-  newHires: 2,
-  avgAbsence: 1.2,
-}
 
-// Generate incremental sum for absence chart
-const absencePerDay = [2, 1, 0, 0, 1, 0, 0, 2, 1, 0, 0, 1, 0, 0, 2, 1, 0, 0, 1, 0, 0, 2, 1, 0, 0, 1, 0, 0, 2, 1];
-const incrementalAbsence = absencePerDay.reduce((acc, curr) => {
-  acc.push((acc.length ? acc[acc.length - 1] : 0) + curr);
-  return acc;
-}, []);
-
-const absenceChartData = {
-  labels: Array.from({ length: 30 }, (_, i) => (i + 1).toString()), // Only day of the month
-  datasets: [
-    {
-      label: 'Absence Count',
-      data: incrementalAbsence,
-      fill: true,
-      backgroundColor: 'rgba(79,140,255,0.15)',
-      borderColor: '#4f8cff',
-      tension: 0.3,
-      pointRadius: 2,
-    },
-  ],
-}
-
-const absenceChartOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: { legend: { display: false } },
-  scales: {
-    y: { beginAtZero: true, stepSize: 1, title: { display: true, text: 'Jumlah Absen' } },
-    x: { title: { display: true, text: 'Tanggal' } },
-  },
-}
-
-const pendingMeetings = [
-  { subject: 'Pengumuman Aturan Baru HRD', date: '2025-06-20', time: '10:00', with: 'HRD' },
-  { subject: 'Performance Review', date: '2025-06-22', time: '14:00', with: 'Hendy Wijaya' },
-  { subject: 'Peringatan Terlambat', date: '2025-06-25', time: '09:00', with: 'Kasmian' },
-]
-
-const recentAbsences = [
-  { name: 'Gunawan', jobTitle: 'Supervisor', reason: 'Health Checkup', date: '2025-06-18' },
-  { name: 'Hendy', jobTitle: 'Engineer', reason: 'Kebanjiran', date: '2025-06-17' },
-  { name: 'Melvin', jobTitle: 'Engineer', reason: 'Kosan Mati Lampu', date: '2025-06-16' },
-  { name: 'Kevin', jobTitle: 'Intern', reason: 'Duit Habis', date: '2025-06-15' },
-  { name: 'Kevin', jobTitle: 'Intern', reason: 'Jatoh Dari Sepeda', date: '2025-06-14' },
-]
-
-const employeeAbsenceData = [
-  { name: 'Gunawan', total: 1 },
-  { name: 'Hendy', total: 2 },
-  { name: 'Melvin', total: 3 },
-  { name: 'Kevin', total: 1 },
-  { name: 'Seven', total: 2 },
-  { name: 'Wahyu', total: 1 },
-  { name: 'Jeli', total: 2 },
-  { name: 'Hardian', total: 1 },
-  { name: 'Budi', total: 1 },
-  { name: 'Amir', total: 1 },
-]
-
-const employeeAbsenceChartData = {
-  labels: employeeAbsenceData.map(e => e.name),
-  datasets: [
-    {
-      label: 'Total Absence',
-      data: employeeAbsenceData.map(e => e.total),
-      backgroundColor: 'rgba(56,230,197,0.5)',
-      borderColor: '#38e6c5',
-      borderWidth: 2,
-    },
-  ],
-}
-
-const employeeAbsenceChartOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: { legend: { display: false } },
-  scales: {
-    y: { beginAtZero: true, stepSize: 1, title: { display: true, text: 'Total Absence' } },
-    x: { title: { display: true, text: 'Employee' } },
-  },
-}
 
 // Hardcoded PPE report data for 30 days
 const ppeDays = Array.from({ length: 30 }, (_, i) => (i + 1).toString())
@@ -285,144 +199,291 @@ const orderFulfillmentChartOptions = {
 }
 
 // --- WIP Report Data ---
-const wipLabels = ['Total', 'Penyediaan', 'Produksi', 'Packaging', 'Labeling', 'Transport']
-const wipRaw = [
-  1200, // Total
-  300,  // Penyediaan
-  350,  // Produksi
-  250,  // Packaging
-  180,  // Labeling
-  120   // Transport
-]
-const wipBarData = {
-  labels: wipLabels,
-  datasets: [
-    {
-      label: 'Jumlah WIP',
-      data: wipRaw,
-      backgroundColor: [
-        '#4f8cff', '#38e6c5', '#ffb347', '#6a5acd', '#43a047', '#e57373'
-      ],
-      borderColor: '#fff',
-      borderWidth: 1,
-      borderRadius: 6,
-      barThickness: 30
-    },
-  ],
+const wipLabels = ['Total', 'Penyediaan', 'Produksi', 'Packaging', 'Labeling', 'Transport'];
+const wipHistogramLabels = [
+  'Minggu 1',        // 1 week
+  'Minggu 2',      // 2 weeks
+  'Bulan 1',     // 4 weeks
+  'Bulan 2',     // 1-2 months
+  '2 Bulan+'        // more than 2 months
+];
+
+function getWipHistogram(data) {
+  // Subtract 180 from all durations before bucketing
+  const buckets = [0, 0, 0, 0, 0];
+  data.forEach(item => {
+    let dur = Number(item.duration) - 180;
+    if (isNaN(dur) || dur < 0) dur = 0;
+    if (dur <= 7) buckets[0]++;
+    else if (dur <= 14) buckets[1]++;
+    else if (dur <= 28) buckets[2]++;
+    else if (dur <= 56) buckets[3]++;
+    else buckets[4]++;
+  });
+  return buckets;
 }
-const wipBarOptions = {
-  indexAxis: 'y',
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: {
-    legend: { display: false },
-    tooltip: {
-      callbacks: {
-        label: ctx => `${ctx.parsed.x} item`
-      }
-    }
-  },
-  scales: {
-    x: {
-      beginAtZero: true,
-      title: { display: true, text: 'Jumlah' },
-      ticks: { stepSize: 100 }
-    },
-    y: { 
-      title: { display: false },
-      ticks: {
-        font: {
-          size: 12
+
+
+function App() {
+  const [wipData, setWipData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  // Only show order fulfillment chart, no HR/employee chart
+  const [chartType] = useState('order');
+  const [orderChartType, setOrderChartType] = useState('order');
+  // Only show Histogram WIP Aktif in side card
+  const [sideCardType] = useState('wip');
+  const [chartDropdownOpen, setChartDropdownOpen] = useState(false);
+  const [ppeDropdownOpen, setPpeDropdownOpen] = useState(false);
+  const [ppeMode, setPpeMode] = useState('line');
+  const [ppeChartKey, setPpeChartKey] = useState(Date.now());
+
+  // Handler for PPE chart mode change (line/pie)
+  function handlePpeModeChange(mode) {
+    setPpeMode(mode);
+    setPpeChartKey(Date.now()); // force chart re-render
+  }
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(apiUrl('/api/wip'))
+      .then(res => res.json())
+      .then(data => {
+        setWipData(data.data || []);
+        setLoading(false);
+      })
+      .catch(() => {
+        setWipData([]);
+        setLoading(false);
+      });
+  }, []);
+
+  const wipBarData = {
+    labels: wipLabels,
+    datasets: [
+      {
+        label: 'Jumlah WIP',
+        data: [wipData.length, 0, 0, 0, 0, 0],
+        backgroundColor: [
+          '#4f8cff', '#38e6c5', '#ffb347', '#6a5acd', '#43a047', '#e57373'
+        ],
+        borderColor: '#fff',
+        borderWidth: 1,
+        borderRadius: 6,
+        barThickness: 30
+      },
+    ],
+  }
+  const wipBarOptions = {
+    indexAxis: 'y',
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: ctx => `${ctx.parsed.x} item`
         }
       }
     },
-  },
-  layout: {
-    padding: {
-      left: 10,
-      right: 10,
-      top: 10,
-      bottom: 10
-    }
-  }
-}
-
-// Helper to get cumulative sum array
-function getCumulative(arr) {
-  let sum = 0;
-  return arr.map(v => (sum += v));
-}
-
-const orderCategoryCharts = orderCategories.map((cat, idx) => {
-  const label =
-    cat === 'OralPowder' ? 'Oral Powder' :
-    cat === 'OralLiquid' ? 'Oral Liquid' :
-    cat === 'OralDrop' ? 'Oral Drop' :
-    cat === 'SolidTablet' ? 'Solid Tablet' :
-    cat === 'SolidCapsule' ? 'Solid Capsule' :
-    cat === 'PowderInjection' ? 'Powder Injection' :
-    cat === 'VolumeInjection' ? 'Volume Injection' : cat;
-  const data = getCumulative(orderData[cat]);
-  return {
-    key: cat,
-    label,
-    chartData: {
-      labels: Array.from({ length: data.length }, (_, i) => (i + 1).toString()),
-      datasets: [
-        {
-          label: label + ' (Cumulative)',
-          data,
-          backgroundColor: '#4f8cff',
-          borderColor: '#4f8cff',
-          fill: true,
-          tension: 0.3,
-          pointRadius: 2,
-        },
-        {
-          label: 'Target Order',
-          data: Array(data.length).fill(TargetOrder),
-          borderColor: '#ffb347',
-          borderDash: [8, 4],
-          borderWidth: 2,
-          pointRadius: 0,
-          type: 'line',
-          fill: false,
-        },
-      ],
-    },
-    chartOptions: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { position: 'top' } },
-      scales: {
-        y: { beginAtZero: true, title: { display: true, text: 'Cumulative Order' } },
-        x: { title: { display: true, text: 'Tanggal' } },
+    scales: {
+      x: {
+        beginAtZero: true,
+        title: { display: true, text: 'Jumlah' },
+        ticks: { stepSize: 100 }
+      },
+      y: { 
+        title: { display: false },
+        ticks: {
+          font: {
+            size: 12
+          }
+        }
       },
     },
-  };
-});
-
-function App() {
-  const [chartType, setChartType] = useState('monthly')
-  const [chartDropdownOpen, setChartDropdownOpen] = useState(false)
-  const [sideCardType, setSideCardType] = useState('meeting')
-  const [ppeDropdownOpen, setPpeDropdownOpen] = useState(false)
-  const [ppeMode, setPpeMode] = useState('line')
-  const [ppeChartKey, setPpeChartKey] = useState(0)
-  const [orderChartType, setOrderChartType] = useState('order');
-  
-  function handlePpeModeChange(mode) {
-    setPpeMode(mode)
-    setPpeDropdownOpen(false)
-    setPpeChartKey(prev => prev + 1)
+    layout: {
+      padding: {
+        left: 10,
+        right: 10,
+        top: 10,
+        bottom: 10
+      }
+    }
   }
 
-  const avgFulfillment = Math.round(orderFulfillmentPercent.reduce((a, b) => a + b, 0) / orderFulfillmentPercent.length);
+  // Helper to get cumulative sum array
+  function getCumulative(arr) {
+    let sum = 0;
+    return arr.map(v => (sum += v));
+  }
+
+  const orderCategoryCharts = orderCategories.map((cat, idx) => {
+    const label =
+      cat === 'OralPowder' ? 'Oral Powder' :
+      cat === 'OralLiquid' ? 'Oral Liquid' :
+      cat === 'OralDrop' ? 'Oral Drop' :
+      cat === 'SolidTablet' ? 'Solid Tablet' :
+      cat === 'SolidCapsule' ? 'Solid Capsule' :
+      cat === 'PowderInjection' ? 'Powder Injection' :
+      cat === 'VolumeInjection' ? 'Volume Injection' : cat;
+    const data = getCumulative(orderData[cat]);
+    return {
+      key: cat,
+      label,
+      chartData: {
+        labels: Array.from({ length: data.length }, (_, i) => (i + 1).toString()),
+        datasets: [
+          {
+            label: label + ' (Cumulative)',
+            data,
+            backgroundColor: '#4f8cff',
+            borderColor: '#4f8cff',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 2,
+          },
+          {
+            label: 'Target Order',
+            data: Array(data.length).fill(TargetOrder),
+            borderColor: '#ffb347',
+            borderDash: [8, 4],
+            borderWidth: 2,
+            pointRadius: 0,
+            type: 'line',
+            fill: false,
+          },
+        ],
+      },
+      chartOptions: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'top' } },
+        scales: {
+          y: { beginAtZero: true, title: { display: true, text: 'Cumulative Order' } },
+          x: { title: { display: true, text: 'Tanggal' } },
+        },
+      },
+    };
+  });
+
+  // Count WIP items with duration > 38
+  const wipTerlambatCount = wipData.filter(item => (Number(item.duration)-180) > 38).length;
+
+  const wipHistogramData = getWipHistogram(wipData);
+  const wipHistogramBarData = {
+    labels: wipHistogramLabels,
+    datasets: [
+      {
+        label: 'Jumlah WIP',
+        data: wipHistogramData,
+        backgroundColor: [
+          '#4f8cff', '#38e6c5', '#ffb347', '#6a5acd', '#e57373'
+        ],
+        borderColor: '#fff',
+        borderWidth: 1,
+        borderRadius: 6,
+        barThickness: 30
+      },
+    ],
+  };
+  const wipHistogramBarOptions = {
+    indexAxis: 'y',
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: ctx => `${ctx.parsed.x} item`
+        }
+      }
+    },
+    scales: {
+      x: {
+        beginAtZero: true,
+        title: { display: true, text: 'Jumlah' },
+        ticks: { stepSize: 1 }
+      },
+      y: {
+        title: { display: false },
+        ticks: { font: { size: 12 } }
+      },
+    },
+    layout: { padding: { left: 10, right: 10, top: 10, bottom: 10 } }
+  }
+
+
+  // Loading overlay for main content area
+  const loadingOverlay = <DashboardLoading loading={loading} />;
+
+  // State for navigation to WIP table page
+  const [showWipTable, setShowWipTable] = useState(false);
+  const [wipTableLoading, setWipTableLoading] = useState(false);
+  const [wipTableData, setWipTableData] = useState([]);
+  // New: filter for WIP table (null = no filter, 0-4 = bucket index)
+  const [wipTableFilter, setWipTableFilter] = useState(null);
+
+  // Handler for opening WIP Table page
+  const handleShowWipTable = async (filterIdx = null) => {
+    setShowWipTable(true);
+    setWipTableLoading(true);
+    setWipTableFilter(filterIdx);
+    try {
+      const res = await fetch(apiUrl('/api/wip'));
+      const data = await res.json();
+      setWipTableData(data.data || []);
+    } catch {
+      setWipTableData([]);
+    }
+    setWipTableLoading(false);
+  };
+
+  if (showWipTable) {
+    // If filter is set, filter the data according to the bucket logic
+    let filteredData = wipTableData;
+    let filterLabel = null;
+    if (wipTableFilter !== null) {
+      filterLabel = wipHistogramLabels[wipTableFilter];
+      filteredData = wipTableData.filter(item => {
+        let dur = Number(item.duration) - 180;
+        if (isNaN(dur) || dur < 0) dur = 0;
+        if (wipTableFilter === 0) return dur <= 7;
+        if (wipTableFilter === 1) return dur > 7 && dur <= 14;
+        if (wipTableFilter === 2) return dur > 14 && dur <= 28;
+        if (wipTableFilter === 3) return dur > 28 && dur <= 56;
+        if (wipTableFilter === 4) return dur > 56;
+        return true;
+      });
+    }
+    return (
+      <div className="dashboard-container">
+        <Sidebar />
+        <main className="content-area" style={{ position: 'relative' }}>
+          <div className="dashboard-header">
+            <h1>Daftar WIP</h1>
+            <button className="btn" style={{marginBottom: 16}} onClick={() => setShowWipTable(false)}>&larr; Kembali</button>
+          </div>
+          {wipTableFilter !== null && (
+            <div style={{marginBottom: 12}}>
+              <span className="badge badge-green" style={{fontSize:14, minWidth:0, padding:'4px 16px'}}>
+                Filter: {filterLabel}
+              </span>
+              <button className="btn" style={{marginLeft: 12, fontSize:12, padding:'2px 10px'}} onClick={() => setWipTableFilter(null)}>Hapus Filter</button>
+            </div>
+          )}
+          {wipTableLoading ? (
+            <DashboardLoading loading={true} />
+          ) : (
+            <WipTable data={filteredData} />
+          )}
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="dashboard-container">
       <Sidebar />
-      <main className="content-area">
+      <main className="content-area" style={{ position: 'relative' }}>
         <div className="dashboard-header">
           <h1>Dashboard</h1>
           <div className="dashboard-tabs">
@@ -432,126 +493,81 @@ function App() {
         </div>
         <div className="dashboard-summary-row">
           <div className="summary-card">
-            <div className="summary-title">Jumlah Absen</div>
-            <div className="summary-value">{summaryData.totalAbsence}</div>
+            <div className="summary-title">Lorem Ipsum</div>
+            <div className="summary-value">0</div>
           </div>
           <div className="summary-card">
-            <div className="summary-title">Jadwal Meeting</div>
-            <div className="summary-value">{summaryData.pendingMeetings}</div>
+            <div className="summary-title">Lorem Ipsum</div>
+            <div className="summary-value">0</div>
           </div>
           <div className="summary-card">
-            <div className="summary-title">Jumlah Pegawai Divisi</div>
-            <div className="summary-value">{summaryData.totalEmployees}</div>
+            <div className="summary-title">Lorem Ipsum</div>
+            <div className="summary-value">0</div>
           </div>
           <div className="summary-card">
-            <div className="summary-title">Rata-rata Fulfillment</div>
-            <div className="summary-value">{avgFulfillment}%</div>
+            <div className="summary-title">WIP Terlambat</div>
+            <div className="summary-value">{wipTerlambatCount}</div>
           </div>
-          <div className="summary-card">
+          <div className="summary-card summary-card-clickable" style={{cursor:'pointer'}} onClick={handleShowWipTable}>
             <div className="summary-title">Total WIP</div>
-            <div className="summary-value">{wipRaw[0]}</div>
+            <div className="summary-value">{wipData.length}</div>
           </div>
         </div>
         <div className="dashboard-main-row">
           <div className="dashboard-chart-card">
-            <div className="chart-title chart-title-dropdown">
+            <div className="chart-title">
               <span
                 className="chart-title-clickable"
-                onClick={() => setChartDropdownOpen((open) => !open)}
-                tabIndex={0}
-                style={{ cursor: 'pointer', color: '#4f8cff', fontWeight: 600 }}
+                style={{ color: '#4f8cff', fontWeight: 600 }}
               >
-                {chartType === 'employee'
-                  ? 'Grafik Absen Per Karyawan'
-                  : chartType === 'order'
-                    ? orderChartType === 'order'
-                      ? 'Order Fulfillment'
-                      : orderCategoryCharts.find(c => c.key === orderChartType)?.label || 'Order Fulfillment'
-                    : 'Grafik Absen Bulanan'}
-                <span style={{ marginLeft: 8, fontSize: 16 }}>▼</span>
+                {orderChartType === 'order'
+                  ? 'Order Fulfillment'
+                  : orderCategoryCharts.find(c => c.key === orderChartType)?.label || 'Order Fulfillment'}
               </span>
-              {chartDropdownOpen && (
-                <div className="chart-dropdown">
-                  {/* <div onClick={() => { setChartType('monthly'); setChartDropdownOpen(false); }}>Grafik Absen Bulanan</div>
-                  <div onClick={() => { setChartType('employee'); setChartDropdownOpen(false); }}>Grafik Absen Per Karyawan</div> */}
-                  <div onClick={() => { setChartType('order'); setOrderChartType('order'); setChartDropdownOpen(false); }}>Order Fulfillment</div>
-                  {orderCategories.map(cat => (
-                    <div key={cat} onClick={() => { setChartType('order'); setOrderChartType(cat); setChartDropdownOpen(false); }}>
-                      {orderCategoryCharts.find(c => c.key === cat)?.label}
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
             <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-              {chartType === 'employee' ? (
-                <Bar data={employeeAbsenceChartData} options={employeeAbsenceChartOptions} />
-              ) : chartType === 'order' ? (
-                orderChartType === 'order' ? (
-                  <Bar data={orderFulfillmentChartData} options={orderFulfillmentChartOptions} />
-                ) : (
-                  <Line data={orderCategoryCharts.find(c => c.key === orderChartType)?.chartData} options={orderCategoryCharts.find(c => c.key === orderChartType)?.chartOptions} />
-                )
+              {orderChartType === 'order' ? (
+                <Bar data={orderFulfillmentChartData} options={orderFulfillmentChartOptions} />
               ) : (
-                <Line data={absenceChartData} options={absenceChartOptions} />
+                <Line data={orderCategoryCharts.find(c => c.key === orderChartType)?.chartData} options={orderCategoryCharts.find(c => c.key === orderChartType)?.chartOptions} />
               )}
             </div>
           </div>
           <div className="dashboard-side-card">
-            <div className="side-card-title side-card-title-dropdown">
+            <div className="side-card-title">
               <span
                 className="side-card-title-clickable"
-                onClick={() => setSideCardType(sideCardType === 'dropdown' ? 'meeting' : 'dropdown')}
-                tabIndex={0}
-                style={{ cursor: 'pointer', color: '#4f8cff', fontWeight: 600 }}
+                style={{ color: '#4f8cff', fontWeight: 600 }}
               >
-                {sideCardType === 'absen'
-                  ? 'Absen Terakhir'
-                  : sideCardType === 'wip'
-                  ? 'Laporan WIP'
-                  : 'Jadwal Meeting'}
-                <span style={{ marginLeft: 8, fontSize: 16 }}>▼</span>
+                Histogram WIP Aktif
               </span>
-              {sideCardType === 'dropdown' && (
-                <div className="side-dropdown">
-                  <div onClick={() => setSideCardType('meeting')}>Jadwal Meeting</div>
-                  <div onClick={() => setSideCardType('absen')}>Absen Terakhir</div>
-                  <div onClick={() => setSideCardType('wip')}>Laporan WIP</div>
-                </div>
-              )}
             </div>
-            {sideCardType === 'absen' ? (
-              <ul className="meeting-list">
-                {recentAbsences.map((row, idx) => (
-                  <li key={idx}>
-                    <div className="meeting-subject">{row.name} ({row.jobTitle})</div>
-                    <div className="meeting-meta">{row.reason} &bull; {row.date}</div>
-                  </li>
-                ))}
-              </ul>
-            ) : sideCardType === 'wip' ? (
-              <div style={{ 
-                padding: '0', 
-                flex: 1, 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'center',
-                height: '100%'
-              }}>
-                <div style={{ width: '100%', height: '350px' }}>
-                  <Bar data={wipBarData} options={wipBarOptions} />
-                </div>
+            <div style={{ 
+              padding: '0', 
+              flex: 1, 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              height: '100%'
+            }}>
+              <div style={{ width: '100%', height: '350px' }}>
+                <Bar
+                  data={wipHistogramBarData}
+                  options={{
+                    ...wipHistogramBarOptions,
+                    onClick: (evt, elements) => {
+                      if (elements && elements.length > 0) {
+                        const idx = elements[0].index;
+                        handleShowWipTable(idx);
+                      }
+                    },
+                    hover: { ...wipHistogramBarOptions.hover, onHover: (e, el) => {
+                      e.native.target.style.cursor = el && el.length ? 'pointer' : 'default';
+                    }},
+                  }}
+                />
               </div>
-            ) : (
-              <ul className="meeting-list">
-                {pendingMeetings.map((m, i) => (
-                  <li key={i}>
-                    <div className="meeting-subject">{m.subject}</div>
-                    <div className="meeting-meta">{m.date} &bull; {m.time} &bull; {m.with}</div>
-                  </li>
-                ))}
-              </ul>
-            )}
+            </div>
           </div>
         </div>
         <div className="dashboard-ppe-row">
@@ -628,6 +644,7 @@ function App() {
             </div>
           </div>
         </div>
+        {loadingOverlay}
       </main>
     </div>
   )
