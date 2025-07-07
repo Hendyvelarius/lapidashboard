@@ -1,3 +1,13 @@
+// Controller for /fulfillment
+async function getFulfillment(req, res) {
+  try {
+    const data = await SqlModel.getFulfillment();
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching Fulfillment:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
 const SqlModel = require('../models/sqlModel');
 const { WipConverter } = require('../models/converterModel');
 
@@ -39,4 +49,27 @@ async function getBatchAlur(req, res) {
   }
 }
 
-module.exports = { getWip, getAlur, getBatchAlur };
+
+// Controller for /fulfillmentKelompok
+async function getFulfillmentPerKelompok(req, res) {
+  try {
+    const data = await SqlModel.getFulfillmentPerKelompok();
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching FulfillmentPerKelompok:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+// Controller for /fulfillmentPerDept
+async function getFulfillmentPerDept(req, res) {
+  try {
+    const data = await SqlModel.getFulfillmentPerDept();
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching FulfillmentPerDept:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+module.exports = { getWip, getAlur, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept };

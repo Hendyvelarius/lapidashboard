@@ -1,3 +1,9 @@
+// Fetch Order Fulfillment per Department
+async function getFulfillmentPerDept() {
+  const db = await connect();
+  const result = await db.request().query(`EXEC sp_Dashboard_OF1 'SummaryTotalPerDept';`);
+  return result.recordset;
+}
 const { connect } = require('../../config/sqlserver');
 
 // Model buat tarik data WIP
@@ -177,4 +183,20 @@ async function AlurProsesBatch(batchNo) {
   return result.recordset;
 }
 
-module.exports = { WorkInProgress, WorkInProgressAlur, AlurProsesBatch };
+
+
+// Fetch Order Fulfillment summary (all categories)
+async function getFulfillment() {
+  const db = await connect();
+  const result = await db.request().query(`EXEC sp_Dashboard_OF1 'SummaryTotal';`);
+  return result.recordset;
+}
+
+// Fetch Order Fulfillment per Kelompok
+async function getFulfillmentPerKelompok() {
+  const db = await connect();
+  const result = await db.request().query(`EXEC sp_Dashboard_OF1 'SummaryTotalPerKelompok';`);
+  return result.recordset;
+}
+
+module.exports = { WorkInProgress, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept };

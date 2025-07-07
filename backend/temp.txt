@@ -1,3 +1,0 @@
-alright, in that case let's just stick with our structure for now. 
-
-Let's move on and update our getWip Controlller and convert the resulting data into a more useful organized data that can be consumed easily by frontend. Here is an example of the result of our 

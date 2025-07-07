@@ -1,3 +1,7 @@
+/* Chart dropdown option hover effect */
+.chart-dropdown-option:hover {
+  color: #4f8cff !important;
+}
 /* Full-page, desktop-style dashboard */
 body, html, #root {
   height: 100%;

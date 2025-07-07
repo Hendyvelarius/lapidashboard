@@ -137,94 +137,150 @@ const ppePieOptions = {
   },
 }
 
-// --- Order Fulfillment Data ---
-const orderCategories = [
-  'OralPowder',
-  'OralLiquid',
-  'OralDrop',
-  'SolidTablet',
-  'SolidCapsule',
-  'PowderInjection',
-  'VolumeInjection',
-]
-const TargetOrder = 10000
-const orderData = {
-  OralPowder: [320, 350, 300, 310, 340, 330, 360, 370, 320, 340, 350, 360, 330, 340, 350, 360, 340, 350, 360, 370, 340, 350, 360, 370, 340, 350, 360, 370, 340, 350],
-  OralLiquid: [300, 320, 310, 330, 340, 320, 310, 330, 340, 320, 310, 330, 340, 320, 310, 330, 340, 320, 310, 330, 340, 320, 310, 330, 340, 320, 310, 330, 340, 320],
-  OralDrop: [250, 260, 270, 280, 290, 260, 270, 280, 290, 260, 270, 280, 290, 260, 270, 280, 290, 260, 270, 280, 290, 260, 270, 280, 290, 260, 270, 280, 290, 260],
-  SolidTablet: [400, 420, 410, 430, 440, 420, 410, 430, 440, 420, 410, 430, 440, 420, 410, 430, 440, 420, 410, 430, 440, 420, 410, 430, 440, 420, 410, 430, 440, 420],
-  SolidCapsule: [380, 390, 400, 410, 420, 390, 400, 410, 420, 390, 400, 410, 420, 390, 400, 410, 420, 390, 400, 410, 420, 390, 400, 410, 420, 390, 400, 410, 420, 390],
-  PowderInjection: [200, 210, 220, 230, 240, 210, 220, 230, 240, 210, 220, 230, 240, 210, 220, 230, 240, 210, 220, 230, 240, 210, 220, 230, 240, 210, 220, 230, 240, 210],
-  VolumeInjection: [150, 160, 170, 180, 190, 160, 170, 180, 190, 160, 170, 180, 190, 160, 170, 180, 190, 160, 170, 180, 190, 160, 170, 180, 190, 160, 170, 180, 190, 160],
-}
-// Calculate fulfillment percentage for each category
-const orderFulfillmentPercent = orderCategories.map(cat => {
-  const total = orderData[cat].reduce((a, b) => a + b, 0)
-  return Math.round((total / TargetOrder) * 100)
-})
-const orderFulfillmentChartData = {
-  labels: orderCategories,
-  datasets: [
-    {
-      label: 'Order Fulfillment (%)',
-      data: orderFulfillmentPercent,
-      backgroundColor: [
-        '#4f8cff', '#38e6c5', '#ffb347', '#6a5acd', '#43a047', '#e57373', '#ba68c8'
-      ],
-      borderColor: '#fff',
-      borderWidth: 2,
-    },
-  ],
-}
-const orderFulfillmentChartOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: {
-    legend: { display: false },
-    tooltip: {
-      callbacks: {
-        label: ctx => `${ctx.parsed.y}% terpenuhi`
-      }
-    }
-  },
-  scales: {
-    y: {
-      beginAtZero: true,
-      max: 100,
-      title: { display: true, text: 'Fulfillment (%)' },
-      ticks: { stepSize: 10 }
-    },
-    x: { title: { display: false, text: 'Product Category' } },
-  },
-}
-
-// --- WIP Report Data ---
-const wipLabels = ['Total', 'Penyediaan', 'Produksi', 'Packaging', 'Labeling', 'Transport'];
-const wipHistogramLabels = [
-  'Minggu 1',        // 1 week
-  'Minggu 2',      // 2 weeks
-  'Bulan 1',     // 4 weeks
-  'Bulan 2',     // 1-2 months
-  '2 Bulan+'        // more than 2 months
-];
-
-function getWipHistogram(data) {
-  // Subtract 180 from all durations before bucketing
-  const buckets = [0, 0, 0, 0, 0];
-  data.forEach(item => {
-    let dur = Number(item.duration) - 180;
-    if (isNaN(dur) || dur < 0) dur = 0;
-    if (dur <= 7) buckets[0]++;
-    else if (dur <= 14) buckets[1]++;
-    else if (dur <= 28) buckets[2]++;
-    else if (dur <= 56) buckets[3]++;
-    else buckets[4]++;
-  });
-  return buckets;
-}
-
-
 function App() {
+  // --- Order Fulfillment Data (from API) ---
+  const [fulfillmentData, setFulfillmentData] = useState([]);
+  const [fulfillmentLoading, setFulfillmentLoading] = useState(true);
+  // --- Order Fulfillment Summary Data (for cards) ---
+  const [ofSummary, setOfSummary] = useState(null);
+  const [ofSummaryLoading, setOfSummaryLoading] = useState(true);
+  // --- Fulfillment By Department Data ---
+  const [fulfillmentDeptData, setFulfillmentDeptData] = useState([]);
+  const [fulfillmentDeptLoading, setFulfillmentDeptLoading] = useState(true);
+
+  useEffect(() => {
+    setFulfillmentLoading(true);
+    fetch(apiUrl('/api/fulfillmentKelompok'))
+      .then(res => res.json())
+      .then(data => {
+        setFulfillmentData(data.data || []);
+        setFulfillmentLoading(false);
+      })
+      .catch(() => {
+        setFulfillmentData([]);
+        setFulfillmentLoading(false);
+      });
+    // Fetch Order Fulfillment summary for cards
+    setOfSummaryLoading(true);
+    fetch(apiUrl('/api/fulfillment'))
+      .then(res => res.json())
+      .then(data => {
+        setOfSummary((data && data.data && data.data[0]) || null);
+        setOfSummaryLoading(false);
+      })
+      .catch(() => {
+        setOfSummary(null);
+        setOfSummaryLoading(false);
+      });
+    // Fetch Fulfillment By Department for chart
+    setFulfillmentDeptLoading(true);
+    fetch(apiUrl('/api/fulfillmentDept'))
+      .then(res => res.json())
+      .then(data => {
+        setFulfillmentDeptData(data.data || []);
+        setFulfillmentDeptLoading(false);
+      })
+      .catch(() => {
+        setFulfillmentDeptData([]);
+        setFulfillmentDeptLoading(false);
+      });
+  }, []);
+
+  // Prepare chart data for Order Fulfillment By Category
+  const fulfillmentChartData = {
+    labels: fulfillmentData.map(d => d.Kelompok),
+    datasets: [
+      {
+        label: 'Release',
+        data: fulfillmentData.map(d => d.Release),
+        backgroundColor: '#4f8cff',
+        borderColor: '#4f8cff',
+        borderWidth: 3,
+        type: 'bar',
+        stack: 'stack1',
+        order: 2,
+      },
+      {
+        label: 'Karantina',
+        data: fulfillmentData.map(d => d.Karantina),
+        backgroundColor: '#ffb347',
+        borderColor: '#ffb347',
+        borderWidth: 3,
+        type: 'bar',
+        stack: 'stack1',
+        order: 2,
+      },
+      {
+        label: 'Menunggu Proses',
+        data: fulfillmentData.map(d => d.MenungguProses),
+        backgroundColor: '#38e6c5',
+        borderColor: '#38e6c5',
+        borderWidth: 3,
+        type: 'bar',
+        stack: 'stack1',
+        order: 2,
+      },
+    ],
+  };
+
+  const fulfillmentChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'top' },
+      tooltip: {
+        mode: 'index',
+        intersect: false,
+        callbacks: {
+          label: function(ctx) {
+            if (ctx.dataset.label === 'Total') {
+              return `Total: ${ctx.parsed.y}`;
+            }
+            return `${ctx.dataset.label}: ${ctx.parsed.y}`;
+          }
+        }
+      }
+    },
+    scales: {
+      x: {
+        stacked: true,
+        title: { display: true, text: 'Kelompok' },
+        ticks: { font: { size: 13 } },
+      },
+      y: {
+        stacked: true,
+        beginAtZero: true,
+        title: { display: true, text: 'Jumlah' },
+        ticks: { stepSize: 10 },
+      },
+    },
+    indexAxis: 'x', // vertical bar chart
+  };
+
+  // --- WIP Report Data ---
+  const wipLabels = ['Total', 'Penyediaan', 'Produksi', 'Packaging', 'Labeling', 'Transport'];
+  const wipHistogramLabels = [
+    'Minggu 1',        // 1 week
+    'Minggu 2',      // 2 weeks
+    'Bulan 1',     // 4 weeks
+    'Bulan 2',     // 1-2 months
+    '2 Bulan+'        // more than 2 months
+  ];
+
+  function getWipHistogram(data) {
+    const buckets = [0, 0, 0, 0, 0];
+    data.forEach(item => {
+      let dur = Number(item.duration);
+      if (isNaN(dur) || dur < 0) dur = 0;
+      if (dur <= 7) buckets[0]++;
+      else if (dur <= 14) buckets[1]++;
+      else if (dur <= 28) buckets[2]++;
+      else if (dur <= 56) buckets[3]++;
+      else buckets[4]++;
+    });
+    return buckets;
+  }
+
   const [wipData, setWipData] = useState([]);
   const [loading, setLoading] = useState(true);
   // Only show order fulfillment chart, no HR/employee chart
@@ -242,6 +298,10 @@ function App() {
     setPpeMode(mode);
     setPpeChartKey(Date.now()); // force chart re-render
   }
+
+  // State for WIP Histogram Dropdown (fix: ensure defined before use)
+  const [wipDropdownOpen, setWipDropdownOpen] = useState(false);
+  const [wipDropdownValue, setWipDropdownValue] = useState('histogram');
 
   useEffect(() => {
     setLoading(true);
@@ -316,57 +376,8 @@ function App() {
     return arr.map(v => (sum += v));
   }
 
-  const orderCategoryCharts = orderCategories.map((cat, idx) => {
-    const label =
-      cat === 'OralPowder' ? 'Oral Powder' :
-      cat === 'OralLiquid' ? 'Oral Liquid' :
-      cat === 'OralDrop' ? 'Oral Drop' :
-      cat === 'SolidTablet' ? 'Solid Tablet' :
-      cat === 'SolidCapsule' ? 'Solid Capsule' :
-      cat === 'PowderInjection' ? 'Powder Injection' :
-      cat === 'VolumeInjection' ? 'Volume Injection' : cat;
-    const data = getCumulative(orderData[cat]);
-    return {
-      key: cat,
-      label,
-      chartData: {
-        labels: Array.from({ length: data.length }, (_, i) => (i + 1).toString()),
-        datasets: [
-          {
-            label: label + ' (Cumulative)',
-            data,
-            backgroundColor: '#4f8cff',
-            borderColor: '#4f8cff',
-            fill: true,
-            tension: 0.3,
-            pointRadius: 2,
-          },
-          {
-            label: 'Target Order',
-            data: Array(data.length).fill(TargetOrder),
-            borderColor: '#ffb347',
-            borderDash: [8, 4],
-            borderWidth: 2,
-            pointRadius: 0,
-            type: 'line',
-            fill: false,
-          },
-        ],
-      },
-      chartOptions: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { position: 'top' } },
-        scales: {
-          y: { beginAtZero: true, title: { display: true, text: 'Cumulative Order' } },
-          x: { title: { display: true, text: 'Tanggal' } },
-        },
-      },
-    };
-  });
-
   // Count WIP items with duration > 38
-  const wipTerlambatCount = wipData.filter(item => (Number(item.duration)-180) > 38).length;
+  const wipTerlambatCount = wipData.filter(item => Number(item.duration) > 38).length;
 
   const wipHistogramData = getWipHistogram(wipData);
   const wipHistogramBarData = {
@@ -411,7 +422,6 @@ function App() {
     layout: { padding: { left: 10, right: 10, top: 10, bottom: 10 } }
   }
 
-
   // Loading overlay for main content area
   const loadingOverlay = <DashboardLoading loading={loading} />;
 
@@ -444,7 +454,7 @@ function App() {
     if (wipTableFilter !== null) {
       filterLabel = wipHistogramLabels[wipTableFilter];
       filteredData = wipTableData.filter(item => {
-        let dur = Number(item.duration) - 180;
+        let dur = Number(item.duration);
         if (isNaN(dur) || dur < 0) dur = 0;
         if (wipTableFilter === 0) return dur <= 7;
         if (wipTableFilter === 1) return dur > 7 && dur <= 14;
@@ -480,6 +490,119 @@ function App() {
     );
   }
 
+  // --- Fulfillment By Department Chart Data (Stacked Bar, same as Active WIP Histogram) ---
+  const fulfillmentDeptChartData = {
+    labels: fulfillmentDeptData.map(d => d.Dept),
+    datasets: [
+      {
+        label: 'Release',
+        data: fulfillmentDeptData.map(d => d.Release),
+        backgroundColor: '#38e6c5',
+        borderColor: '#38e6c5',
+        borderWidth: 1,
+        borderRadius: 6,
+        barThickness: 30,
+        stack: 'stack1',
+        type: 'bar',
+      },
+      {
+        label: 'Karantina',
+        data: fulfillmentDeptData.map(d => d.Karantina),
+        backgroundColor: '#ffb347',
+        borderColor: '#ffb347',
+        borderWidth: 1,
+        borderRadius: 6,
+        barThickness: 30,
+        stack: 'stack1',
+        type: 'bar',
+      },
+      {
+        label: 'Menunggu Proses',
+        data: fulfillmentDeptData.map(d => d.MenungguProses),
+        backgroundColor: '#6a5acd',
+        borderColor: '#6a5acd',
+        borderWidth: 1,
+        borderRadius: 6,
+        barThickness: 30,
+        stack: 'stack1',
+        type: 'bar',
+      },
+    ],
+  };
+  const fulfillmentDeptChartOptions = {
+    indexAxis: 'y',
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'top' },
+      tooltip: {
+        enabled: true,
+        mode: 'nearest',
+        intersect: true,
+        callbacks: {
+          // Show all department data in a custom tooltip
+          title: (ctx) => {
+            // Show department name as title
+            if (ctx && ctx.length > 0) {
+              // ctx[0].dataIndex is the department index
+              const idx = ctx[0].dataIndex;
+              const d = fulfillmentDeptData[idx];
+              return d && d.Dept ? d.Dept : '';
+            }
+            return '';
+          },
+          label: () => '', // We'll show nothing here, all info in afterBody
+          afterBody: (ctx) => {
+            // Find the department index from the hovered element
+            if (!ctx || ctx.length === 0) return '';
+            // ctx[0].dataIndex is the correct department index for the hovered bar
+            const idx = ctx[0].dataIndex;
+            const d = fulfillmentDeptData[idx];
+            if (!d) return '';
+            // Compose detailed info for this department
+            const lines = [];
+            lines.push(`Total: ${d.Total ?? 0} item`);
+            lines.push(`Release: ${d.Release ?? 0} item`);
+            lines.push(`Karantina: ${d.Karantina ?? 0} item`);
+            lines.push(`Menunggu Proses: ${d.MenungguProses ?? 0} item`);
+            if (d.Catatan) lines.push(`Catatan: ${d.Catatan}`);
+            return lines;
+          },
+        },
+        displayColors: false,
+        backgroundColor: 'rgba(255,255,255,0.98)',
+        titleColor: '#222',
+        bodyColor: '#333',
+        borderColor: '#4f8cff',
+        borderWidth: 1.5,
+        titleFont: { weight: 'bold', size: 15 },
+        bodyFont: { size: 14 },
+        padding: 14,
+        caretSize: 7,
+        cornerRadius: 8,
+        boxPadding: 6,
+        shadowOffsetX: 0,
+        shadowOffsetY: 2,
+        shadowBlur: 8,
+        shadowColor: 'rgba(0,0,0,0.10)',
+      },
+    },
+    scales: {
+      x: {
+        beginAtZero: true,
+        title: { display: true, text: 'Jumlah' },
+        ticks: { stepSize: 1 },
+        stacked: true,
+      },
+      y: {
+        title: { display: true, text: 'Department' },
+        ticks: { font: { size: 13 } },
+        stacked: true,
+      },
+    },
+    layout: { padding: { left: 10, right: 10, top: 10, bottom: 10 } },
+  };
+
   return (
     <div className="dashboard-container">
       <Sidebar />
@@ -493,16 +616,22 @@ function App() {
         </div>
         <div className="dashboard-summary-row">
           <div className="summary-card">
-            <div className="summary-title">Lorem Ipsum</div>
-            <div className="summary-value">0</div>
+            <div className="summary-title">Target Fulfillment</div>
+            <div className="summary-value">
+              {ofSummaryLoading ? <span className="summary-loading">...</span> : (ofSummary?.Total ?? 0)}
+            </div>
           </div>
           <div className="summary-card">
-            <div className="summary-title">Lorem Ipsum</div>
-            <div className="summary-value">0</div>
+            <div className="summary-title">Produk Release</div>
+            <div className="summary-value">
+              {ofSummaryLoading ? <span className="summary-loading">...</span> : (ofSummary?.Release ?? 0)}
+            </div>
           </div>
           <div className="summary-card">
-            <div className="summary-title">Lorem Ipsum</div>
-            <div className="summary-value">0</div>
+            <div className="summary-title">Proses Karantina</div>
+            <div className="summary-value">
+              {ofSummaryLoading ? <span className="summary-loading">...</span> : (ofSummary?.Karantina ?? 0)}
+            </div>
           </div>
           <div className="summary-card">
             <div className="summary-title">WIP Terlambat</div>
@@ -515,32 +644,79 @@ function App() {
         </div>
         <div className="dashboard-main-row">
           <div className="dashboard-chart-card">
-            <div className="chart-title">
+            <div className="chart-title" style={{ position: 'relative' }}>
               <span
                 className="chart-title-clickable"
-                style={{ color: '#4f8cff', fontWeight: 600 }}
+                style={{ color: '#4f8cff', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }}
+                onClick={() => setChartDropdownOpen(open => !open)}
+                tabIndex={0}
               >
-                {orderChartType === 'order'
-                  ? 'Order Fulfillment'
-                  : orderCategoryCharts.find(c => c.key === orderChartType)?.label || 'Order Fulfillment'}
+                {orderChartType === 'department' ? 'Fulfillment By Department' : 'Order Fulfillment By Category'}
+                <span style={{ marginLeft: 8, fontSize: 16 }}>▼</span>
               </span>
+              {chartDropdownOpen && (
+                <div style={{ position: 'absolute', top: '100%', left: 0, background: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', borderRadius: 8, zIndex: 10, minWidth: 220, marginTop: 4, padding: '6px 0', fontSize: 15 }}>
+                  <div
+                    className="chart-dropdown-option"
+                    style={{ padding: '10px 20px', cursor: 'pointer', color: '#222', fontWeight: 500, transition: 'color 0.15s' }}
+                    onClick={() => { setOrderChartType('category'); setChartDropdownOpen(false); }}
+                  >Order Fulfillment By Category</div>
+                  <div
+                    className="chart-dropdown-option"
+                    style={{ padding: '10px 20px', cursor: 'pointer', color: '#222', fontWeight: 500, transition: 'color 0.15s' }}
+                    onClick={() => { setOrderChartType('department'); setChartDropdownOpen(false); }}
+                  >Fulfillment By Department</div>
+                </div>
+              )}
             </div>
             <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-              {orderChartType === 'order' ? (
-                <Bar data={orderFulfillmentChartData} options={orderFulfillmentChartOptions} />
+              {orderChartType === 'department' ? (
+                fulfillmentDeptLoading ? (
+                  <DashboardLoading loading={true} />
+                ) : (
+                  <Bar data={fulfillmentDeptChartData} options={fulfillmentDeptChartOptions} />
+                )
               ) : (
-                <Line data={orderCategoryCharts.find(c => c.key === orderChartType)?.chartData} options={orderCategoryCharts.find(c => c.key === orderChartType)?.chartOptions} />
+                fulfillmentLoading ? (
+                  <DashboardLoading loading={true} />
+                ) : (
+                  <Bar data={fulfillmentChartData} options={fulfillmentChartOptions} />
+                )
               )}
             </div>
           </div>
           <div className="dashboard-side-card">
-            <div className="side-card-title">
+            <div className="side-card-title side-card-title-dropdown" style={{ position: 'relative' }}>
               <span
                 className="side-card-title-clickable"
-                style={{ color: '#4f8cff', fontWeight: 600 }}
+                style={{ color: '#4f8cff', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }}
+                onClick={() => setWipDropdownOpen(open => !open)}
+                tabIndex={0}
               >
-                Histogram WIP Aktif
+                {wipDropdownValue === 'histogram' && 'Active WIP Histogram'}
+                {wipDropdownValue === 'department' && 'WIP Department Tracker'}
+                {wipDropdownValue === 'category' && 'WIP Category Progress'}
+                <span style={{ marginLeft: 8, fontSize: 16 }}>▼</span>
               </span>
+              {wipDropdownOpen && (
+                <div style={{ position: 'absolute', top: '100%', left: 0, background: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', borderRadius: 8, zIndex: 10, minWidth: 220, marginTop: 4, padding: '6px 0', fontSize: 15 }}>
+                  <div
+                    className="chart-dropdown-option"
+                    style={{ padding: '10px 20px', cursor: 'pointer', color: '#222', fontWeight: 500, transition: 'color 0.15s' }}
+                    onClick={() => { setWipDropdownValue('histogram'); setWipDropdownOpen(false); }}
+                  >Active WIP Histogram</div>
+                  <div
+                    className="chart-dropdown-option"
+                    style={{ padding: '10px 20px', cursor: 'pointer', color: '#222', fontWeight: 500, transition: 'color 0.15s' }}
+                    onClick={() => { setWipDropdownValue('department'); setWipDropdownOpen(false); }}
+                  >WIP Department Tracker</div>
+                  <div
+                    className="chart-dropdown-option"
+                    style={{ padding: '10px 20px', cursor: 'pointer', color: '#222', fontWeight: 500, transition: 'color 0.15s' }}
+                    onClick={() => { setWipDropdownValue('category'); setWipDropdownOpen(false); }}
+                  >WIP Category Progress</div>
+                </div>
+              )}
             </div>
             <div style={{ 
               padding: '0', 
@@ -551,21 +727,36 @@ function App() {
               height: '100%'
             }}>
               <div style={{ width: '100%', height: '350px' }}>
-                <Bar
-                  data={wipHistogramBarData}
-                  options={{
-                    ...wipHistogramBarOptions,
-                    onClick: (evt, elements) => {
-                      if (elements && elements.length > 0) {
-                        const idx = elements[0].index;
-                        handleShowWipTable(idx);
-                      }
-                    },
-                    hover: { ...wipHistogramBarOptions.hover, onHover: (e, el) => {
-                      e.native.target.style.cursor = el && el.length ? 'pointer' : 'default';
-                    }},
-                  }}
-                />
+                {/* Only the histogram chart is implemented for now */}
+                {wipDropdownValue === 'histogram' && (
+                  <Bar
+                    data={wipHistogramBarData}
+                    options={{
+                      ...wipHistogramBarOptions,
+                      onClick: (evt, elements) => {
+                        if (elements && elements.length > 0) {
+                          const idx = elements[0].index;
+                          handleShowWipTable(idx);
+                        }
+                      },
+                      hover: { ...wipHistogramBarOptions.hover, onHover: (e, el) => {
+                        e.native.target.style.cursor = el && el.length ? 'pointer' : 'default';
+                      }},
+                    }}
+                  />
+                )}
+                {wipDropdownValue === 'department' && (
+                  <div style={{height:'100%',display:'flex',alignItems:'center',justifyContent:'center',color:'#aaa',fontSize:18,fontWeight:500}}>
+                    {/* Placeholder for WIP Department Tracker */}
+                    WIP Department Tracker (coming soon)
+                  </div>
+                )}
+                {wipDropdownValue === 'category' && (
+                  <div style={{height:'100%',display:'flex',alignItems:'center',justifyContent:'center',color:'#aaa',fontSize:18,fontWeight:500}}>
+                    {/* Placeholder for WIP Category Progress */}
+                    WIP Category Progress (coming soon)
+                  </div>
+                )}
               </div>
             </div>
           </div>
