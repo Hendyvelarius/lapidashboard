@@ -11,7 +11,7 @@ import {
   Title,
   Tooltip,
   Legend,
-  ArcElement // <-- Add this for Pie chart
+  ArcElement
 } from 'chart.js'
 import Sidebar from './components/Sidebar'
 import WipTable from './components/WipTable';
@@ -27,10 +27,8 @@ ChartJS.register(
   Title,
   Tooltip,
   Legend,
-  ArcElement // <-- Register ArcElement for Pie chart
+  ArcElement
 )
-
-
 
 // Hardcoded PPE report data for 30 days
 const ppeDays = Array.from({ length: 30 }, (_, i) => (i + 1).toString())
@@ -138,6 +136,119 @@ const ppePieOptions = {
 }
 
 function App() {
+  // --- State declarations first ---
+  const [wipData, setWipData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  // For WIP charts loading state (side card)
+  const wipLoading = loading;
+
+  // --- WIP Category Progress aggregation (from unified wipData) ---
+  // Group by item.kelompok, count occurrences
+  const wipGroupAgg = {};
+  wipData.forEach(item => {
+    const kelompok = item.kelompok || 'Uncategorized';
+    if (!wipGroupAgg[kelompok]) wipGroupAgg[kelompok] = 0;
+    wipGroupAgg[kelompok]++;
+  });
+  function capitalizeWords(str) {
+    if (str === undefined || str === null) return 'Uncategorized';
+    return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
+  }
+  const wipGroupLabels = Object.keys(wipGroupAgg).map(capitalizeWords);
+  const wipGroupCounts = Object.values(wipGroupAgg);
+  const wipGroupBarData = {
+    labels: wipGroupLabels,
+    datasets: [
+      {
+        label: 'Total',
+        data: wipGroupCounts,
+        backgroundColor: '#4f8cff',
+        borderColor: '#fff',
+        borderWidth: 1,
+        borderRadius: 6,
+        barThickness: 30,
+      },
+    ],
+  };
+  const wipGroupBarOptions = {
+    indexAxis: 'x',
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: ctx => `${ctx.parsed.y} item`
+        }
+      }
+    },
+    scales: {
+      x: {
+        title: { display: true, text: 'Kategori' },
+        ticks: { font: { size: 13 }, autoSkip: false, maxRotation: 30, minRotation: 0 },
+      },
+      y: {
+        beginAtZero: true,
+        title: { display: true, text: 'Total' },
+        ticks: { stepSize: 1 },
+      },
+    },
+    layout: { padding: { left: 10, right: 10, top: 10, bottom: 10 } },
+  };
+  // --- WIP Department Tracker & Category Progress (from unified WIP data) ---
+  // All WIP data from /api/wip
+  // (Re-use the main wipData state, remove duplicate declarations)
+
+  // WIP Department Tracker aggregation
+  const wipDeptAgg = {};
+  wipData.forEach(item => {
+    const dept = item.dept || 'Unknown';
+    if (!wipDeptAgg[dept]) wipDeptAgg[dept] = 0;
+    wipDeptAgg[dept]++;
+  });
+  const wipDeptLabels = Object.keys(wipDeptAgg);
+  const wipDeptCounts = Object.values(wipDeptAgg);
+  const wipDeptBarData = {
+    labels: wipDeptLabels,
+    datasets: [
+      {
+        label: 'Total WIP',
+        data: wipDeptCounts,
+        backgroundColor: '#4f8cff',
+        borderColor: '#fff',
+        borderWidth: 1,
+        borderRadius: 6,
+        barThickness: 30,
+      },
+    ],
+  };
+  const wipDeptBarOptions = {
+    indexAxis: 'y',
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: ctx => `${ctx.parsed.x} item`
+        }
+      }
+    },
+    scales: {
+      x: {
+        beginAtZero: true,
+        title: { display: true, text: 'Jumlah' },
+        ticks: { stepSize: 1 }
+      },
+      y: {
+        title: { display: true, text: 'Department' },
+        ticks: { font: { size: 13 } }
+      },
+    },
+    layout: { padding: { left: 10, right: 10, top: 10, bottom: 10 } },
+  };
+
+  // WIP Category Progress aggregation (see below for chart data)
   // --- Order Fulfillment Data (from API) ---
   const [fulfillmentData, setFulfillmentData] = useState([]);
   const [fulfillmentLoading, setFulfillmentLoading] = useState(true);
@@ -187,8 +298,25 @@ function App() {
   }, []);
 
   // Prepare chart data for Order Fulfillment By Category
+  // Shorten certain category names for the chart
+  const kelompokLabelMap = {
+    "CAPSUL CEPHALOSPORIN": "Capsul C",
+    "INJEKSI CEPHALOSPORIN": "Injeksi C",
+    "INJEKSI STERIL": "Injeksi S",
+    "TABLET/KAPLET COATING": "Tab/Kaplet C",
+    "CAPSUL": "Capsul",
+    "IMPORT": "Import",
+    "LIQUID": "Liquid",
+    "PROBIOTIK": "Probiotik",
+    "TABLET/KAPLET": "Tab/Kaplet",
+    "TOLL OUT": "Toll Out"
+  };
+
   const fulfillmentChartData = {
-    labels: fulfillmentData.map(d => d.Kelompok),
+    labels: fulfillmentData.map(d => {
+      const key = d.Kelompok?.toUpperCase();
+      return kelompokLabelMap[key] || d.Kelompok;
+    }),
     datasets: [
       {
         label: 'Release',
@@ -281,11 +409,134 @@ function App() {
     return buckets;
   }
 
-  const [wipData, setWipData] = useState([]);
-  const [loading, setLoading] = useState(true);
-  // Only show order fulfillment chart, no HR/employee chart
   const [chartType] = useState('order');
   const [orderChartType, setOrderChartType] = useState('order');
+
+  // --- Percentage Fulfillment By Department ---
+  const fulfillmentDeptPercentChartData = {
+    labels: fulfillmentDeptData.map(d => d.Dept),
+    datasets: [
+      {
+        label: 'Release',
+        data: fulfillmentDeptData.map(d => {
+          const total = d.Total || 0;
+          return total ? (d.Release / total) * 100 : 0;
+        }),
+        backgroundColor: '#38e6c5',
+        borderColor: '#38e6c5',
+        borderWidth: 1,
+        borderRadius: 6,
+        barThickness: 30,
+        stack: 'stack1',
+        type: 'bar',
+      },
+      {
+        label: 'Karantina',
+        data: fulfillmentDeptData.map(d => {
+          const total = d.Total || 0;
+          return total ? (d.Karantina / total) * 100 : 0;
+        }),
+        backgroundColor: '#ffb347',
+        borderColor: '#ffb347',
+        borderWidth: 1,
+        borderRadius: 6,
+        barThickness: 30,
+        stack: 'stack1',
+        type: 'bar',
+      },
+      {
+        label: 'Menunggu Proses',
+        data: fulfillmentDeptData.map(d => {
+          const total = d.Total || 0;
+          return total ? (d.MenungguProses / total) * 100 : 0;
+        }),
+        backgroundColor: '#6a5acd',
+        borderColor: '#6a5acd',
+        borderWidth: 1,
+        borderRadius: 6,
+        barThickness: 30,
+        stack: 'stack1',
+        type: 'bar',
+      },
+    ],
+  };
+
+  const fulfillmentDeptPercentChartOptions = {
+    indexAxis: 'y',
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'top' },
+      tooltip: {
+        enabled: true,
+        mode: 'nearest',
+        intersect: true,
+        callbacks: {
+          title: (ctx) => {
+            if (ctx && ctx.length > 0) {
+              const idx = ctx[0].dataIndex;
+              const d = fulfillmentDeptData[idx];
+              return d && d.Dept ? d.Dept : '';
+            }
+            return '';
+          },
+          label: (ctx) => {
+            const d = fulfillmentDeptData[ctx.dataIndex];
+            const val = ctx.parsed.x;
+            let count = 0;
+            if (ctx.dataset.label === 'Release') count = d?.Release ?? 0;
+            else if (ctx.dataset.label === 'Karantina') count = d?.Karantina ?? 0;
+            else if (ctx.dataset.label === 'Menunggu Proses') count = d?.MenungguProses ?? 0;
+            const total = d?.Total ?? 0;
+            return `${ctx.dataset.label}: ${count}/${total} item`;
+          },
+          afterBody: (ctx) => {
+            if (!ctx || ctx.length === 0) return '';
+            const idx = ctx[0].dataIndex;
+            const d = fulfillmentDeptData[idx];
+            if (!d) return '';
+            // Find which dataset is hovered
+            const datasetIdx = ctx[0].datasetIndex;
+            const val = ctx[0].parsed.x;
+            return [`${val.toFixed(1)}%`];
+          },
+        },
+        displayColors: false,
+        backgroundColor: 'rgba(255,255,255,0.98)',
+        titleColor: '#222',
+        bodyColor: '#333',
+        borderColor: '#4f8cff',
+        borderWidth: 1.5,
+        titleFont: { weight: 'bold', size: 15 },
+        bodyFont: { size: 14 },
+        padding: 14,
+        caretSize: 7,
+        cornerRadius: 8,
+        boxPadding: 6,
+        shadowOffsetX: 0,
+        shadowOffsetY: 2,
+        shadowBlur: 8,
+        shadowColor: 'rgba(0,0,0,0.10)',
+      },
+    },
+    scales: {
+      x: {
+        beginAtZero: true,
+        max: 100,
+        title: { display: true, text: 'Persentase (%)' },
+        ticks: { stepSize: 10 },
+        stacked: true,
+      },
+      y: {
+        title: { display: true, text: 'Department' },
+        ticks: { font: { size: 13 } },
+        stacked: true,
+      },
+    },
+    layout: { padding: { left: 10, right: 10, top: 10, bottom: 10 } },
+  };
+
+  // --- WIP Category Progress (WIP Group) ---
   // Only show Histogram WIP Aktif in side card
   const [sideCardType] = useState('wip');
   const [chartDropdownOpen, setChartDropdownOpen] = useState(false);
@@ -296,7 +547,7 @@ function App() {
   // Handler for PPE chart mode change (line/pie)
   function handlePpeModeChange(mode) {
     setPpeMode(mode);
-    setPpeChartKey(Date.now()); // force chart re-render
+    setPpeChartKey(Date.now());
   }
 
   // State for WIP Histogram Dropdown (fix: ensure defined before use)
@@ -431,12 +682,14 @@ function App() {
   const [wipTableData, setWipTableData] = useState([]);
   // New: filter for WIP table (null = no filter, 0-4 = bucket index)
   const [wipTableFilter, setWipTableFilter] = useState(null);
-
   // Handler for opening WIP Table page
-  const handleShowWipTable = async (filterIdx = null) => {
+  // filterIdx: for histogram bucket, filterObj: { dept, kelompok }
+  const [wipTableFilterObj, setWipTableFilterObj] = useState(null);
+  const handleShowWipTable = async (filterIdx = null, filterObj = null) => {
     setShowWipTable(true);
     setWipTableLoading(true);
     setWipTableFilter(filterIdx);
+    setWipTableFilterObj(filterObj);
     try {
       const res = await fetch(apiUrl('/api/wip'));
       const data = await res.json();
@@ -448,7 +701,7 @@ function App() {
   };
 
   if (showWipTable) {
-    // If filter is set, filter the data according to the bucket logic
+    // If filter is set, filter the data according to the bucket logic or department/kelompok
     let filteredData = wipTableData;
     let filterLabel = null;
     if (wipTableFilter !== null) {
@@ -463,6 +716,14 @@ function App() {
         if (wipTableFilter === 4) return dur > 56;
         return true;
       });
+    } else if (wipTableFilterObj && (wipTableFilterObj.dept || wipTableFilterObj.kelompok)) {
+      if (wipTableFilterObj.dept) {
+        filterLabel = `Department: ${wipTableFilterObj.dept}`;
+        filteredData = wipTableData.filter(item => (item.dept || 'Unknown') === wipTableFilterObj.dept);
+      } else if (wipTableFilterObj.kelompok) {
+        filterLabel = `Kategori: ${wipTableFilterObj.kelompok}`;
+        filteredData = wipTableData.filter(item => (item.kelompok || 'Uncategorized') === wipTableFilterObj.kelompok);
+      }
     }
     return (
       <div className="dashboard-container">
@@ -470,14 +731,14 @@ function App() {
         <main className="content-area" style={{ position: 'relative' }}>
           <div className="dashboard-header">
             <h1>Daftar WIP</h1>
-            <button className="btn" style={{marginBottom: 16}} onClick={() => setShowWipTable(false)}>&larr; Kembali</button>
+            <button className="btn" style={{marginBottom: 16}} onClick={() => { setShowWipTable(false); setWipTableFilter(null); setWipTableFilterObj(null); }}>&larr; Kembali</button>
           </div>
-          {wipTableFilter !== null && (
+          {(wipTableFilter !== null || wipTableFilterObj) && (
             <div style={{marginBottom: 12}}>
               <span className="badge badge-green" style={{fontSize:14, minWidth:0, padding:'4px 16px'}}>
                 Filter: {filterLabel}
               </span>
-              <button className="btn" style={{marginLeft: 12, fontSize:12, padding:'2px 10px'}} onClick={() => setWipTableFilter(null)}>Hapus Filter</button>
+              <button className="btn" style={{marginLeft: 12, fontSize:12, padding:'2px 10px'}} onClick={() => { setWipTableFilter(null); setWipTableFilterObj(null); }}>Hapus Filter</button>
             </div>
           )}
           {wipTableLoading ? (
@@ -551,20 +812,22 @@ function App() {
             }
             return '';
           },
-          label: () => '', // We'll show nothing here, all info in afterBody
+          label: () => '',
           afterBody: (ctx) => {
-            // Find the department index from the hovered element
             if (!ctx || ctx.length === 0) return '';
-            // ctx[0].dataIndex is the correct department index for the hovered bar
             const idx = ctx[0].dataIndex;
             const d = fulfillmentDeptData[idx];
             if (!d) return '';
-            // Compose detailed info for this department
+            const total = d.Total ?? 0;
+            // Helper to format each line
+            function formatLine(label, count) {
+              const percent = total ? ((count / total) * 100).toFixed(1) : '0.0';
+              return `${label}: ${count}/${total} Item (${percent}%)`;
+            }
             const lines = [];
-            lines.push(`Total: ${d.Total ?? 0} item`);
-            lines.push(`Release: ${d.Release ?? 0} item`);
-            lines.push(`Karantina: ${d.Karantina ?? 0} item`);
-            lines.push(`Menunggu Proses: ${d.MenungguProses ?? 0} item`);
+            lines.push(formatLine('Release', d.Release ?? 0));
+            lines.push(formatLine('Karantina', d.Karantina ?? 0));
+            lines.push(formatLine('Menunggu Proses', d.MenungguProses ?? 0));
             if (d.Catatan) lines.push(`Catatan: ${d.Catatan}`);
             return lines;
           },
@@ -651,7 +914,7 @@ function App() {
                 onClick={() => setChartDropdownOpen(open => !open)}
                 tabIndex={0}
               >
-                {orderChartType === 'department' ? 'Fulfillment By Department' : 'Order Fulfillment By Category'}
+                {orderChartType === 'department' ? 'Fulfillment By Department' : orderChartType === 'departmentPercent' ? 'Percentage Fulfillment By Department' : 'Order Fulfillment By Category'}
                 <span style={{ marginLeft: 8, fontSize: 16 }}>▼</span>
               </span>
               {chartDropdownOpen && (
@@ -666,6 +929,11 @@ function App() {
                     style={{ padding: '10px 20px', cursor: 'pointer', color: '#222', fontWeight: 500, transition: 'color 0.15s' }}
                     onClick={() => { setOrderChartType('department'); setChartDropdownOpen(false); }}
                   >Fulfillment By Department</div>
+                  <div
+                    className="chart-dropdown-option"
+                    style={{ padding: '10px 20px', cursor: 'pointer', color: '#222', fontWeight: 500, transition: 'color 0.15s' }}
+                    onClick={() => { setOrderChartType('departmentPercent'); setChartDropdownOpen(false); }}
+                  >Percentage Fulfillment By Department</div>
                 </div>
               )}
             </div>
@@ -675,6 +943,12 @@ function App() {
                   <DashboardLoading loading={true} />
                 ) : (
                   <Bar data={fulfillmentDeptChartData} options={fulfillmentDeptChartOptions} />
+                )
+              ) : orderChartType === 'departmentPercent' ? (
+                fulfillmentDeptLoading ? (
+                  <DashboardLoading loading={true} />
+                ) : (
+                  <Bar data={fulfillmentDeptPercentChartData} options={fulfillmentDeptPercentChartOptions} />
                 )
               ) : (
                 fulfillmentLoading ? (
@@ -746,16 +1020,48 @@ function App() {
                   />
                 )}
                 {wipDropdownValue === 'department' && (
-                  <div style={{height:'100%',display:'flex',alignItems:'center',justifyContent:'center',color:'#aaa',fontSize:18,fontWeight:500}}>
-                    {/* Placeholder for WIP Department Tracker */}
-                    WIP Department Tracker (coming soon)
-                  </div>
+                  wipLoading ? (
+                    <DashboardLoading loading={true} />
+                  ) : (
+                    <Bar
+                      data={wipDeptBarData}
+                      options={{
+                        ...wipDeptBarOptions,
+                        onClick: (evt, elements) => {
+                          if (elements && elements.length > 0) {
+                            const idx = elements[0].index;
+                            const dept = wipDeptBarData.labels[idx];
+                            handleShowWipTable(null, { dept });
+                          }
+                        },
+                        hover: { ...wipDeptBarOptions.hover, onHover: (e, el) => {
+                          e.native.target.style.cursor = el && el.length ? 'pointer' : 'default';
+                        }},
+                      }}
+                    />
+                  )
                 )}
                 {wipDropdownValue === 'category' && (
-                  <div style={{height:'100%',display:'flex',alignItems:'center',justifyContent:'center',color:'#aaa',fontSize:18,fontWeight:500}}>
-                    {/* Placeholder for WIP Category Progress */}
-                    WIP Category Progress (coming soon)
-                  </div>
+                  wipLoading ? (
+                    <DashboardLoading loading={true} />
+                  ) : (
+                    <Bar
+                      data={wipGroupBarData}
+                      options={{
+                        ...wipGroupBarOptions,
+                        onClick: (evt, elements) => {
+                          if (elements && elements.length > 0) {
+                            const idx = elements[0].index;
+                            const kelompok = Object.keys(wipGroupAgg)[idx];
+                            handleShowWipTable(null, { kelompok });
+                          }
+                        },
+                        hover: { ...wipGroupBarOptions.hover, onHover: (e, el) => {
+                          e.native.target.style.cursor = el && el.length ? 'pointer' : 'default';
+                        }},
+                      }}
+                    />
+                  )
                 )}
               </div>
             </div>

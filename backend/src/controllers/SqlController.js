@@ -72,4 +72,22 @@ async function getFulfillmentPerDept(req, res) {
   }
 }
 
-module.exports = { getWip, getAlur, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept };
+async function getWipProdByDept (req, res) {
+  try {
+    const data = await SqlModel.getWipProdByDept();
+    res.json({ data });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+async function getWipByGroup(req, res) {
+  try {
+    const data = await SqlModel.getWipByGroup();
+    res.json({ data });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+module.exports = { getWip, getAlur, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup };
