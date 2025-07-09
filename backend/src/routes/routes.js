@@ -15,4 +15,7 @@ router.get('/fulfillment', SqlController.getFulfillment);
 router.get('/fulfillmentKelompok', SqlController.getFulfillmentPerKelompok);
 router.get('/fulfillmentDept', SqlController.getFulfillmentPerDept);
 
+router.get('/pct', SqlController.getProductCycleTime);
+router.get('/pctAverage', SqlController.getProductCycleTimeAverage);
+
 module.exports = router;

@@ -1,3 +1,6 @@
+const SqlModel = require('../models/sqlModel');
+const converterModel = require('../models/converterModel');
+
 // Controller for /fulfillment
 async function getFulfillment(req, res) {
   try {
@@ -8,14 +11,12 @@ async function getFulfillment(req, res) {
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 }
-const SqlModel = require('../models/sqlModel');
-const { WipConverter } = require('../models/converterModel');
 
 // Controller buat ambil data WIP
 async function getWip(req, res) {
   try {
     const data = await SqlModel.WorkInProgress();
-    const converted = WipConverter(data);
+    const converted = converterModel.WipConverter(data);
     res.json({ data: converted });
   } catch (err) {
     console.error('Error in fetching WIP:', err);
@@ -90,4 +91,25 @@ async function getWipByGroup(req, res) {
   }
 }
 
-module.exports = { getWip, getAlur, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup };
+async function getProductCycleTime(req, res) {
+  try {
+    const data = await SqlModel.getProductCycleTime();
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching Product Cycle Time:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+async function getProductCycleTimeAverage(req, res) {
+  try {
+    const data = await SqlModel.getProductCycleTime();
+    const processed = converterModel.getProductCycleTimeAverage(data);
+    res.json({ processed });
+  } catch (err) {
+    console.error('Error in fetching Product Cycle Time Average:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+module.exports = { getWip, getAlur, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeAverage };

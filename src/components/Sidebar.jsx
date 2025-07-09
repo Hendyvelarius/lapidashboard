@@ -10,11 +10,14 @@ import {
   User,
   LogOut
 } from 'lucide-react'
+
+import { Link, useLocation } from 'react-router';
 import logoImage from '../assets/LAPILOGO_White.png'
 
 function Sidebar() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
+  const location = useLocation();
   return (
     <aside className="sidebar sidebar-dark sidebar-fixed">
       {/* Logo Section */}
@@ -26,14 +29,14 @@ function Sidebar() {
       <div className="sidebar-section">
         <div className="sidebar-section-title">MENU UTAMA</div>
         <nav className="sidebar-nav">
-          <button className="sidebar-btn active">
+          <Link to="/" className={`sidebar-btn${location.pathname === '/' ? ' active' : ''}`}> 
             <LayoutDashboard size={20} />
             <span>Dashboard</span>
-          </button>
-          <button className="sidebar-btn" disabled>
+          </Link>
+          <Link to="/reports" className={`sidebar-btn${location.pathname === '/reports' ? ' active' : ''}`}> 
             <FileText size={20} />
             <span>Reports</span>
-          </button>
+          </Link>
           <button className="sidebar-btn" disabled>
             <Users size={20} />
             <span>Employees</span>
