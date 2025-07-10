@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from "react";
+import * as XLSX from "xlsx";
 import { Doughnut, Bar } from "react-chartjs-2";
 import {
   Chart as ChartJS,
@@ -50,6 +51,23 @@ function InfoCard({ title, value, icon, change, changeType }) {
 
 // TableCard component for displaying data in a modern table
 function TableCard({ title, columns, data, loading, error }) {
+  const [searchTerm, setSearchTerm] = useState("");
+  // Export to Excel handler
+  const exportToExcel = () => {
+    if (!data || !columns || data.length === 0) return;
+    // Prepare data for worksheet
+    const exportData = data.map(row => {
+      const obj = {};
+      columns.forEach(col => {
+        obj[col.label] = row[col.key];
+      });
+      return obj;
+    });
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Data");
+    XLSX.writeFile(workbook, `${title.replace(/\s+/g, '_') || 'table'}_${new Date().toISOString().slice(0,10)}.xlsx`);
+  };
   const [sortConfig, setSortConfig] = useState({ key: null, direction: null });
 
   const handleSort = (columnKey) => {
@@ -60,31 +78,35 @@ function TableCard({ title, columns, data, loading, error }) {
     setSortConfig({ key: columnKey, direction });
   };
 
+  // Filter and sort data
+  const filteredData = useMemo(() => {
+    if (!searchTerm) return data;
+    const lower = searchTerm.toLowerCase();
+    return data.filter(row =>
+      columns.some(col =>
+        String(row[col.key] ?? "").toLowerCase().includes(lower)
+      )
+    );
+  }, [data, columns, searchTerm]);
+
   const sortedData = useMemo(() => {
-    if (!sortConfig.key) return data;
-    
-    const sorted = [...data].sort((a, b) => {
+    if (!sortConfig.key) return filteredData;
+    const sorted = [...filteredData].sort((a, b) => {
       const aVal = a[sortConfig.key];
       const bVal = b[sortConfig.key];
-      
-      // Handle numeric values
       if (typeof aVal === 'number' && typeof bVal === 'number') {
         return sortConfig.direction === 'asc' ? aVal - bVal : bVal - aVal;
       }
-      
-      // Handle string values
       const aStr = String(aVal || '').toLowerCase();
       const bStr = String(bVal || '').toLowerCase();
-      
       if (sortConfig.direction === 'asc') {
         return aStr.localeCompare(bStr);
       } else {
         return bStr.localeCompare(aStr);
       }
     });
-    
     return sorted;
-  }, [data, sortConfig]);
+  }, [filteredData, sortConfig]);
 
   const getSortIcon = (columnKey) => {
     if (sortConfig.key !== columnKey) return '⇅';
@@ -95,8 +117,16 @@ function TableCard({ title, columns, data, loading, error }) {
       <div className="modular-table-header">
         <h3 className="modular-table-title">{title}</h3>
         <div className="modular-table-actions">
-          <button className="table-filter-btn">Filter</button>
-          <button className="table-export-btn">Export</button>
+          <input
+            type="text"
+            className="table-search-input"
+            placeholder="Search..."
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            style={{ padding: '0.4rem 0.8rem', borderRadius: 6, border: '1px solid #e0e7ef', fontSize: '0.95rem', minWidth: 120 }}
+            aria-label="Search table"
+          />
+          <button className="table-export-btn" onClick={exportToExcel}>Export</button>
         </div>
       </div>
       <div className="modular-table-content">
