@@ -111,6 +111,10 @@ async function getProductCycleTime() {
   return result.recordset;
 }
 
+async function getOrderFulfillment() {
+  const db = await connect();
+  const result = await db.request().query(`EXEC sp_Dashboard_OF1 'RAW';`);
+  return result.recordset;
+}
 
-
-module.exports = { WorkInProgress, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime };
+module.exports = { WorkInProgress, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime };

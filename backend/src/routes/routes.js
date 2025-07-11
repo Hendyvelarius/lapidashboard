@@ -14,6 +14,7 @@ router.get('/batch', SqlController.getBatchAlur);
 router.get('/fulfillment', SqlController.getFulfillment);
 router.get('/fulfillmentKelompok', SqlController.getFulfillmentPerKelompok);
 router.get('/fulfillmentDept', SqlController.getFulfillmentPerDept);
+router.get('/of', SqlController.getOrderFulfillment);
 
 router.get('/pct', SqlController.getProductCycleTime);
 router.get('/pctAverage', SqlController.getProductCycleTimeAverage);

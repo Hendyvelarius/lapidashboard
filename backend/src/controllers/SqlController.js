@@ -112,4 +112,14 @@ async function getProductCycleTimeAverage(req, res) {
   }
 }
 
-module.exports = { getWip, getAlur, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeAverage };
+async function getOrderFulfillment(req, res) {
+  try {
+    const data = await SqlModel.getOrderFulfillment();
+    res.json(data);
+  } catch (err) {
+    console.error('Error in fetching Order Fulfillment:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+module.exports = { getWip, getAlur, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeAverage, getOrderFulfillment };
