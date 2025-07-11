@@ -28,7 +28,7 @@ function WipTableDetail({ detail, loading }) {
     );
   }
   // Sort by No_urut (Urutan)
-  const sorted = [...detail].sort((a, b) => a.No_urut - b.No_urut);
+  const sorted = [...detail].sort((a, b) => a.Urutan - b.Urutan);
 
   // Calculate cumulative Waktu Pengerjaan for each Urutan
   const urutanTotals = {};
@@ -75,7 +75,7 @@ function WipTableDetail({ detail, loading }) {
                 else if (est && waktu <= est) waktuBadge = 'badge-green';
                 return (
                   <tr key={row.PK_ID || idx} style={{ color: '#111', fontSize: '13px', height: 14 }}>
-                    <td>{row.No_urut}</td>
+                    <td>{row.Urutan}</td>
                     <td>{row.kode_tahapan}</td>
                     <td>{row.nama_tahapan}</td>
                     <td>{row.dept}</td>

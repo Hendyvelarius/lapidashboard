@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router'
 import DashboardLoading from './components/DashboardLoading';
 import { Line, Bar, Pie } from 'react-chartjs-2'
 import {
@@ -15,6 +16,15 @@ import {
 } from 'chart.js'
 import Sidebar from './components/Sidebar'
 import WipTable from './components/WipTable';
+import SummaryCards from './components/SummaryCards';
+import DashboardHeader from './components/DashboardHeader';
+import useDashboardData from './hooks/useDashboardData';
+import { 
+  prepareFulfillmentCategoryData, 
+  prepareFulfillmentDepartmentData, 
+  prepareFulfillmentDepartmentPercentData, 
+  preparePctCategoryData 
+} from './utils/chartDataProcessors';
 import { apiUrl } from './api';
 import './App.css'
 
@@ -30,115 +40,24 @@ ChartJS.register(
   ArcElement
 )
 
-// Hardcoded PPE report data for 30 days
-const ppeDays = Array.from({ length: 30 }, (_, i) => (i + 1).toString())
-const ppeJumlahLaporan = [5, 8, 12, 15, 18, 22, 25, 28, 32, 35, 38, 41, 45, 48, 52, 55, 59, 62, 65, 68, 70, 72, 73, 74, 75, 76, 77, 78, 79, 80]
-const ppeMenungguApproval = [2, 3, 4, 4, 5, 6, 7, 7, 8, 8, 8, 8, 9, 9, 10, 10, 10, 10, 10, 10, 10, 10, 9, 8, 7, 6, 5, 4, 3, 2]
-const ppeProsesPerbaikan = [1, 2, 3, 4, 5, 6, 7, 8, 8, 9, 10, 10, 11, 12, 12, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13]
-const ppeMenungguKonfirmasi = [1, 1, 2, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13, 14, 14, 15]
-const ppePerbaikanSelesai = ppeJumlahLaporan.map((val, i) => val - ppeMenungguApproval[i] - ppeProsesPerbaikan[i] - ppeMenungguKonfirmasi[i])
-
-const ppeChartData = {
-  labels: ppeDays,
-  datasets: [
-    {
-      label: 'Jumlah Laporan',
-      data: ppeJumlahLaporan,
-      borderColor: '#4f8cff',
-      backgroundColor: 'rgba(79,140,255,0.10)',
-      fill: true,
-      tension: 0.3,
-      pointRadius: 2,
-    },
-    {
-      label: 'Menunggu Approval',
-      data: ppeMenungguApproval,
-      borderColor: '#ffb347',
-      backgroundColor: 'rgba(255,179,71,0.10)',
-      fill: false,
-      tension: 0.3,
-      pointRadius: 2,
-    },
-    {
-      label: 'Proses Perbaikan',
-      data: ppeProsesPerbaikan,
-      borderColor: '#38e6c5',
-      backgroundColor: 'rgba(56,230,197,0.10)',
-      fill: false,
-      tension: 0.3,
-      pointRadius: 2,
-    },
-    {
-      label: 'Menunggu Konfirmasi',
-      data: ppeMenungguKonfirmasi,
-      borderColor: '#6a5acd',
-      backgroundColor: 'rgba(106,90,205,0.10)',
-      fill: false,
-      tension: 0.3,
-      pointRadius: 2,
-    },
-    {
-      label: 'Perbaikan Selesai',
-      data: ppePerbaikanSelesai,
-      borderColor: '#43a047',
-      backgroundColor: 'rgba(67,160,71,0.10)',
-      fill: false,
-      tension: 0.3,
-      pointRadius: 2,
-    },
-  ],
-}
-
-const ppeChartOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: { legend: { position: 'top' } },
-  scales: {
-    y: { beginAtZero: true, title: { display: true, text: 'Jumlah' } },
-    x: { title: { display: true, text: 'Tanggal' } },
-  },
-}
-
-// PPE Pie chart data (latest values)
-const ppePieData = {
-  labels: [
-    'Menunggu Approval',
-    'Proses Perbaikan',
-    'Menunggu Konfirmasi',
-    'Perbaikan Selesai',
-  ],
-  datasets: [
-    {
-      data: [
-        ppeMenungguApproval[ppeMenungguApproval.length-1],
-        ppeProsesPerbaikan[ppeProsesPerbaikan.length-1],
-        ppeMenungguKonfirmasi[ppeMenungguKonfirmasi.length-1],
-        ppePerbaikanSelesai[ppePerbaikanSelesai.length-1],
-      ],
-      backgroundColor: [
-        '#ffb347',
-        '#38e6c5',
-        '#6a5acd',
-        '#43a047',
-      ],
-      borderColor: '#fff',
-      borderWidth: 2,
-    },
-  ],
-}
-
-const ppePieOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: {
-    legend: { position: 'bottom' },
-  },
-}
-
 function App() {
-  // --- State declarations first ---
-  const [wipData, setWipData] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // Navigation hook
+  const navigate = useNavigate();
+  
+  // Use custom hook for data management
+  const {
+    wipData,
+    fulfillmentRawData,
+    pctRawData,
+    loading,
+    fulfillmentLoading,
+    pctLoading,
+    refreshing,
+    lastUpdated,
+    handleRefresh,
+    formatTimestamp
+  } = useDashboardData();
+
   // For WIP charts loading state (side card)
   const wipLoading = loading;
 
@@ -249,108 +168,12 @@ function App() {
   };
 
   // WIP Category Progress aggregation (see below for chart data)
-  // --- Order Fulfillment Data (from API) ---
-  const [fulfillmentData, setFulfillmentData] = useState([]);
-  const [fulfillmentLoading, setFulfillmentLoading] = useState(true);
-  // --- Order Fulfillment Summary Data (for cards) ---
-  const [ofSummary, setOfSummary] = useState(null);
-  const [ofSummaryLoading, setOfSummaryLoading] = useState(true);
-  // --- Fulfillment By Department Data ---
-  const [fulfillmentDeptData, setFulfillmentDeptData] = useState([]);
-  const [fulfillmentDeptLoading, setFulfillmentDeptLoading] = useState(true);
+  // --- Chart data preparation functions ---
 
-  useEffect(() => {
-    setFulfillmentLoading(true);
-    fetch(apiUrl('/api/fulfillmentKelompok'))
-      .then(res => res.json())
-      .then(data => {
-        setFulfillmentData(data.data || []);
-        setFulfillmentLoading(false);
-      })
-      .catch(() => {
-        setFulfillmentData([]);
-        setFulfillmentLoading(false);
-      });
-    // Fetch Order Fulfillment summary for cards
-    setOfSummaryLoading(true);
-    fetch(apiUrl('/api/fulfillment'))
-      .then(res => res.json())
-      .then(data => {
-        setOfSummary((data && data.data && data.data[0]) || null);
-        setOfSummaryLoading(false);
-      })
-      .catch(() => {
-        setOfSummary(null);
-        setOfSummaryLoading(false);
-      });
-    // Fetch Fulfillment By Department for chart
-    setFulfillmentDeptLoading(true);
-    fetch(apiUrl('/api/fulfillmentDept'))
-      .then(res => res.json())
-      .then(data => {
-        setFulfillmentDeptData(data.data || []);
-        setFulfillmentDeptLoading(false);
-      })
-      .catch(() => {
-        setFulfillmentDeptData([]);
-        setFulfillmentDeptLoading(false);
-      });
-  }, []);
+  // Prepare chart data for Order Fulfillment By Category using new /api/of data
+  const fulfillmentChartData = prepareFulfillmentCategoryData(fulfillmentRawData);
 
-  // Prepare chart data for Order Fulfillment By Category
-  // Shorten certain category names for the chart
-  const kelompokLabelMap = {
-    "CAPSUL CEPHALOSPORIN": "Capsul C",
-    "INJEKSI CEPHALOSPORIN": "Injeksi C",
-    "INJEKSI STERIL": "Injeksi S",
-    "TABLET/KAPLET COATING": "Tab/Kaplet C",
-    "CAPSUL": "Capsul",
-    "IMPORT": "Import",
-    "LIQUID": "Liquid",
-    "PROBIOTIK": "Probiotik",
-    "TABLET/KAPLET": "Tab/Kaplet",
-    "TOLL OUT": "Toll Out"
-  };
-
-  const fulfillmentChartData = {
-    labels: fulfillmentData.map(d => {
-      const key = d.Kelompok?.toUpperCase();
-      return kelompokLabelMap[key] || d.Kelompok;
-    }),
-    datasets: [
-      {
-        label: 'Release',
-        data: fulfillmentData.map(d => d.Release),
-        backgroundColor: '#4f8cff',
-        borderColor: '#4f8cff',
-        borderWidth: 3,
-        type: 'bar',
-        stack: 'stack1',
-        order: 2,
-      },
-      {
-        label: 'Karantina',
-        data: fulfillmentData.map(d => d.Karantina),
-        backgroundColor: '#ffb347',
-        borderColor: '#ffb347',
-        borderWidth: 3,
-        type: 'bar',
-        stack: 'stack1',
-        order: 2,
-      },
-      {
-        label: 'Menunggu Proses',
-        data: fulfillmentData.map(d => d.MenungguProses),
-        backgroundColor: '#38e6c5',
-        borderColor: '#38e6c5',
-        borderWidth: 3,
-        type: 'bar',
-        stack: 'stack1',
-        order: 2,
-      },
-    ],
-  };
-
+  // Chart options for fulfillment category chart
   const fulfillmentChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -372,7 +195,7 @@ function App() {
     scales: {
       x: {
         stacked: true,
-        title: { display: true, text: 'Kelompok' },
+        title: { display: true, text: 'Category' },
         ticks: { font: { size: 13 } },
       },
       y: {
@@ -383,6 +206,106 @@ function App() {
       },
     },
     indexAxis: 'x', // vertical bar chart
+  };
+
+  // Prepare department data from new /api/of data
+  const newFulfillmentDeptChartData = prepareFulfillmentDepartmentData(fulfillmentRawData);
+  const newFulfillmentDeptPercentData = prepareFulfillmentDepartmentPercentData(fulfillmentRawData);
+
+  // Chart options for new department chart
+  const newFulfillmentDeptChartOptions = {
+    indexAxis: 'y',
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'top' },
+      tooltip: {
+        enabled: true,
+        mode: 'nearest',
+        intersect: true,
+        callbacks: {
+          title: (ctx) => {
+            if (ctx && ctx.length > 0) {
+              const idx = ctx[0].dataIndex;
+              const dept = newFulfillmentDeptChartData.labels[idx];
+              return dept || '';
+            }
+            return '';
+          },
+          label: (ctx) => {
+            return `${ctx.dataset.label}: ${ctx.parsed.x}`;
+          },
+        },
+        displayColors: false,
+        backgroundColor: 'rgba(255,255,255,0.98)',
+        titleColor: '#222',
+        bodyColor: '#333',
+        borderColor: '#4f8cff',
+        borderWidth: 1.5,
+        titleFont: { weight: 'bold', size: 15 },
+        bodyFont: { size: 14 },
+        padding: 14,
+        caretSize: 7,
+        cornerRadius: 8,
+        boxPadding: 6,
+        shadowOffsetX: 0,
+        shadowOffsetY: 2,
+        shadowBlur: 8,
+        shadowColor: 'rgba(0,0,0,0.10)',
+      },
+    },
+    scales: {
+      x: {
+        beginAtZero: true,
+        title: { display: true, text: 'Jumlah' },
+        ticks: { stepSize: 1 },
+        stacked: true,
+      },
+      y: {
+        title: { display: true, text: 'Department' },
+        ticks: { font: { size: 13 } },
+        stacked: true,
+      },
+    },
+    layout: { padding: { left: 10, right: 10, top: 10, bottom: 10 } },
+  };
+
+  // Prepare PCT category chart data
+  const pctCategoryChartData = preparePctCategoryData(pctRawData);
+
+  // PCT chart options
+  const pctCategoryChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: (ctx) => `${ctx.parsed.y.toFixed(1)} days`
+        }
+      }
+    },
+    scales: {
+      x: {
+        title: { display: true, text: 'Category' },
+        ticks: { font: { size: 13 }, maxRotation: 45, minRotation: 0 },
+      },
+      y: {
+        beginAtZero: true,
+        title: { display: true, text: 'Average' },
+        ticks: { stepSize: 5 },
+      },
+    },
+    layout: { padding: { left: 10, right: 10, top: 10, bottom: 10 } },
+    onClick: (evt, elements) => {
+      if (elements && elements.length > 0) {
+        // Navigate to pct-per-produk page when any bar is clicked
+        navigate('/reports/pct-per-produk');
+      }
+    },
+    onHover: (evt, elements) => {
+      evt.native.target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
+    },
   };
 
   // --- WIP Report Data ---
@@ -413,55 +336,7 @@ function App() {
   const [orderChartType, setOrderChartType] = useState('order');
 
   // --- Percentage Fulfillment By Department ---
-  const fulfillmentDeptPercentChartData = {
-    labels: fulfillmentDeptData.map(d => d.Dept),
-    datasets: [
-      {
-        label: 'Release',
-        data: fulfillmentDeptData.map(d => {
-          const total = d.Total || 0;
-          return total ? (d.Release / total) * 100 : 0;
-        }),
-        backgroundColor: '#38e6c5',
-        borderColor: '#38e6c5',
-        borderWidth: 1,
-        borderRadius: 6,
-        barThickness: 30,
-        stack: 'stack1',
-        type: 'bar',
-      },
-      {
-        label: 'Karantina',
-        data: fulfillmentDeptData.map(d => {
-          const total = d.Total || 0;
-          return total ? (d.Karantina / total) * 100 : 0;
-        }),
-        backgroundColor: '#ffb347',
-        borderColor: '#ffb347',
-        borderWidth: 1,
-        borderRadius: 6,
-        barThickness: 30,
-        stack: 'stack1',
-        type: 'bar',
-      },
-      {
-        label: 'Menunggu Proses',
-        data: fulfillmentDeptData.map(d => {
-          const total = d.Total || 0;
-          return total ? (d.MenungguProses / total) * 100 : 0;
-        }),
-        backgroundColor: '#6a5acd',
-        borderColor: '#6a5acd',
-        borderWidth: 1,
-        borderRadius: 6,
-        barThickness: 30,
-        stack: 'stack1',
-        type: 'bar',
-      },
-    ],
-  };
-
-  const fulfillmentDeptPercentChartOptions = {
+  const newFulfillmentDeptPercentChartOptions = {
     indexAxis: 'y',
     responsive: true,
     maintainAspectRatio: false,
@@ -475,28 +350,26 @@ function App() {
           title: (ctx) => {
             if (ctx && ctx.length > 0) {
               const idx = ctx[0].dataIndex;
-              const d = fulfillmentDeptData[idx];
-              return d && d.Dept ? d.Dept : '';
+              const dept = newFulfillmentDeptPercentData.labels[idx];
+              return dept || '';
             }
             return '';
           },
           label: (ctx) => {
-            const d = fulfillmentDeptData[ctx.dataIndex];
+            const idx = ctx.dataIndex;
+            const dept = newFulfillmentDeptPercentData.labels[idx];
+            const groupedData = newFulfillmentDeptPercentData.groupedData;
             const val = ctx.parsed.x;
             let count = 0;
-            if (ctx.dataset.label === 'Release') count = d?.Release ?? 0;
-            else if (ctx.dataset.label === 'Karantina') count = d?.Karantina ?? 0;
-            else if (ctx.dataset.label === 'Menunggu Proses') count = d?.MenungguProses ?? 0;
-            const total = d?.Total ?? 0;
+            if (ctx.dataset.label === 'Released') count = groupedData[dept]?.released ?? 0;
+            else if (ctx.dataset.label === 'Quarantined') count = groupedData[dept]?.quarantined ?? 0;
+            else if (ctx.dataset.label === 'WIP') count = groupedData[dept]?.wip ?? 0;
+            else if (ctx.dataset.label === 'Unprocessed') count = groupedData[dept]?.unprocessed ?? 0;
+            const total = groupedData[dept]?.total ?? 0;
             return `${ctx.dataset.label}: ${count}/${total} item`;
           },
           afterBody: (ctx) => {
             if (!ctx || ctx.length === 0) return '';
-            const idx = ctx[0].dataIndex;
-            const d = fulfillmentDeptData[idx];
-            if (!d) return '';
-            // Find which dataset is hovered
-            const datasetIdx = ctx[0].datasetIndex;
             const val = ctx[0].parsed.x;
             return [`${val.toFixed(1)}%`];
           },
@@ -540,33 +413,10 @@ function App() {
   // Only show Histogram WIP Aktif in side card
   const [sideCardType] = useState('wip');
   const [chartDropdownOpen, setChartDropdownOpen] = useState(false);
-  const [ppeDropdownOpen, setPpeDropdownOpen] = useState(false);
-  const [ppeMode, setPpeMode] = useState('line');
-  const [ppeChartKey, setPpeChartKey] = useState(Date.now());
-
-  // Handler for PPE chart mode change (line/pie)
-  function handlePpeModeChange(mode) {
-    setPpeMode(mode);
-    setPpeChartKey(Date.now());
-  }
 
   // State for WIP Histogram Dropdown (fix: ensure defined before use)
   const [wipDropdownOpen, setWipDropdownOpen] = useState(false);
   const [wipDropdownValue, setWipDropdownValue] = useState('histogram');
-
-  useEffect(() => {
-    setLoading(true);
-    fetch(apiUrl('/api/wip'))
-      .then(res => res.json())
-      .then(data => {
-        setWipData(data.data || []);
-        setLoading(false);
-      })
-      .catch(() => {
-        setWipData([]);
-        setLoading(false);
-      });
-  }, []);
 
   const wipBarData = {
     labels: wipLabels,
@@ -626,6 +476,41 @@ function App() {
     let sum = 0;
     return arr.map(v => (sum += v));
   }
+
+  // Calculate fulfillment metrics from new raw data
+  const calculateFulfillmentMetrics = (rawData) => {
+    if (!rawData || rawData.length === 0) {
+      return { fulfillmentTarget: 0, fulfillmentRelease: 0, quarantined: 0 };
+    }
+
+    // Calculate Fulfillment Target by summing all "jlhTarget"
+    const fulfillmentTarget = rawData.reduce((sum, item) => {
+      return sum + (Number(item.jlhTarget) || 0);
+    }, 0);
+
+    // Calculate Fulfillment Release by summing "Release" and "Release2"
+    const fulfillmentRelease = rawData.reduce((sum, item) => {
+      const release1 = Number(item.Release) || 0;
+      const release2 = Number(item.Release2) || 0;
+      return sum + release1 + release2;
+    }, 0);
+
+    // Calculate Quarantined: (count of BetsKarantinaBulanSblmnya) - Release + karantina2 - release2
+    const quarantined = rawData.reduce((sum, item) => {
+      const betsKarantinaCount = item.BetsKarantinaBulanSblmnya 
+        ? item.BetsKarantinaBulanSblmnya.split(',').filter(bet => bet.trim()).length 
+        : 0;
+      const release = Number(item.Release) || 0;
+      const karantina2 = Number(item.karantina2) || 0;
+      const release2 = Number(item.release2) || 0;
+      const itemQuarantined = Math.max(0, betsKarantinaCount - release + karantina2 - release2);
+      return sum + itemQuarantined;
+    }, 0);
+
+    return { fulfillmentTarget, fulfillmentRelease, quarantined };
+  };
+
+  const fulfillmentMetrics = calculateFulfillmentMetrics(fulfillmentRawData);
 
   // Count WIP items with duration > 38
   const wipTerlambatCount = wipData.filter(item => Number(item.duration) > 38).length;
@@ -751,160 +636,35 @@ function App() {
     );
   }
 
-  // --- Fulfillment By Department Chart Data (Stacked Bar, same as Active WIP Histogram) ---
-  const fulfillmentDeptChartData = {
-    labels: fulfillmentDeptData.map(d => d.Dept),
-    datasets: [
-      {
-        label: 'Release',
-        data: fulfillmentDeptData.map(d => d.Release),
-        backgroundColor: '#38e6c5',
-        borderColor: '#38e6c5',
-        borderWidth: 1,
-        borderRadius: 6,
-        barThickness: 30,
-        stack: 'stack1',
-        type: 'bar',
-      },
-      {
-        label: 'Karantina',
-        data: fulfillmentDeptData.map(d => d.Karantina),
-        backgroundColor: '#ffb347',
-        borderColor: '#ffb347',
-        borderWidth: 1,
-        borderRadius: 6,
-        barThickness: 30,
-        stack: 'stack1',
-        type: 'bar',
-      },
-      {
-        label: 'Menunggu Proses',
-        data: fulfillmentDeptData.map(d => d.MenungguProses),
-        backgroundColor: '#6a5acd',
-        borderColor: '#6a5acd',
-        borderWidth: 1,
-        borderRadius: 6,
-        barThickness: 30,
-        stack: 'stack1',
-        type: 'bar',
-      },
-    ],
-  };
-  const fulfillmentDeptChartOptions = {
-    indexAxis: 'y',
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { position: 'top' },
-      tooltip: {
-        enabled: true,
-        mode: 'nearest',
-        intersect: true,
-        callbacks: {
-          // Show all department data in a custom tooltip
-          title: (ctx) => {
-            // Show department name as title
-            if (ctx && ctx.length > 0) {
-              // ctx[0].dataIndex is the department index
-              const idx = ctx[0].dataIndex;
-              const d = fulfillmentDeptData[idx];
-              return d && d.Dept ? d.Dept : '';
-            }
-            return '';
-          },
-          label: () => '',
-          afterBody: (ctx) => {
-            if (!ctx || ctx.length === 0) return '';
-            const idx = ctx[0].dataIndex;
-            const d = fulfillmentDeptData[idx];
-            if (!d) return '';
-            const total = d.Total ?? 0;
-            // Helper to format each line
-            function formatLine(label, count) {
-              const percent = total ? ((count / total) * 100).toFixed(1) : '0.0';
-              return `${label}: ${count}/${total} Item (${percent}%)`;
-            }
-            const lines = [];
-            lines.push(formatLine('Release', d.Release ?? 0));
-            lines.push(formatLine('Karantina', d.Karantina ?? 0));
-            lines.push(formatLine('Menunggu Proses', d.MenungguProses ?? 0));
-            if (d.Catatan) lines.push(`Catatan: ${d.Catatan}`);
-            return lines;
-          },
-        },
-        displayColors: false,
-        backgroundColor: 'rgba(255,255,255,0.98)',
-        titleColor: '#222',
-        bodyColor: '#333',
-        borderColor: '#4f8cff',
-        borderWidth: 1.5,
-        titleFont: { weight: 'bold', size: 15 },
-        bodyFont: { size: 14 },
-        padding: 14,
-        caretSize: 7,
-        cornerRadius: 8,
-        boxPadding: 6,
-        shadowOffsetX: 0,
-        shadowOffsetY: 2,
-        shadowBlur: 8,
-        shadowColor: 'rgba(0,0,0,0.10)',
-      },
-    },
-    scales: {
-      x: {
-        beginAtZero: true,
-        title: { display: true, text: 'Jumlah' },
-        ticks: { stepSize: 1 },
-        stacked: true,
-      },
-      y: {
-        title: { display: true, text: 'Department' },
-        ticks: { font: { size: 13 } },
-        stacked: true,
-      },
-    },
-    layout: { padding: { left: 10, right: 10, top: 10, bottom: 10 } },
-  };
-
   return (
-    <div className="dashboard-container">
+    <>
+      <style>
+        {`
+          @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+          }
+        `}
+      </style>
+      <div className="dashboard-container">
       <Sidebar />
       <main className="content-area" style={{ position: 'relative' }}>
-        <div className="dashboard-header">
-          <h1>Dashboard</h1>
-          <div className="dashboard-tabs">
-            <span className="active">Summary</span>
-            <span className="disabled">Customize</span>
-          </div>
-        </div>
-        <div className="dashboard-summary-row">
-          <div className="summary-card">
-            <div className="summary-title">Target Fulfillment</div>
-            <div className="summary-value">
-              {ofSummaryLoading ? <span className="summary-loading">...</span> : (ofSummary?.Total ?? 0)}
-            </div>
-          </div>
-          <div className="summary-card">
-            <div className="summary-title">Produk Release</div>
-            <div className="summary-value">
-              {ofSummaryLoading ? <span className="summary-loading">...</span> : (ofSummary?.Release ?? 0)}
-            </div>
-          </div>
-          <div className="summary-card">
-            <div className="summary-title">Proses Karantina</div>
-            <div className="summary-value">
-              {ofSummaryLoading ? <span className="summary-loading">...</span> : (ofSummary?.Karantina ?? 0)}
-            </div>
-          </div>
-          <div className="summary-card">
-            <div className="summary-title">WIP Terlambat</div>
-            <div className="summary-value">{wipTerlambatCount}</div>
-          </div>
-          <div className="summary-card summary-card-clickable" style={{cursor:'pointer'}} onClick={handleShowWipTable}>
-            <div className="summary-title">Total WIP</div>
-            <div className="summary-value">{wipData.length}</div>
-          </div>
-        </div>
+        <DashboardHeader
+          lastUpdated={lastUpdated}
+          refreshing={refreshing}
+          loading={loading}
+          fulfillmentLoading={fulfillmentLoading}
+          pctLoading={pctLoading}
+          onRefresh={handleRefresh}
+          formatTimestamp={formatTimestamp}
+        />
+        <SummaryCards
+          fulfillmentMetrics={fulfillmentMetrics}
+          fulfillmentLoading={fulfillmentLoading}
+          wipTerlambatCount={wipTerlambatCount}
+          totalWipCount={wipData.length}
+          onWipTableClick={handleShowWipTable}
+        />
         <div className="dashboard-main-row">
           <div className="dashboard-chart-card">
             <div className="chart-title" style={{ position: 'relative' }}>
@@ -939,16 +699,16 @@ function App() {
             </div>
             <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
               {orderChartType === 'department' ? (
-                fulfillmentDeptLoading ? (
+                fulfillmentLoading ? (
                   <DashboardLoading loading={true} />
                 ) : (
-                  <Bar data={fulfillmentDeptChartData} options={fulfillmentDeptChartOptions} />
+                  <Bar data={newFulfillmentDeptChartData} options={newFulfillmentDeptChartOptions} />
                 )
               ) : orderChartType === 'departmentPercent' ? (
-                fulfillmentDeptLoading ? (
+                fulfillmentLoading ? (
                   <DashboardLoading loading={true} />
                 ) : (
-                  <Bar data={fulfillmentDeptPercentChartData} options={fulfillmentDeptPercentChartOptions} />
+                  <Bar data={newFulfillmentDeptPercentData} options={newFulfillmentDeptPercentChartOptions} />
                 )
               ) : (
                 fulfillmentLoading ? (
@@ -1067,83 +827,45 @@ function App() {
             </div>
           </div>
         </div>
-        <div className="dashboard-ppe-row">
-          <div className="ppe-unified-card">
-            <div className="ppe-stats">
-              <div className="ppe-stats-title ppe-title-dropdown">
-                <span
-                  className="ppe-title-clickable"
-                  onClick={() => setPpeDropdownOpen(p => !p)}
-                  tabIndex={0}
-                  style={{ cursor: 'pointer', color: '#4f8cff', fontWeight: 600 }}
-                >
-                  {ppeMode === 'pie' ? 'Laporan PPE Bulanan' : 'Laporan PPE'}
-                  <span style={{ marginLeft: 8, fontSize: 16 }}>▼</span>
-                </span>
-                {ppeDropdownOpen && (
-                  <div className="ppe-dropdown">
-                    <div onClick={() => handlePpeModeChange('line')}>Laporan PPE</div>
-                    <div onClick={() => handlePpeModeChange('pie')}>Laporan PPE Bulanan</div>
-                  </div>
-                )}
-              </div>
-              <ul className="ppe-stats-list">
-                <li><span className="ppe-dot ppe-dot-blue"></span>Jumlah Laporan: <b>{ppeJumlahLaporan[ppeJumlahLaporan.length-1]}</b></li>
-                <li><span className="ppe-dot ppe-dot-orange"></span>Menunggu Approval: <b>{ppeMenungguApproval[ppeMenungguApproval.length-1]}</b></li>
-                <li><span className="ppe-dot ppe-dot-green"></span>Proses Perbaikan: <b>{ppeProsesPerbaikan[ppeProsesPerbaikan.length-1]}</b></li>
-                <li><span className="ppe-dot ppe-dot-purple"></span>Menunggu Konfirmasi: <b>{ppeMenungguKonfirmasi[ppeMenungguKonfirmasi.length-1]}</b></li>
-                <li><span className="ppe-dot ppe-dot-darkgreen"></span>Perbaikan Selesai: <b>{ppePerbaikanSelesai[ppePerbaikanSelesai.length-1]}</b></li>
-              </ul>
+        <div className="dashboard-main-row">
+          <div className="dashboard-chart-card">
+            <div className="chart-title">
+              <span style={{ color: '#4f8cff', fontWeight: 600 }}>
+                Average PCT Per Category
+              </span>
             </div>
-            <div className="dashboard-ppe-chart"> 
+            <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+              {pctLoading ? (
+                <DashboardLoading loading={true} />
+              ) : (
+                <Bar data={pctCategoryChartData} options={pctCategoryChartOptions} />
+              )}
+            </div>
+          </div>
+          <div className="dashboard-side-card">
+            <div className="side-card-title">
+              <span style={{ color: '#4f8cff', fontWeight: 600 }}>
+                Coming Soon
+              </span>
+            </div>
             <div style={{ 
-              width: '100%', 
-              height: '100%', 
+              padding: '20px', 
+              flex: 1, 
               display: 'flex', 
               alignItems: 'center', 
               justifyContent: 'center',
-              position: 'relative',
-              marginTop:0,
-              padding: 0,
+              height: '100%',
+              color: '#666',
+              fontSize: '16px'
             }}>
-              <div 
-                style={{ 
-                  width: '100%', 
-                  height: '100%', 
-                  flex: 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                {ppeMode === 'pie' ? (
-                  <Pie key={ppeChartKey} data={ppePieData} options={{...ppePieOptions, plugins: {...ppePieOptions.plugins, legend: {position: 'top'}}, layout: {padding: 0}}} />
-                ) : (
-                  <Line key={ppeChartKey} data={ppeChartData} options={{
-                    ...ppeChartOptions,
-                    layout: {padding: 0},
-                    scales: {
-                      ...ppeChartOptions.scales,
-                      x: {
-                        ...ppeChartOptions.scales.x,
-                        ticks: {
-                          ...ppeChartOptions.scales.x?.ticks,
-                          autoSkip: false,
-                          maxRotation: 0,
-                          minRotation: 0,
-                        }
-                      }
-                    }
-                  }} />
-                )}
-              </div>
-              </div>
+              Additional chart will be added here
             </div>
           </div>
         </div>
         {loadingOverlay}
       </main>
     </div>
+    </>
   )
 }
 
