@@ -1,10 +1,12 @@
 import React, { useEffect, useState, useMemo } from "react";
 import * as XLSX from "xlsx";
-import { Doughnut, Bar } from "react-chartjs-2";
+import { Doughnut, Bar, Line } from "react-chartjs-2";
 import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
+  PointElement,
+  LineElement,
   BarElement,
   Title,
   Tooltip,
@@ -12,12 +14,15 @@ import {
   ArcElement,
 } from "chart.js";
 import Sidebar from "./Sidebar";
+import Modal from "./Modal";
 import "../App.css";
 
 // Register Chart.js components
 ChartJS.register(
   CategoryScale,
   LinearScale,
+  PointElement,
+  LineElement,
   BarElement,
   Title,
   Tooltip,
@@ -203,6 +208,12 @@ export default function ModularReportPage({ title, apiEndpoint, tableColumns, da
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  
+  // Chart selection states
+  const [smallChartModalOpen, setSmallChartModalOpen] = useState(false);
+  const [largeChartModalOpen, setLargeChartModalOpen] = useState(false);
+  const [selectedSmallChart, setSelectedSmallChart] = useState('productByCategory');
+  const [selectedLargeChart, setSelectedLargeChart] = useState('avgPCTByCategory');
 
   // Calculate PCT statistics for info cards
   const calculatePCTStats = (data) => {
@@ -378,6 +389,370 @@ export default function ModularReportPage({ title, apiEndpoint, tableColumns, da
     };
   };
 
+  // ======= ADDITIONAL CHART DATA FUNCTIONS =======
+
+  // Small Chart Options
+  const getProductCountByDepartment = () => {
+    if (!data || data.length === 0) {
+      return {
+        labels: ['No Data'],
+        datasets: [{
+          data: [1],
+          backgroundColor: ['#e5e7eb'],
+          borderColor: ['#d1d5db'],
+          borderWidth: 1,
+        }]
+      };
+    }
+
+    const deptCount = {};
+    data.forEach(item => {
+      const dept = item.departemen || 'Unknown';
+      deptCount[dept] = (deptCount[dept] || 0) + 1;
+    });
+
+    const labels = Object.keys(deptCount);
+    const counts = Object.values(deptCount);
+    const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
+
+    return {
+      labels,
+      datasets: [{
+        data: counts,
+        backgroundColor: colors.slice(0, labels.length),
+        borderColor: colors.slice(0, labels.length).map(color => color + '80'),
+        borderWidth: 2,
+        hoverOffset: 4,
+      }]
+    };
+  };
+
+  const getPCTDistribution = () => {
+    if (!data || data.length === 0) {
+      return {
+        labels: ['No Data'],
+        datasets: [{
+          data: [1],
+          backgroundColor: ['#e5e7eb'],
+          borderColor: ['#d1d5db'],
+          borderWidth: 1,
+        }]
+      };
+    }
+
+    let low = 0, medium = 0, high = 0;
+    data.forEach(item => {
+      const pct = item.rataRataPCT || item.pct || 0;
+      if (pct <= 20) low++;
+      else if (pct <= 40) medium++;
+      else high++;
+    });
+
+    return {
+      labels: ['Low PCT (≤20 days)', 'Medium PCT (21-40 days)', 'High PCT (>40 days)'],
+      datasets: [{
+        data: [low, medium, high],
+        backgroundColor: ['#10b981', '#f59e0b', '#ef4444'],
+        borderColor: ['#10b98180', '#f59e0b80', '#ef444480'],
+        borderWidth: 2,
+        hoverOffset: 4,
+      }]
+    };
+  };
+
+  const getBatchStatusDistribution = () => {
+    if (!data || data.length === 0) {
+      return {
+        labels: ['No Data'],
+        datasets: [{
+          data: [1],
+          backgroundColor: ['#e5e7eb'],
+          borderColor: ['#d1d5db'],
+          borderWidth: 1,
+        }]
+      };
+    }
+
+    // For monthly data: Recent vs Older batches
+    // For yearly data: High vs Medium vs Low performance
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth();
+    
+    let recent = 0, older = 0;
+    data.forEach(item => {
+      if (item.batchDate) {
+        const batchDate = new Date(item.batchDate);
+        if (batchDate.getFullYear() === currentYear && batchDate.getMonth() === currentMonth) {
+          recent++;
+        } else {
+          older++;
+        }
+      } else {
+        // For yearly data, categorize by PCT performance
+        const pct = item.rataRataPCT || item.pct || 0;
+        if (pct <= 30) recent++; // Good performance
+        else older++; // Needs improvement
+      }
+    });
+
+    const isMonthly = title.toLowerCase().includes('monthly');
+    const labels = isMonthly 
+      ? ['Current Month', 'Previous Months']
+      : ['Good Performance', 'Needs Improvement'];
+
+    return {
+      labels,
+      datasets: [{
+        data: [recent, older],
+        backgroundColor: ['#10b981', '#f59e0b'],
+        borderColor: ['#10b98180', '#f59e0b80'],
+        borderWidth: 2,
+        hoverOffset: 4,
+      }]
+    };
+  };
+
+  // Large Chart Options
+  const getAveragePCTByDepartment = () => {
+    if (!data || data.length === 0) {
+      return {
+        labels: ['No Data'],
+        datasets: [{
+          label: 'Average PCT (Days)',
+          data: [0],
+          backgroundColor: ['#e5e7eb'],
+          borderColor: ['#d1d5db'],
+          borderWidth: 1,
+        }]
+      };
+    }
+
+    const deptStats = {};
+    data.forEach(item => {
+      const dept = item.departemen || 'Unknown';
+      if (!deptStats[dept]) {
+        deptStats[dept] = { total: 0, count: 0 };
+      }
+      deptStats[dept].total += item.rataRataPCT || item.pct || 0;
+      deptStats[dept].count += 1;
+    });
+
+    const labels = Object.keys(deptStats);
+    const averages = labels.map(dept => 
+      Math.round(deptStats[dept].total / deptStats[dept].count)
+    );
+
+    const maxPCT = Math.max(...averages);
+    const colors = averages.map(pct => {
+      const intensity = pct / maxPCT;
+      if (intensity > 0.7) return '#ef4444';
+      if (intensity > 0.4) return '#f59e0b';
+      return '#10b981';
+    });
+
+    return {
+      labels,
+      datasets: [{
+        label: 'Average PCT (Days)',
+        data: averages,
+        backgroundColor: colors.map(color => color + '80'),
+        borderColor: colors,
+        borderWidth: 2,
+      }]
+    };
+  };
+
+  const getPCTTimeline = () => {
+    if (!data || data.length === 0) {
+      return {
+        labels: ['No Data'],
+        datasets: [{
+          label: 'PCT Timeline',
+          data: [0],
+          backgroundColor: '#e5e7eb',
+          borderColor: '#d1d5db',
+          borderWidth: 1,
+        }]
+      };
+    }
+
+    const isMonthly = title.toLowerCase().includes('monthly');
+    
+    if (isMonthly) {
+      // For monthly: Group by batch date
+      const dateGroups = {};
+      data.forEach(item => {
+        if (item.batchDate) {
+          const date = new Date(item.batchDate).toLocaleDateString('id-ID');
+          if (!dateGroups[date]) {
+            dateGroups[date] = { total: 0, count: 0 };
+          }
+          dateGroups[date].total += item.pct || 0;
+          dateGroups[date].count += 1;
+        }
+      });
+
+      const sortedDates = Object.keys(dateGroups).sort((a, b) => new Date(a) - new Date(b));
+      const averages = sortedDates.map(date => 
+        Math.round(dateGroups[date].total / dateGroups[date].count)
+      );
+
+      return {
+        labels: sortedDates,
+        datasets: [{
+          label: 'Average PCT by Date',
+          data: averages,
+          backgroundColor: '#3b82f680',
+          borderColor: '#3b82f6',
+          borderWidth: 2,
+          tension: 0.4,
+        }]
+      };
+    } else {
+      // For yearly: Group by category trend
+      const categoryStats = {};
+      data.forEach(item => {
+        const category = item.kategori || 'Unknown';
+        if (!categoryStats[category]) {
+          categoryStats[category] = { total: 0, count: 0 };
+        }
+        categoryStats[category].total += item.rataRataPCT || 0;
+        categoryStats[category].count += 1;
+      });
+
+      const labels = Object.keys(categoryStats);
+      const averages = labels.map(cat => 
+        Math.round(categoryStats[cat].total / categoryStats[cat].count)
+      );
+
+      return {
+        labels,
+        datasets: [{
+          label: 'Category Performance Trend',
+          data: averages,
+          backgroundColor: '#10b98180',
+          borderColor: '#10b981',
+          borderWidth: 2,
+          tension: 0.4,
+        }]
+      };
+    }
+  };
+
+  const getTop10ProductsByPCT = () => {
+    if (!data || data.length === 0) {
+      return {
+        labels: ['No Data'],
+        datasets: [{
+          label: 'PCT (Days)',
+          data: [0],
+          backgroundColor: ['#e5e7eb'],
+          borderColor: ['#d1d5db'],
+          borderWidth: 1,
+        }]
+      };
+    }
+
+    // Sort by PCT and take top 10
+    const sortedData = [...data]
+      .sort((a, b) => (b.rataRataPCT || b.pct || 0) - (a.rataRataPCT || a.pct || 0))
+      .slice(0, 10);
+
+    const labels = sortedData.map(item => {
+      const name = item.namaProduk || 'Unknown';
+      return name.length > 15 ? name.substring(0, 15) + '...' : name;
+    });
+    
+    const pctValues = sortedData.map(item => item.rataRataPCT || item.pct || 0);
+
+    const colors = pctValues.map(pct => {
+      if (pct > 50) return '#ef4444';
+      if (pct > 30) return '#f59e0b';
+      return '#10b981';
+    });
+
+    return {
+      labels,
+      datasets: [{
+        label: 'PCT (Days)',
+        data: pctValues,
+        backgroundColor: colors.map(color => color + '80'),
+        borderColor: colors,
+        borderWidth: 2,
+      }]
+    };
+  };
+
+  // Chart selection options
+  const smallChartOptions = [
+    { id: 'productByCategory', title: 'Distribusi Produk per Kategori', desc: 'Total produk dalam setiap kategori' },
+    { id: 'productByDepartment', title: 'Distribusi Produk per Departemen', desc: 'Total produk dalam setiap departemen' },
+    { id: 'pctDistribution', title: 'Distribusi PCT', desc: 'Pembagian produk berdasarkan tingkat PCT' },
+    { id: 'batchStatus', title: 'Status Batch', desc: 'Distribusi status batch produksi' }
+  ];
+
+  const largeChartOptions = [
+    { id: 'avgPCTByCategory', title: 'Rata-rata PCT per Kategori', desc: 'Perbandingan waktu siklus produksi rata-rata per kategori' },
+    { id: 'avgPCTByDepartment', title: 'Rata-rata PCT per Departemen', desc: 'Perbandingan waktu siklus produksi rata-rata per departemen' },
+    { id: 'pctTimeline', title: 'Timeline PCT', desc: 'Tren PCT dari waktu ke waktu' },
+    { id: 'top10Products', title: 'Top 10 Produk PCT Tertinggi', desc: 'Produk dengan waktu siklus terpanjang' }
+  ];
+
+  // Get chart data based on selection
+  const getSmallChartData = () => {
+    switch (selectedSmallChart) {
+      case 'productByDepartment': return getProductCountByDepartment();
+      case 'pctDistribution': return getPCTDistribution();
+      case 'batchStatus': return getBatchStatusDistribution();
+      default: return getProductCountByCategory();
+    }
+  };
+
+  const getLargeChartData = () => {
+    switch (selectedLargeChart) {
+      case 'avgPCTByDepartment': return getAveragePCTByDepartment();
+      case 'pctTimeline': return getPCTTimeline();
+      case 'top10Products': return getTop10ProductsByPCT();
+      default: return getAveragePCTByCategory();
+    }
+  };
+
+  // Get chart titles based on selection
+  const getSmallChartTitle = () => {
+    const option = smallChartOptions.find(opt => opt.id === selectedSmallChart);
+    return option ? option.title : 'Chart';
+  };
+
+  const getLargeChartTitle = () => {
+    const option = largeChartOptions.find(opt => opt.id === selectedLargeChart);
+    return option ? option.title : 'Chart';
+  };
+
+  const getSmallChartSubtitle = () => {
+    const option = smallChartOptions.find(opt => opt.id === selectedSmallChart);
+    return option ? option.desc : '';
+  };
+
+  const getLargeChartSubtitle = () => {
+    const option = largeChartOptions.find(opt => opt.id === selectedLargeChart);
+    return option ? option.desc : '';
+  };
+
+  // Chart component selection
+  const renderSmallChart = () => {
+    if (selectedSmallChart === 'pctTimeline') {
+      return <Line data={getSmallChartData()} options={lineChartOptions} />;
+    }
+    return <Doughnut data={getSmallChartData()} options={donutChartOptions} />;
+  };
+
+  const renderLargeChart = () => {
+    if (selectedLargeChart === 'pctTimeline') {
+      return <Line data={getLargeChartData()} options={lineChartOptions} />;
+    }
+    return <Bar data={getLargeChartData()} options={barChartOptions} />;
+  };
+
   // Chart options
   const donutChartOptions = {
     responsive: true,
@@ -446,9 +821,47 @@ export default function ModularReportPage({ title, apiEndpoint, tableColumns, da
     }
   };
 
+  const lineChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        display: false
+      },
+      tooltip: {
+        callbacks: {
+          label: function(context) {
+            return `PCT: ${context.parsed.y} hari`;
+          }
+        }
+      }
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        title: {
+          display: true,
+          text: 'PCT (Days)'
+        },
+        grid: {
+          color: '#f3f4f6'
+        }
+      },
+      x: {
+        title: {
+          display: true,
+          text: 'Timeline'
+        },
+        grid: {
+          display: false
+        }
+      }
+    }
+  };
+
   // Mock data for PCT Per Produk as fallback
   const getMockData = () => {
-    if (title === "PCT Per Produk") {
+    if (title === "PCT Per Produk" || title.includes("PCT")) {
       return [
         {
           kode: "01",
@@ -595,29 +1008,96 @@ export default function ModularReportPage({ title, apiEndpoint, tableColumns, da
           <div className="modular-charts-row">
             <div className="modular-small-card">
               <div className="chart-card-header">
-                <h3>Distribusi Produk per Kategori</h3>
-                <span className="chart-subtitle">Total produk dalam setiap kategori</span>
+                <h3 
+                  style={{ cursor: 'pointer', color: '#4f8cff', userSelect: 'none' }}
+                  onClick={() => setSmallChartModalOpen(true)}
+                  title="Click to change chart type"
+                >
+                  {getSmallChartTitle()} <span style={{ marginLeft: 8, fontSize: 16 }}>▼</span>
+                </h3>
+                <span className="chart-subtitle">{getSmallChartSubtitle()}</span>
               </div>
               <div className="chart-container small-chart">
-                <Doughnut 
-                  data={getProductCountByCategory()} 
-                  options={donutChartOptions}
-                />
+                {renderSmallChart()}
               </div>
             </div>
             <div className="modular-big-graph-card">
               <div className="chart-card-header">
-                <h3>Rata-rata PCT per Kategori</h3>
-                <span className="chart-subtitle">Perbandingan waktu siklus produksi rata-rata</span>
+                <h3 
+                  style={{ cursor: 'pointer', color: '#4f8cff', userSelect: 'none' }}
+                  onClick={() => setLargeChartModalOpen(true)}
+                  title="Click to change chart type"
+                >
+                  {getLargeChartTitle()} <span style={{ marginLeft: 8, fontSize: 16 }}>▼</span>
+                </h3>
+                <span className="chart-subtitle">{getLargeChartSubtitle()}</span>
               </div>
               <div className="chart-container big-chart">
-                <Bar 
-                  data={getAveragePCTByCategory()} 
-                  options={barChartOptions}
-                />
+                {renderLargeChart()}
               </div>
             </div>
           </div>
+
+          {/* Chart Selection Modals */}
+          <Modal open={smallChartModalOpen} onClose={() => setSmallChartModalOpen(false)} title="Pilih Jenis Chart Kecil">
+            <div className="modal-list">
+              {smallChartOptions.map((option, i) => (
+                <div 
+                  className="modal-list-item" 
+                  key={i} 
+                  tabIndex={0} 
+                  role="button"
+                  onClick={() => {
+                    setSelectedSmallChart(option.id);
+                    setSmallChartModalOpen(false);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      setSelectedSmallChart(option.id);
+                      setSmallChartModalOpen(false);
+                    }
+                  }}
+                  style={{ 
+                    backgroundColor: selectedSmallChart === option.id ? '#f0f4ff' : 'transparent',
+                    borderLeft: selectedSmallChart === option.id ? '3px solid #4f8cff' : '3px solid transparent'
+                  }}
+                >
+                  <div className="modal-list-item-title">{option.title}</div>
+                  <div className="modal-list-item-desc">{option.desc}</div>
+                </div>
+              ))}
+            </div>
+          </Modal>
+
+          <Modal open={largeChartModalOpen} onClose={() => setLargeChartModalOpen(false)} title="Pilih Jenis Chart Besar">
+            <div className="modal-list">
+              {largeChartOptions.map((option, i) => (
+                <div 
+                  className="modal-list-item" 
+                  key={i} 
+                  tabIndex={0} 
+                  role="button"
+                  onClick={() => {
+                    setSelectedLargeChart(option.id);
+                    setLargeChartModalOpen(false);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      setSelectedLargeChart(option.id);
+                      setLargeChartModalOpen(false);
+                    }
+                  }}
+                  style={{ 
+                    backgroundColor: selectedLargeChart === option.id ? '#f0f4ff' : 'transparent',
+                    borderLeft: selectedLargeChart === option.id ? '3px solid #4f8cff' : '3px solid transparent'
+                  }}
+                >
+                  <div className="modal-list-item-title">{option.title}</div>
+                  <div className="modal-list-item-desc">{option.desc}</div>
+                </div>
+              ))}
+            </div>
+          </Modal>
 
           {/* Table Card */}
           <div className="modular-table-row">

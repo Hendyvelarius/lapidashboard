@@ -50,11 +50,8 @@ const cards = [
 
 
 const pctReports = [
-  { title: "PCT Per Produk", desc: "Informasi PCT tiap jenis produk." },
-  { title: "PCT Departemen", desc: "Informasi PCT tiap departemen." },
-  { title: "PCT Tahunan", desc: "Informasi PCT dalam satu tahun." },
-  { title: "PCT Bulan Ini", desc: "Informasi PCT keseluruhan di bulan ini." },
-  { title: "PCT Per Batch", desc: "Informasi PCT per batch." },
+  { title: "PCT Yearly", desc: "Informasi PCT tiap jenis produk dalam 12 bulan terakhir." },
+  { title: "PCT Monthly", desc: "Informasi PCT setiap produk dalam periode 1 bulan terakhir." },
 ];
 
 export default function ReportsGrid() {
@@ -63,8 +60,11 @@ export default function ReportsGrid() {
 
   const handlePctReportClick = (reportTitle) => {
     setPctModalOpen(false);
-    if (reportTitle === "PCT Per Produk") {
-      navigate("/reports/pct-per-produk");
+    if (reportTitle === "PCT Yearly") {
+      navigate("/reports/pcttahunan");
+    }
+    if (reportTitle === "PCT Monthly") {
+      navigate("/reports/pct-monthly");
     }
     // Add more navigation cases for other PCT reports here later
   };

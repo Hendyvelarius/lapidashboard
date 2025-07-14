@@ -73,7 +73,7 @@ async function getProductCycleTime() {
         ap.Batch_Date LIKE '[1-2][0-9][0-9][0-9]/[0-1][0-9]/[0-3][0-9]'
         AND LEN(ap.Batch_Date) = 10
         AND ISDATE(ap.Batch_Date) = 1
-        AND CONVERT(date, ap.Batch_Date, 111) >= DATEADD(month, -12, GETDATE())
+        AND CONVERT(date, ap.Batch_Date, 111) >= DATEADD(month, -1, GETDATE())
         AND mp.Product_Name NOT LIKE '%granulat%'
     ),
     BatchesWithLabel AS (

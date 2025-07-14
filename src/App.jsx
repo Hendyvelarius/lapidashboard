@@ -300,7 +300,7 @@ function App() {
     onClick: (evt, elements) => {
       if (elements && elements.length > 0) {
         // Navigate to pct-per-produk page when any bar is clicked
-        navigate('/reports/pct-per-produk');
+        navigate('/reports/pcttahunan');
       }
     },
     onHover: (evt, elements) => {
