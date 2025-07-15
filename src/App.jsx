@@ -627,7 +627,7 @@ function App() {
             </div>
           )}
           {wipTableLoading ? (
-            <DashboardLoading loading={true} />
+            <DashboardLoading loading={true} text="Loading WIP Data..." subtext="Sedang mengambil data WIP..." coverContentArea={true} />
           ) : (
             <WipTable data={filteredData} />
           )}

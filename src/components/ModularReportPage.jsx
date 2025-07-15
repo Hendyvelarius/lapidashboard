@@ -695,7 +695,7 @@ export default function ModularReportPage({ title, apiEndpoint, tableColumns, da
     { id: 'avgPCTByCategory', title: 'Rata-rata PCT per Kategori', desc: 'Perbandingan waktu siklus produksi rata-rata per kategori' },
     { id: 'avgPCTByDepartment', title: 'Rata-rata PCT per Departemen', desc: 'Perbandingan waktu siklus produksi rata-rata per departemen' },
     { id: 'pctTimeline', title: 'Timeline PCT', desc: 'Tren PCT dari waktu ke waktu' },
-    { id: 'top10Products', title: 'Top 10 Produk PCT Tertinggi', desc: 'Produk dengan waktu siklus terpanjang' }
+    { id: 'top10Products', title: '10 Produk PCT Terlama', desc: 'Produk dengan waktu siklus terpanjang' }
   ];
 
   // Get chart data based on selection

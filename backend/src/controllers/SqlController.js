@@ -101,6 +101,16 @@ async function getProductCycleTime(req, res) {
   }
 }
 
+async function getProductCycleTimeYearly(req, res) {
+  try {
+    const data = await SqlModel.getProductCycleTimeYearly();
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching Product Cycle Time:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
 async function getProductCycleTimeAverage(req, res) {
   try {
     const data = await SqlModel.getProductCycleTime();
@@ -122,4 +132,4 @@ async function getOrderFulfillment(req, res) {
   }
 }
 
-module.exports = { getWip, getAlur, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeAverage, getOrderFulfillment };
+module.exports = { getWip, getAlur, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getOrderFulfillment };

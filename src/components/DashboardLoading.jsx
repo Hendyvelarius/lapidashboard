@@ -1,16 +1,36 @@
 import React from 'react';
 import { useLoading, BallTriangle } from '@agney/react-loading';
 
-const DashboardLoading = ({ loading, text = 'Loading Dashboard...', subtext = 'Sedang mengambil data...' }) => {
+const DashboardLoading = ({ loading, text = 'Loading Dashboard...', subtext = 'Sedang mengambil data...', fullscreen = false, coverContentArea = false }) => {
   const { containerProps, indicatorEl } = useLoading({ loading, indicator: <BallTriangle width="48" /> });
   if (!loading) return null;
+  
+  // Determine positioning based on props
+  let position = 'absolute';
+  let top = 0;
+  let left = 0;
+  let width = '100%';
+  let height = '100%';
+  
+  if (fullscreen) {
+    position = 'fixed';
+    width = '100vw';
+    height = '100vh';
+  } else if (coverContentArea) {
+    position = 'fixed';
+    top = 0;
+    left = '240px'; // sidebar width
+    width = 'calc(100vw - 240px)';
+    height = '100vh';
+  }
+  
   return (
     <div style={{
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      width: '100%',
-      height: '100%',
+      position,
+      top,
+      left,
+      width,
+      height,
       background: 'rgba(26,35,50,0.92)',
       zIndex: 1000,
       display: 'flex',

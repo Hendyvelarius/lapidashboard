@@ -22,9 +22,21 @@
   background: #f9f9f9;
   font-weight: 600;
   color: #333;
+  transition: background-color 0.2s ease;
+}
+.wip-table th:hover {
+  background: #f0f6ff;
+  color: #4f8cff;
 }
 .wip-table tr:last-child td {
   border-bottom: none;
+}
+/* Expanded row styling */
+.expanded-row {
+  background: #f5faff !important;
+}
+.expanded-row:hover {
+  background: #eef7ff !important;
 }
 .badge {
   display: inline-block;
