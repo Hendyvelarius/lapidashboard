@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from "react-router";
 import App from "./App";
 import Reports from "./Reports";
 import ModularReportPage from "./components/ModularReportPage";
+import AIChat from "./components/AIChat";
 
 export default function AppRouter() {
   return (
@@ -70,6 +71,7 @@ export default function AppRouter() {
             />
           }
         />
+        <Route path="/ai" element={<AIChat />} />
       </Routes>
     </BrowserRouter>
   );

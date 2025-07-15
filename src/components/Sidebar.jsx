@@ -2,13 +2,12 @@ import { useState } from 'react'
 import { 
   LayoutDashboard, 
   FileText, 
-  Users, 
-  Calendar, 
   Settings, 
   HelpCircle,
   ChevronDown,
   User,
-  LogOut
+  LogOut,
+  MessageCircle
 } from 'lucide-react'
 
 import { Link, useLocation } from 'react-router';
@@ -37,14 +36,10 @@ function Sidebar() {
             <FileText size={20} />
             <span>Reports</span>
           </Link>
-          <button className="sidebar-btn" disabled>
-            <Users size={20} />
-            <span>Employees</span>
-          </button>
-          <button className="sidebar-btn" disabled>
-            <Calendar size={20} />
-            <span>Meetings</span>
-          </button>
+          <Link to="/ai" className={`sidebar-btn${location.pathname === '/ai' ? ' active' : ''}`}> 
+            <MessageCircle size={20} />
+            <span>AI Assistant</span>
+          </Link>
         </nav>
       </div>
 

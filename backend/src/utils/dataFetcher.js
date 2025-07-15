@@ -20,15 +20,15 @@ async function fetchWipData(type = 'raw') {
     const response = await axios.get(`${API_BASE_URL}${endpoint}`);
     const data = response.data;
     
-    // If it's raw WIP data and too large, provide summary
-    if (type === 'raw' && data.data && data.data.length > 50) {
+    // If it's raw WIP data, provide both summary for AI and full data for tables
+    if (type === 'raw' && data.data && data.data.length > 0) {
       const items = data.data;
       const summary = {
         total_items: items.length,
         categories: {},
         departments: {},
         avg_duration: Math.round(items.reduce((sum, item) => sum + (item.duration || 0), 0) / items.length),
-        recent_items: items.slice(0, 10).map(item => ({
+        recent_items: items.slice(0, 15).map(item => ({
           name: item.name,
           batch: item.batch,
           duration: item.duration,
@@ -49,7 +49,11 @@ async function fetchWipData(type = 'raw') {
         summary.departments[dept] = (summary.departments[dept] || 0) + 1;
       });
       
-      return { summary, note: "Data summarized to avoid token limits" };
+      return { 
+        summary, 
+        fullData: items, // Include full data for table rendering
+        note: `Showing summary of ${items.length} total items. Full data available for table display.` 
+      };
     }
     
     return response.data;
