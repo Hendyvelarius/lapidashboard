@@ -132,4 +132,14 @@ async function getOrderFulfillment(req, res) {
   }
 }
 
-module.exports = { getWip, getAlur, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getOrderFulfillment };
+async function getStockReport(req, res) {
+  try {
+    const data = await SqlModel.getStockReport();
+    res.json(data);
+  } catch (err) {
+    console.error('Error in fetching Stock Report:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+module.exports = { getWip, getAlur, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getOrderFulfillment, getStockReport };

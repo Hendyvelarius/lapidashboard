@@ -1,5 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import './WipTable.css'; // Reuse WipTable styling
+import WipTableDetail from './WipTableDetail';
+import { apiUrl } from '../api';
 
 // Helper to format numbers with commas
 function formatNumber(num) {
@@ -10,6 +12,9 @@ function formatNumber(num) {
 function OfTable({ data }) {
   const [expanded, setExpanded] = useState(null); // Product_ID of expanded row
   const [detail, setDetail] = useState(null);
+  const [batchExpanded, setBatchExpanded] = useState(null); // batchNo of expanded batch
+  const [batchDetail, setBatchDetail] = useState([]);
+  const [batchLoading, setBatchLoading] = useState(false);
   
   // Sorting state
   const [sortConfig, setSortConfig] = useState({ key: null, direction: null });
@@ -53,14 +58,20 @@ function OfTable({ data }) {
   }, [data, sortConfig]);
 
   // Get sort indicator
-  const getSortIndicator = (key) => {
-    if (sortConfig.key !== key) return '↕️';
-    if (sortConfig.direction === 'asc') return '↑';
-    if (sortConfig.direction === 'desc') return '↓';
-    return '↕️';
+  const getSortIndicator = (columnKey) => {
+    if (sortConfig.key !== columnKey) {
+      return <span style={{ color: '#ccc', marginLeft: 4 }}>↕</span>;
+    }
+    if (sortConfig.direction === 'asc') {
+      return <span style={{ color: '#4f8cff', marginLeft: 4 }}>↑</span>;
+    }
+    if (sortConfig.direction === 'desc') {
+      return <span style={{ color: '#4f8cff', marginLeft: 4 }}>↓</span>;
+    }
+    return <span style={{ color: '#ccc', marginLeft: 4 }}>↕</span>;
   };
 
-  // Handle row click to show details
+  // Handle row click to show batch details
   const handleRowClick = async (item) => {
     const productId = item.Product_ID;
     
@@ -75,6 +86,42 @@ function OfTable({ data }) {
     }
   };
 
+  // Helper function to get batch status and parse batch lists
+  const getBatchDetails = (item) => {
+    if (!item) return [];
+    
+    // Parse batch lists
+    const allBatches = item.ListBetsBaru ? item.ListBetsBaru.split(',').map(b => b.trim()) : [];
+    const releasedBatches = item.BatchNo_List_SudahRelease ? item.BatchNo_List_SudahRelease.split(',').map(b => b.trim()) : [];
+    const quarantinedBatches = item.BatchNo_List_SudahKarantina ? item.BatchNo_List_SudahKarantina.split(',').map(b => b.trim()) : [];
+    const wipBatches = item.BatchNo_List_SudahWIP ? item.BatchNo_List_SudahWIP.split(',').map(b => b.trim()) : [];
+    
+    // Create batch details with status
+    const batchDetails = allBatches.map(batchNo => {
+      let status = 'Unprocessed';
+      let badgeClass = 'badge-gray';
+      
+      if (releasedBatches.includes(batchNo)) {
+        status = 'Released';
+        badgeClass = 'badge-green';
+      } else if (quarantinedBatches.includes(batchNo)) {
+        status = 'Quarantined';
+        badgeClass = 'badge-yellow';
+      } else if (wipBatches.includes(batchNo)) {
+        status = 'WIP';
+        badgeClass = 'badge-red';
+      }
+      
+      return {
+        batchNo,
+        status,
+        badgeClass
+      };
+    });
+    
+    return batchDetails;
+  };
+
   // Calculate unprocessed value
   const calculateUnprocessed = (item) => {
     const target = Number(item.jlhTarget) || 0;
@@ -82,6 +129,39 @@ function OfTable({ data }) {
     const karantina = Number(item.karantina) || 0;
     const wip = Number(item.wip) || 0;
     return Math.max(0, target - release - karantina - wip);
+  };
+
+  // Handle batch click to show batch process details
+  const handleBatchClick = async (batchNo, status, productId) => {
+    // Don't allow clicks on unprocessed batches
+    if (status === 'Unprocessed') {
+      return;
+    }
+
+    // Create a unique key for this batch within this product
+    const batchKey = `${productId}-${batchNo}`;
+
+    if (batchExpanded === batchKey) {
+      // Collapse if already expanded
+      setBatchExpanded(null);
+      setBatchDetail([]);
+      setBatchLoading(false);
+      return;
+    }
+
+    setBatchExpanded(batchKey);
+    setBatchLoading(true);
+    setBatchDetail([]);
+
+    try {
+      const res = await fetch(apiUrl(`/api/batch?batchNo=${encodeURIComponent(batchNo)}`));
+      const data = await res.json();
+      setBatchDetail(data.data || []);
+    } catch (error) {
+      console.error('Error fetching batch details:', error);
+      setBatchDetail([]);
+    }
+    setBatchLoading(false);
   };
 
   return (
@@ -161,7 +241,7 @@ function OfTable({ data }) {
                       <tr className="detail-row">
                         <td colSpan="7">
                           <div className="detail-content">
-                            <h4>Product Details</h4>
+                            <h4>Product Name: {detail.Product_Name}</h4>
                             <div className="detail-grid">
                               <div className="detail-item">
                                 <strong>Category:</strong> {detail.pengelompokan || '-'}
@@ -169,45 +249,113 @@ function OfTable({ data }) {
                               <div className="detail-item">
                                 <strong>Department:</strong> {detail.Group_Dept || '-'}
                               </div>
-                              <div className="detail-item">
-                                <strong>Last Batch Real:</strong> {detail['Last Batch Real'] || '-'}
-                              </div>
-                              <div className="detail-item">
-                                <strong>Target:</strong> {detail.Target || '-'}
-                              </div>
-                              <div className="detail-item">
-                                <strong>New Batches:</strong> {detail.BetsBaru || 0}
-                              </div>
-                              <div className="detail-item">
-                                <strong>Previous Month Quarantine:</strong> {detail.BetsKarantinaBulanSblmnya || '-'}
-                              </div>
                             </div>
                             
-                            {detail.ListBetsBaru && (
-                              <div className="batch-lists">
-                                <div className="batch-list">
-                                  <strong>New Batch List:</strong>
-                                  <div className="batch-numbers">
-                                    {detail.ListBetsBaru.split(',').map((batch, idx) => (
-                                      <span key={idx} className="batch-badge">{batch.trim()}</span>
-                                    ))}
+                            <div className="batch-status-section">
+                              <h5>Batch Status</h5>
+                              <div className="batch-status-grid">
+                                {getBatchDetails(detail).map((batch, idx) => (
+                                  <div 
+                                    key={idx} 
+                                    className={`batch-status-item ${batch.status === 'Unprocessed' ? 'disabled' : ''}`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleBatchClick(batch.batchNo, batch.status, detail.Product_ID);
+                                    }}
+                                    style={{
+                                      cursor: batch.status === 'Unprocessed' ? 'not-allowed' : 'pointer',
+                                      opacity: batch.status === 'Unprocessed' ? 0.6 : 1
+                                    }}
+                                  >
+                                    <span className="batch-number">{batch.batchNo}</span>
+                                    <span className={`badge ${batch.badgeClass}`}>{batch.status}</span>
+                                  </div>
+                                ))}
+                              </div>
+                              {batchExpanded && batchExpanded.startsWith(`${detail.Product_ID}-`) && (
+                                <div className="batch-detail-section">
+                                  <h5 style={{ marginTop: '20px', marginBottom: '10px' }}>
+                                    Batch Detail: {batchExpanded.split('-').slice(1).join('-')}
+                                  </h5>
+                                  <div className="batch-detail-table-container">
+                                    {batchLoading ? (
+                                      <div className="wip-detail-loading" style={{ padding: '20px', textAlign: 'center' }}>
+                                        Loading detail...
+                                      </div>
+                                    ) : !batchDetail || batchDetail.length === 0 ? (
+                                      <div style={{ padding: '20px', textAlign: 'center', color: '#888' }}>
+                                        Tidak ada data detail
+                                      </div>
+                                    ) : (
+                                      <div className="wip-detail-table-wrap">
+                                        <table className="wip-detail-table">
+                                          <thead>
+                                            <tr style={{ color: '#111', fontSize: '13px', height: 20 }}>
+                                              <th>Urutan</th>
+                                              <th>Kode</th>
+                                              <th>Tahapan</th>
+                                              <th>Departemen</th>
+                                              <th>Estimasi (menit)</th>
+                                              <th>Waktu Pengerjaan (menit)</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {(() => {
+                                              // Sort by No_urut (Urutan)
+                                              const sorted = [...batchDetail].sort((a, b) => a.Urutan - b.Urutan);
+                                              
+                                              // Calculate cumulative Waktu Pengerjaan for each Urutan
+                                              const urutanTotals = {};
+                                              const cumulativeRows = sorted.map((row, idx) => {
+                                                const minutesBetween = (start, end) => {
+                                                  if (!start || !end) return '-';
+                                                  const s = new Date(start);
+                                                  const e = new Date(end);
+                                                  return Math.round((e - s) / 60000); // ms to minutes
+                                                };
+                                                
+                                                const waktu = minutesBetween(row.StartDate, row.EndDate);
+                                                const urutan = row.No_urut;
+                                                const waktuNum = typeof waktu === 'number' ? waktu : 0;
+                                                if (!urutanTotals[urutan]) {
+                                                  urutanTotals[urutan] = 0;
+                                                }
+                                                urutanTotals[urutan] += waktuNum;
+                                                const displayWaktu = waktu === '-' ? '-' : urutanTotals[urutan];
+                                                return {
+                                                  ...row,
+                                                  cumulativeWaktu: displayWaktu,
+                                                  waktuRaw: waktu,
+                                                };
+                                              });
+                                              
+                                              return cumulativeRows.map((row, idx) => {
+                                                const est = row.lead_time;
+                                                const waktu = row.cumulativeWaktu;
+                                                let waktuBadge = 'badge-green';
+                                                if (waktu === '-') waktuBadge = 'badge-yellow';
+                                                else if (est && waktu > est) waktuBadge = 'badge-red';
+                                                else if (est && waktu <= est) waktuBadge = 'badge-green';
+                                                return (
+                                                  <tr key={row.PK_ID || idx} style={{ color: '#111', fontSize: '13px', height: 14 }}>
+                                                    <td>{row.Urutan}</td>
+                                                    <td>{row.kode_tahapan}</td>
+                                                    <td>{row.nama_tahapan}</td>
+                                                    <td>{row.dept}</td>
+                                                    <td><span className="badge badge-green">{est}</span></td>
+                                                    <td><span className={`badge ${waktuBadge}`}>{waktu}</span></td>
+                                                  </tr>
+                                                );
+                                              });
+                                            })()}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
-                              </div>
-                            )}
-                            
-                            {detail.BatchNo_List_SudahWIP && (
-                              <div className="batch-lists">
-                                <div className="batch-list">
-                                  <strong>WIP Batch List:</strong>
-                                  <div className="batch-numbers">
-                                    {detail.BatchNo_List_SudahWIP.split(',').map((batch, idx) => (
-                                      <span key={idx} className="batch-badge batch-wip">{batch.trim()}</span>
-                                    ))}
-                                  </div>
-                                </div>
-                              </div>
-                            )}
+                              )}
+                            </div>
                           </div>
                         </td>
                       </tr>

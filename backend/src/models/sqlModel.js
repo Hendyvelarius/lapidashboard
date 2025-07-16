@@ -166,4 +166,16 @@ async function getOrderFulfillment() {
   return result.recordset;
 }
 
-module.exports = { WorkInProgress, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly };
+async function getStockReport() {
+  const db = await connect();
+  const result = await db.request().query(`
+    SELECT 
+      trmh.*,
+      ms.Jenis_Sediaan AS Kategori
+    FROM temp_Report_ManHours trmh
+    LEFT JOIN m_alur_jenis_sediaan_produk ms ON trmh.Product_ID = ms.Product_ID
+  `);
+  return result.recordset;
+}
+
+module.exports = { WorkInProgress, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport };

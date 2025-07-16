@@ -9,6 +9,8 @@ const useDashboardData = () => {
   const [fulfillmentLoading, setFulfillmentLoading] = useState(true);
   const [pctRawData, setPctRawData] = useState([]);
   const [pctLoading, setPctLoading] = useState(true);
+  const [stockReportData, setStockReportData] = useState([]);
+  const [stockReportLoading, setStockReportLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -38,12 +40,13 @@ const useDashboardData = () => {
     }
   };
 
-  const saveToStorage = (wipData, fulfillmentData, pctData) => {
+  const saveToStorage = (wipData, fulfillmentData, pctData, stockReportData) => {
     try {
       const dataToStore = {
         wipData,
         fulfillmentData,
         pctData,
+        stockReportData,
         timestamp: Date.now()
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToStore));
@@ -61,10 +64,12 @@ const useDashboardData = () => {
         setWipData(storedData.wipData || []);
         setFulfillmentRawData(storedData.fulfillmentData || []);
         setPctRawData(storedData.pctData || []);
+        setStockReportData(storedData.stockReportData || []);
         setLastUpdated(new Date(storedData.timestamp));
         setLoading(false);
         setFulfillmentLoading(false);
         setPctLoading(false);
+        setStockReportLoading(false);
         return;
       }
     }
@@ -73,43 +78,51 @@ const useDashboardData = () => {
     setLoading(true);
     setFulfillmentLoading(true);
     setPctLoading(true);
+    setStockReportLoading(true);
     setRefreshing(force);
 
     try {
-      const [wipResponse, fulfillmentResponse, pctResponse] = await Promise.all([
+      const [wipResponse, fulfillmentResponse, pctResponse, stockReportResponse] = await Promise.all([
         fetch(apiUrl('/api/wip')),
         fetch(apiUrl('/api/of')),
-        fetch(apiUrl('/api/pctAverage'))
+        fetch(apiUrl('/api/pctAverage')),
+        fetch(apiUrl('/api/stockReport'))
       ]);
 
-      const [wipResult, fulfillmentResult, pctResult] = await Promise.all([
+      const [wipResult, fulfillmentResult, pctResult, stockReportResult] = await Promise.all([
         wipResponse.json(),
         fulfillmentResponse.json(),
-        pctResponse.json()
+        pctResponse.json(),
+        stockReportResponse.json()
       ]);
 
       const wipData = wipResult.data || [];
       const fulfillmentData = fulfillmentResult.data || fulfillmentResult || [];
       const pctData = pctResult.processed || pctResult.data || pctResult || [];
+      const stockReportData = stockReportResult.data || stockReportResult || [];
 
       console.log('PCT API Response:', pctResult); // Debug log
+      console.log('Stock Report API Response:', stockReportResult); // Debug log
 
       setWipData(wipData);
       setFulfillmentRawData(fulfillmentData);
       setPctRawData(pctData);
+      setStockReportData(stockReportData);
       
       // Save to localStorage
-      saveToStorage(wipData, fulfillmentData, pctData);
+      saveToStorage(wipData, fulfillmentData, pctData, stockReportData);
       
     } catch (error) {
       console.error('Error fetching data:', error);
       setWipData([]);
       setFulfillmentRawData([]);
       setPctRawData([]);
+      setStockReportData([]);
     } finally {
       setLoading(false);
       setFulfillmentLoading(false);
       setPctLoading(false);
+      setStockReportLoading(false);
       setRefreshing(false);
     }
   };
@@ -143,11 +156,13 @@ const useDashboardData = () => {
     wipData,
     fulfillmentRawData,
     pctRawData,
+    stockReportData,
     
     // Loading states
     loading,
     fulfillmentLoading,
     pctLoading,
+    stockReportLoading,
     refreshing,
     
     // Metadata

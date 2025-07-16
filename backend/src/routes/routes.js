@@ -23,7 +23,11 @@ router.get('/pct', SqlController.getProductCycleTime);
 router.get('/pctYearly', SqlController.getProductCycleTimeYearly);
 router.get('/pctAverage', SqlController.getProductCycleTimeAverage);
 
+// Routing Stock Related
+router.get('/stockReport', SqlController.getStockReport);
+
 // OpenAI chat endpoint
 router.use('/ai', openaiRoutes);
+
 
 module.exports = router;

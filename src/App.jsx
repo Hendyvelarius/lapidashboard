@@ -50,9 +50,11 @@ function App() {
     wipData,
     fulfillmentRawData,
     pctRawData,
+    stockReportData,
     loading,
     fulfillmentLoading,
     pctLoading,
+    stockReportLoading,
     refreshing,
     lastUpdated,
     handleRefresh,
@@ -61,6 +63,10 @@ function App() {
 
   // For WIP charts loading state (side card)
   const wipLoading = loading;
+
+  // Dropdown for stock report chart type
+  const [stockChartType, setStockChartType] = useState('top10'); // 'top10' or 'category'
+  const [stockDropdownOpen, setStockDropdownOpen] = useState(false);
 
   // --- WIP Category Progress aggregation (from unified wipData) ---
   // Group by item.kelompok, count occurrences
@@ -719,6 +725,210 @@ function App() {
     );
   }
 
+  // Prepare Stock Report chart data - Forecast vs Finished Goods (Top 10)
+  const prepareStockReportChartData = (stockData) => {
+    if (!stockData || stockData.length === 0) {
+      return {
+        labels: [],
+        datasets: [],
+        productInfo: []
+      };
+    }
+
+    // Sort by Forecast descending and take top 10
+    const sortedData = [...stockData]
+      .sort((a, b) => (b.Forecast || 0) - (a.Forecast || 0))
+      .slice(0, 10);
+
+    const labels = sortedData.map(item => item.Product_Code || item.Product_ID);
+    const forecastData = sortedData.map(item => item.Forecast || 0);
+    const releaseData = sortedData.map(item => item.Release || 0);
+    const salesData = sortedData.map(item => item.Sales || 0);
+    
+    // Store product info for tooltips
+    const productInfo = sortedData.map(item => ({
+      code: item.Product_Code || item.Product_ID,
+      name: item.Product_NM || 'Unknown Product'
+    }));
+
+    return {
+      labels,
+      datasets: [
+        {
+          label: 'Forecast',
+          data: forecastData,
+          backgroundColor: '#ff9500',
+          borderColor: '#ff9500',
+          borderWidth: 1,
+          borderRadius: 4,
+        },
+        {
+          label: 'Stock (Release)',
+          data: releaseData,
+          backgroundColor: '#1e3a8a',
+          borderColor: '#1e3a8a',
+          borderWidth: 1,
+          borderRadius: 4,
+        },
+        {
+          label: 'Sales',
+          data: salesData,
+          backgroundColor: '#22c55e',
+          borderColor: '#22c55e',
+          borderWidth: 1,
+          borderRadius: 4,
+        }
+      ],
+      productInfo
+    };
+  };
+
+  // Prepare Stock Report chart data - Forecast by Category
+  const prepareStockReportCategoryChartData = (stockData) => {
+    if (!stockData || stockData.length === 0) {
+      return {
+        labels: [],
+        datasets: [],
+        categoryInfo: []
+      };
+    }
+
+    console.log('Stock data sample:', stockData.slice(0, 3)); // Debug log
+
+    // Aggregate by Kategori
+    const categoryAgg = {};
+    stockData.forEach(item => {
+      const cat = item.Kategori || 'Uncategorized';
+      console.log('Processing item:', item.Product_Code, 'Kategori:', cat); // Debug log
+      if (!categoryAgg[cat]) {
+        categoryAgg[cat] = { Forecast: 0, Release: 0, Sales: 0 };
+      }
+      categoryAgg[cat].Forecast += item.Forecast || 0;
+      categoryAgg[cat].Release += item.Release || 0;
+      categoryAgg[cat].Sales += item.Sales || 0;
+    });
+
+    console.log('Category aggregation:', categoryAgg); // Debug log
+
+    const labels = Object.keys(categoryAgg);
+    const forecastData = labels.map(cat => categoryAgg[cat].Forecast);
+    const releaseData = labels.map(cat => categoryAgg[cat].Release);
+    const salesData = labels.map(cat => categoryAgg[cat].Sales);
+
+    // Store category info for tooltips
+    const categoryInfo = labels.map(cat => ({ name: cat }));
+
+    return {
+      labels,
+      datasets: [
+        {
+          label: 'Forecast',
+          data: forecastData,
+          backgroundColor: '#ff9500',
+          borderColor: '#ff9500',
+          borderWidth: 1,
+          borderRadius: 4,
+        },
+        {
+          label: 'Stock (Release)',
+          data: releaseData,
+          backgroundColor: '#1e3a8a',
+          borderColor: '#1e3a8a',
+          borderWidth: 1,
+          borderRadius: 4,
+        },
+        {
+          label: 'Sales',
+          data: salesData,
+          backgroundColor: '#22c55e',
+          borderColor: '#22c55e',
+          borderWidth: 1,
+          borderRadius: 4,
+        }
+      ],
+      categoryInfo
+    };
+  };
+
+  const stockReportChartData = stockChartType === 'category' 
+    ? prepareStockReportCategoryChartData(stockReportData)
+    : prepareStockReportChartData(stockReportData);
+
+  // Stock Report chart options
+  const stockReportChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { 
+        display: true,
+        position: 'top',
+        labels: {
+          usePointStyle: true,
+          padding: 15,
+          font: { size: 11 }
+        }
+      },
+      tooltip: {
+        callbacks: {
+          title: (ctx) => {
+            if (ctx && ctx.length > 0) {
+              const dataIndex = ctx[0].dataIndex;
+              if (stockChartType === 'category') {
+                const categoryInfo = stockReportChartData.categoryInfo;
+                if (categoryInfo && categoryInfo[dataIndex]) {
+                  return `Category: ${categoryInfo[dataIndex].name}`;
+                }
+              } else {
+                const productInfo = stockReportChartData.productInfo;
+                if (productInfo && productInfo[dataIndex]) {
+                  return [
+                    `Code: ${productInfo[dataIndex].code}`,
+                    `Product: ${productInfo[dataIndex].name}`
+                  ];
+                }
+              }
+            }
+            return ctx[0]?.label || '';
+          },
+          label: (ctx) => {
+            const label = ctx.dataset.label || '';
+            const value = ctx.parsed.y;
+            return `${label}: ${value.toLocaleString()}`;
+          }
+        },
+        titleFont: { size: 12, weight: 'bold' },
+        bodyFont: { size: 11 },
+        padding: 12,
+        backgroundColor: 'rgba(255,255,255,0.95)',
+        titleColor: '#333',
+        bodyColor: '#555',
+        borderColor: '#ddd',
+        borderWidth: 1,
+        cornerRadius: 6
+      }
+    },
+    scales: {
+      x: {
+        title: { display: true, text: stockChartType === 'category' ? 'Category' : 'Product Code' },
+        ticks: { 
+          font: { size: 11 }, 
+          maxRotation: 45, 
+          minRotation: 0 
+        },
+      },
+      y: {
+        beginAtZero: true,
+        title: { display: true, text: 'Quantity' },
+        ticks: { 
+          stepSize: 500,
+          callback: (value) => value.toLocaleString()
+        },
+      },
+    },
+    layout: { padding: { left: 10, right: 10, top: 10, bottom: 10 } },
+  };
+
+  // --- Main render ---
   return (
     <>
       <style>
@@ -856,9 +1066,9 @@ function App() {
                           handleShowWipTable(idx);
                         }
                       },
-                      hover: { ...wipHistogramBarOptions.hover, onHover: (e, el) => {
+                      onHover: (e, el) => {
                         e.native.target.style.cursor = el && el.length ? 'pointer' : 'default';
-                      }},
+                      },
                     }}
                   />
                 )}
@@ -877,9 +1087,9 @@ function App() {
                             handleShowWipTable(null, { dept });
                           }
                         },
-                        hover: { ...wipDeptBarOptions.hover, onHover: (e, el) => {
+                        onHover: (e, el) => {
                           e.native.target.style.cursor = el && el.length ? 'pointer' : 'default';
-                        }},
+                        },
                       }}
                     />
                   )
@@ -899,9 +1109,9 @@ function App() {
                             handleShowWipTable(null, { kelompok });
                           }
                         },
-                        hover: { ...wipGroupBarOptions.hover, onHover: (e, el) => {
+                        onHover: (e, el) => {
                           e.native.target.style.cursor = el && el.length ? 'pointer' : 'default';
-                        }},
+                        },
                       }}
                     />
                   )
@@ -926,22 +1136,37 @@ function App() {
             </div>
           </div>
           <div className="dashboard-side-card">
-            <div className="side-card-title">
-              <span style={{ color: '#4f8cff', fontWeight: 600 }}>
-                Coming Soon
+            <div className="side-card-title side-card-title-dropdown" style={{ position: 'relative' }}>
+              <span
+                className="side-card-title-clickable"
+                style={{ color: '#4f8cff', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }}
+                onClick={() => setStockDropdownOpen(open => !open)}
+                tabIndex={0}
+              >
+                {stockChartType === 'top10' ? 'Forecast vs Finished Goods (Top 10)' : 'Forecast by Category'}
+                <span style={{ marginLeft: 8, fontSize: 16 }}>▼</span>
               </span>
+              {stockDropdownOpen && (
+                <div style={{ position: 'absolute', top: '100%', left: 0, background: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', borderRadius: 8, zIndex: 10, minWidth: 220, marginTop: 4, padding: '6px 0', fontSize: 15 }}>
+                  <div
+                    className="chart-dropdown-option"
+                    style={{ padding: '10px 20px', cursor: 'pointer', color: '#222', fontWeight: 500, transition: 'color 0.15s' }}
+                    onClick={() => { setStockChartType('top10'); setStockDropdownOpen(false); }}
+                  >Forecast vs Finished Goods (Top 10)</div>
+                  <div
+                    className="chart-dropdown-option"
+                    style={{ padding: '10px 20px', cursor: 'pointer', color: '#222', fontWeight: 500, transition: 'color 0.15s' }}
+                    onClick={() => { setStockChartType('category'); setStockDropdownOpen(false); }}
+                  >Forecast by Category</div>
+                </div>
+              )}
             </div>
-            <div style={{ 
-              padding: '20px', 
-              flex: 1, 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center',
-              height: '100%',
-              color: '#666',
-              fontSize: '16px'
-            }}>
-              Additional chart will be added here
+            <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+              {stockReportLoading ? (
+                <DashboardLoading loading={true} />
+              ) : (
+                <Bar data={stockReportChartData} options={stockReportChartOptions} />
+              )}
             </div>
           </div>
         </div>
