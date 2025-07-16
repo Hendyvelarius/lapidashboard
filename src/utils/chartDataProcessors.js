@@ -29,29 +29,20 @@ export const prepareFulfillmentCategoryData = (rawData) => {
       };
     }
 
-    // Sum Target (jlhTarget)
-    groupedData[category].target += Number(item.jlhTarget) || 0;
+    // Map fields directly from API
+    const target = Number(item.jlhTarget) || 0;
+    const released = Number(item.release) || 0;
+    const quarantined = Number(item.karantina) || 0;
+    const wip = Number(item.wip) || 0;
     
-    // Sum Released (Release + Release2)
-    groupedData[category].released += (Number(item.Release) || 0) + (Number(item.Release2) || 0);
-    
-    // Sum WIP (JlhBetsSudahWIP)
-    groupedData[category].wip += Number(item.JlhBetsSudahWIP) || 0;
-    
-    // Calculate Unprocessed (BetsBaru - JlhBetsSudahWIP)
-    const betsBaru = Number(item.BetsBaru) || 0;
-    const betsSudahWIP = Number(item.JlhBetsSudahWIP) || 0;
-    groupedData[category].unprocessed += Math.max(0, betsBaru - betsSudahWIP);
-    
-    // Calculate Quarantined: (count of BetsKarantinaBulanSblmnya) - Release + karantina2 - release2
-    const betsKarantinaCount = item.BetsKarantinaBulanSblmnya 
-      ? item.BetsKarantinaBulanSblmnya.split(',').filter(bet => bet.trim()).length 
-      : 0;
-    const release = Number(item.Release) || 0;
-    const karantina2 = Number(item.karantina2) || 0;
-    const release2 = Number(item.release2) || 0;
-    const quarantined = Math.max(0, betsKarantinaCount - release + karantina2 - release2);
+    // Calculate Unprocessed: jlhTarget - (release + karantina + wip)
+    const unprocessed = Math.max(0, target - (released + quarantined + wip));
+
+    groupedData[category].target += target;
+    groupedData[category].released += released;
     groupedData[category].quarantined += quarantined;
+    groupedData[category].wip += wip;
+    groupedData[category].unprocessed += unprocessed;
   });
 
   const categories = Object.keys(groupedData);
@@ -124,26 +115,19 @@ export const prepareFulfillmentDepartmentData = (rawData) => {
       };
     }
 
-    // Aggregate values for each department
-    groupedData[dept].released += (Number(item.Release) || 0) + (Number(item.Release2) || 0);
+    // Map fields directly from API
+    const target = Number(item.jlhTarget) || 0;
+    const released = Number(item.release) || 0;
+    const quarantined = Number(item.karantina) || 0;
+    const wip = Number(item.wip) || 0;
     
-    // Calculate Quarantined: (count of BetsKarantinaBulanSblmnya) - Release + karantina2 - release2
-    const betsKarantinaCount = item.BetsKarantinaBulanSblmnya 
-      ? item.BetsKarantinaBulanSblmnya.split(',').filter(bet => bet.trim()).length 
-      : 0;
-    const release = Number(item.Release) || 0;
-    const karantina2 = Number(item.karantina2) || 0;
-    const release2 = Number(item.release2) || 0;
-    const quarantined = Math.max(0, betsKarantinaCount - release + karantina2 - release2);
+    // Calculate Unprocessed: jlhTarget - (release + karantina + wip)
+    const unprocessed = Math.max(0, target - (released + quarantined + wip));
+
+    groupedData[dept].released += released;
     groupedData[dept].quarantined += quarantined;
-    
-    // Sum WIP (JlhBetsSudahWIP)
-    groupedData[dept].wip += Number(item.JlhBetsSudahWIP) || 0;
-    
-    // Unprocessed = BetsBaru - JlhBetsSudahWip
-    const betsBaru = Number(item.BetsBaru) || 0;
-    const betsSudahWip = Number(item.JlhBetsSudahWIP) || 0;
-    groupedData[dept].unprocessed += Math.max(0, betsBaru - betsSudahWip);
+    groupedData[dept].wip += wip;
+    groupedData[dept].unprocessed += unprocessed;
   });
 
   const departments = Object.keys(groupedData);
@@ -221,27 +205,20 @@ export const prepareFulfillmentDepartmentPercentData = (rawData) => {
       };
     }
 
-    const release1 = Number(item.Release) || 0;
-    const release2 = Number(item.Release2) || 0;
-    const betsBaru = Number(item.BetsBaru) || 0;
-    const betsSudahWip = Number(item.JlhBetsSudahWIP) || 0;
-    const unprocessed = Math.max(0, betsBaru - betsSudahWip);
-    const wip = Number(item.JlhBetsSudahWIP) || 0;
+    // Map fields directly from API
+    const target = Number(item.jlhTarget) || 0;
+    const released = Number(item.release) || 0;
+    const quarantined = Number(item.karantina) || 0;
+    const wip = Number(item.wip) || 0;
+    
+    // Calculate Unprocessed: jlhTarget - (release + karantina + wip)
+    const unprocessed = Math.max(0, target - (released + quarantined + wip));
 
-    // Calculate Quarantined: (count of BetsKarantinaBulanSblmnya) - Release + karantina2 - release2
-    const betsKarantinaCount = item.BetsKarantinaBulanSblmnya 
-      ? item.BetsKarantinaBulanSblmnya.split(',').filter(bet => bet.trim()).length 
-      : 0;
-    const release = Number(item.Release) || 0;
-    const karantina2 = Number(item.karantina2) || 0;
-    const release2Field = Number(item.release2) || 0;
-    const quarantined = Math.max(0, betsKarantinaCount - release + karantina2 - release2Field);
-
-    groupedData[dept].released += release1 + release2;
+    groupedData[dept].released += released;
     groupedData[dept].quarantined += quarantined;
     groupedData[dept].wip += wip;
     groupedData[dept].unprocessed += unprocessed;
-    groupedData[dept].total += (release1 + release2) + quarantined + wip + unprocessed; // released + quarantined + wip + unprocessed
+    groupedData[dept].total += released + quarantined + wip + unprocessed;
   });
 
   const departments = Object.keys(groupedData);

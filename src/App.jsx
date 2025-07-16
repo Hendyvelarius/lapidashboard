@@ -16,6 +16,7 @@ import {
 } from 'chart.js'
 import Sidebar from './components/Sidebar'
 import WipTable from './components/WipTable';
+import OfTable from './components/OfTable';
 import SummaryCards from './components/SummaryCards';
 import DashboardHeader from './components/DashboardHeader';
 import useDashboardData from './hooks/useDashboardData';
@@ -206,6 +207,15 @@ function App() {
       },
     },
     indexAxis: 'x', // vertical bar chart
+    onClick: (event, activeElements) => {
+      if (activeElements && activeElements.length > 0) {
+        const idx = activeElements[0].index;
+        const category = fulfillmentChartData.labels[idx];
+        if (category) {
+          handleShowOfTable({ dept: null, category });
+        }
+      }
+    },
   };
 
   // Prepare department data from new /api/of data
@@ -268,6 +278,15 @@ function App() {
       },
     },
     layout: { padding: { left: 10, right: 10, top: 10, bottom: 10 } },
+    onClick: (event, activeElements) => {
+      if (activeElements && activeElements.length > 0) {
+        const idx = activeElements[0].index;
+        const dept = newFulfillmentDeptChartData.labels[idx];
+        if (dept) {
+          handleShowOfTable({ dept, category: null });
+        }
+      }
+    },
   };
 
   // Prepare PCT category chart data
@@ -407,6 +426,15 @@ function App() {
       },
     },
     layout: { padding: { left: 10, right: 10, top: 10, bottom: 10 } },
+    onClick: (event, activeElements) => {
+      if (activeElements && activeElements.length > 0) {
+        const idx = activeElements[0].index;
+        const dept = newFulfillmentDeptPercentData.labels[idx];
+        if (dept) {
+          handleShowOfTable({ dept, category: null });
+        }
+      }
+    },
   };
 
   // --- WIP Category Progress (WIP Group) ---
@@ -488,23 +516,16 @@ function App() {
       return sum + (Number(item.jlhTarget) || 0);
     }, 0);
 
-    // Calculate Fulfillment Release by summing "Release" and "Release2"
+    // Calculate Fulfillment Release by summing "release" field
     const fulfillmentRelease = rawData.reduce((sum, item) => {
-      const release1 = Number(item.Release) || 0;
-      const release2 = Number(item.Release2) || 0;
-      return sum + release1 + release2;
+      const release = Number(item.release) || 0;
+      return sum + release;
     }, 0);
 
-    // Calculate Quarantined: (count of BetsKarantinaBulanSblmnya) - Release + karantina2 - release2
+    // Calculate Quarantined by summing "karantina" field
     const quarantined = rawData.reduce((sum, item) => {
-      const betsKarantinaCount = item.BetsKarantinaBulanSblmnya 
-        ? item.BetsKarantinaBulanSblmnya.split(',').filter(bet => bet.trim()).length 
-        : 0;
-      const release = Number(item.Release) || 0;
-      const karantina2 = Number(item.karantina2) || 0;
-      const release2 = Number(item.release2) || 0;
-      const itemQuarantined = Math.max(0, betsKarantinaCount - release + karantina2 - release2);
-      return sum + itemQuarantined;
+      const karantina = Number(item.karantina) || 0;
+      return sum + karantina;
     }, 0);
 
     return { fulfillmentTarget, fulfillmentRelease, quarantined };
@@ -567,6 +588,14 @@ function App() {
   const [wipTableData, setWipTableData] = useState([]);
   // New: filter for WIP table (null = no filter, 0-4 = bucket index)
   const [wipTableFilter, setWipTableFilter] = useState(null);
+  
+  // State for navigation to OF table page
+  const [showOfTable, setShowOfTable] = useState(false);
+  const [ofTableLoading, setOfTableLoading] = useState(false);
+  const [ofTableData, setOfTableData] = useState([]);
+  const [ofTableFilter, setOfTableFilter] = useState(null);
+  const [ofTableFilterObj, setOfTableFilterObj] = useState(null);
+  
   // Handler for opening WIP Table page
   // filterIdx: for histogram bucket, filterObj: { dept, kelompok }
   const [wipTableFilterObj, setWipTableFilterObj] = useState(null);
@@ -583,6 +612,21 @@ function App() {
       setWipTableData([]);
     }
     setWipTableLoading(false);
+  };
+
+  // Handler for opening OF Table page
+  const handleShowOfTable = async (filterObj = null) => {
+    setShowOfTable(true);
+    setOfTableLoading(true);
+    setOfTableFilterObj(filterObj);
+    try {
+      const res = await fetch(apiUrl('/api/of'));
+      const data = await res.json();
+      setOfTableData(data.data || data || []);
+    } catch (error) {
+      setOfTableData([]);
+    }
+    setOfTableLoading(false);
   };
 
   if (showWipTable) {
@@ -630,6 +674,45 @@ function App() {
             <DashboardLoading loading={true} text="Loading WIP Data..." subtext="Sedang mengambil data WIP..." coverContentArea={true} />
           ) : (
             <WipTable data={filteredData} />
+          )}
+        </main>
+      </div>
+    );
+  }
+
+  if (showOfTable) {
+    // Filter the data according to department or category
+    let filteredData = ofTableData;
+    let filterLabel = null;
+    if (ofTableFilterObj && (ofTableFilterObj.dept || ofTableFilterObj.category)) {
+      if (ofTableFilterObj.dept) {
+        filterLabel = `Department: ${ofTableFilterObj.dept}`;
+        filteredData = ofTableData.filter(item => (item.Group_Dept || 'Unknown') === ofTableFilterObj.dept);
+      } else if (ofTableFilterObj.category) {
+        filterLabel = `Kategori: ${ofTableFilterObj.category}`;
+        filteredData = ofTableData.filter(item => (item.pengelompokan || 'Uncategorized') === ofTableFilterObj.category);
+      }
+    }
+    return (
+      <div className="dashboard-container">
+        <Sidebar />
+        <main className="content-area" style={{ position: 'relative' }}>
+          <div className="dashboard-header">
+            <h1>Daftar Order Fulfillment</h1>
+            <button className="btn" style={{marginBottom: 16}} onClick={() => { setShowOfTable(false); setOfTableFilterObj(null); }}>&larr; Kembali</button>
+          </div>
+          {ofTableFilterObj && (
+            <div style={{marginBottom: 12}}>
+              <span className="badge badge-green" style={{fontSize:14, minWidth:0, padding:'4px 16px'}}>
+                Filter: {filterLabel}
+              </span>
+              <button className="btn" style={{marginLeft: 12, fontSize:12, padding:'2px 10px'}} onClick={() => { setOfTableFilterObj(null); }}>Hapus Filter</button>
+            </div>
+          )}
+          {ofTableLoading ? (
+            <DashboardLoading loading={true} text="Loading Order Fulfillment Data..." subtext="Sedang mengambil data order fulfillment..." coverContentArea={true} />
+          ) : (
+            <OfTable data={filteredData} />
           )}
         </main>
       </div>
