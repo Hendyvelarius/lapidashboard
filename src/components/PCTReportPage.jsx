@@ -1,6 +1,5 @@
-import React, { useEffect, useState, useMemo } from "react";
-import * as XLSX from "xlsx";
-import { Doughnut, Bar, Line } from "react-chartjs-2";
+import React, { useState, useEffect, useMemo } from 'react';
+import { Doughnut, Bar, Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -11,11 +10,11 @@ import {
   Title,
   Tooltip,
   Legend,
-  ArcElement,
-} from "chart.js";
-import Sidebar from "./Sidebar";
-import Modal from "./Modal";
-import "../App.css";
+  ArcElement
+} from 'chart.js';
+import Sidebar from './Sidebar';
+import Modal from './Modal';
+import * as XLSX from 'xlsx';
 
 // Register Chart.js components
 ChartJS.register(
@@ -203,8 +202,8 @@ function TableCard({ title, columns, data, loading, error }) {
   );
 }
 
-// Main ModularReportPage component
-export default function ModularReportPage({ title, apiEndpoint, tableColumns, dataMapper }) {
+// Main PCTReportPage component
+export default function PCTReportPage({ title, apiEndpoint, tableColumns, dataMapper }) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -892,28 +891,12 @@ export default function ModularReportPage({ title, apiEndpoint, tableColumns, da
     return [];
   };
 
+  // Fetch data when component mounts - NO localStorage usage
   useEffect(() => {
     if (!apiEndpoint) {
       setData(getMockData());
       setLoading(false);
       return;
-    }
-    
-    // Check localStorage first
-    const cacheKey = `reportData_${apiEndpoint.replace(/[^a-zA-Z0-9]/g, '_')}`;
-    const cachedData = localStorage.getItem(cacheKey);
-    
-    if (cachedData) {
-      try {
-        const parsed = JSON.parse(cachedData);
-        const mappedData = dataMapper ? dataMapper(parsed) : parsed;
-        setData(mappedData);
-        setLoading(false);
-        return;
-      } catch (e) {
-        console.warn('Failed to parse cached data:', e);
-        localStorage.removeItem(cacheKey);
-      }
     }
     
     setLoading(true);
@@ -925,38 +908,21 @@ export default function ModularReportPage({ title, apiEndpoint, tableColumns, da
     fetch(fullUrl)
       .then((res) => {
         if (!res.ok) {
-          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-        }
-        const contentType = res.headers.get('content-type');
-        if (!contentType || !contentType.includes('application/json')) {
-          throw new Error('Server returned HTML instead of JSON. Backend server may not be running or endpoint may not exist.');
+          throw new Error(`HTTP error! status: ${res.status}`);
         }
         return res.json();
       })
       .then((responseData) => {
-        console.log('API Response:', responseData);
-        
-        // Handle different response structures
-        const actualData = responseData.processed || responseData.data || responseData || [];
-        
-        // Apply data mapper if provided
-        const mappedData = dataMapper ? dataMapper(actualData) : actualData;
-        
-        // Cache the original data
-        localStorage.setItem(cacheKey, JSON.stringify(actualData));
-        
+        const mappedData = dataMapper ? dataMapper(responseData) : responseData;
         setData(mappedData);
         setLoading(false);
       })
       .catch((e) => {
         console.error('API fetch error:', e);
-        console.log('Falling back to mock data...');
-        
-        // Fall back to mock data
-        const mockData = getMockData();
-        setData(mockData);
-        setError(`API Error: ${e.message}. Using mock data.`);
+        setError(`Failed to load data: ${e.message}`);
         setLoading(false);
+        // Fall back to mock data on error
+        setData(getMockData());
       });
   }, [apiEndpoint, dataMapper, title]);
 
@@ -1004,7 +970,7 @@ export default function ModularReportPage({ title, apiEndpoint, tableColumns, da
             />
           </div>
 
-          {/* Charts Row - Donut chart and Bar chart */}
+          {/* Charts Row */}
           <div className="modular-charts-row">
             <div className="modular-small-card">
               <div className="chart-card-header">
@@ -1038,7 +1004,7 @@ export default function ModularReportPage({ title, apiEndpoint, tableColumns, da
             </div>
           </div>
 
-          {/* Chart Selection Modals */}
+          {/* Modal for chart selection */}
           <Modal open={smallChartModalOpen} onClose={() => setSmallChartModalOpen(false)} title="Pilih Jenis Chart Kecil">
             <div className="modal-list">
               {smallChartOptions.map((option, i) => (
@@ -1099,7 +1065,7 @@ export default function ModularReportPage({ title, apiEndpoint, tableColumns, da
             </div>
           </Modal>
 
-          {/* Table Card */}
+          {/* Table Row */}
           <div className="modular-table-row">
             <TableCard
               title="Data Table"

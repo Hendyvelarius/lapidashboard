@@ -113,9 +113,9 @@ async function getProductCycleTimeYearly(req, res) {
 
 async function getProductCycleTimeAverage(req, res) {
   try {
-    const data = await SqlModel.getProductCycleTime();
-    const processed = converterModel.getProductCycleTimeAverage(data);
-    res.json({ processed });
+    const raw = await SqlModel.getProductCycleTime();
+    const data = converterModel.getProductCycleTimeAverage(raw);
+    res.json({ data });
   } catch (err) {
     console.error('Error in fetching Product Cycle Time Average:', err);
     res.status(500).json({ success: false, error: 'Internal server error' });
@@ -142,4 +142,28 @@ async function getStockReport(req, res) {
   }
 }
 
-module.exports = { getWip, getAlur, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getOrderFulfillment, getStockReport };
+async function getMonthlyForecast(req, res) {
+  try {
+    const { month, year } = req.query;
+    if (!month || !year) {
+      return res.status(400).json({ error: 'month and year query parameters are required' });
+    }
+    const data = await SqlModel.getMonthlyForecast(month, year);
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching Monthly Forecast:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+async function getForecast(req, res) {
+  try {
+    const data = await SqlModel.getForecast();
+    res.json( data );
+  } catch (err) {
+    console.error('Error in fetching Forecast:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+module.exports = { getWip, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getOrderFulfillment, getStockReport };

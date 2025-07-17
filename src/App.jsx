@@ -793,13 +793,10 @@ function App() {
       };
     }
 
-    console.log('Stock data sample:', stockData.slice(0, 3)); // Debug log
-
     // Aggregate by Kategori
     const categoryAgg = {};
     stockData.forEach(item => {
       const cat = item.Kategori || 'Uncategorized';
-      console.log('Processing item:', item.Product_Code, 'Kategori:', cat); // Debug log
       if (!categoryAgg[cat]) {
         categoryAgg[cat] = { Forecast: 0, Release: 0, Sales: 0 };
       }
@@ -807,8 +804,6 @@ function App() {
       categoryAgg[cat].Release += item.Release || 0;
       categoryAgg[cat].Sales += item.Sales || 0;
     });
-
-    console.log('Category aggregation:', categoryAgg); // Debug log
 
     const labels = Object.keys(categoryAgg);
     const forecastData = labels.map(cat => categoryAgg[cat].Forecast);
@@ -920,7 +915,6 @@ function App() {
         beginAtZero: true,
         title: { display: true, text: 'Quantity' },
         ticks: { 
-          stepSize: 500,
           callback: (value) => value.toLocaleString()
         },
       },

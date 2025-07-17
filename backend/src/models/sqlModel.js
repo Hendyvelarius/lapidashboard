@@ -1,4 +1,5 @@
 const { connect } = require('../../config/sqlserver');
+const sql = require('mssql');
 
 async function getFulfillmentPerDept() {
   const db = await connect();
@@ -73,7 +74,7 @@ async function getProductCycleTime() {
         ap.Batch_Date LIKE '[1-2][0-9][0-9][0-9]/[0-1][0-9]/[0-3][0-9]'
         AND LEN(ap.Batch_Date) = 10
         AND ISDATE(ap.Batch_Date) = 1
-        AND CONVERT(date, ap.Batch_Date, 111) >= DATEADD(month, -1, GETDATE())
+        AND CONVERT(date, ap.Batch_Date, 111) >= DATEADD(month, -2, GETDATE())
         AND mp.Product_Name NOT LIKE '%granulat%'
     ),
     BatchesWithLabel AS (
@@ -178,4 +179,108 @@ async function getStockReport() {
   return result.recordset;
 }
 
-module.exports = { WorkInProgress, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport };
+async function getMonthlyForecast(month, year) {
+  const db = await connect();
+  const result = await db
+    .request()
+    .input('month', sql.VarChar, month)
+    .input('year', sql.VarChar, year)
+    .query(`
+      SELECT 
+          a.Product_ID,
+          a.product_shortname AS Product_NM,
+          ISNULL(ccc.stockRelease, 0) AS Release,
+          ISNULL(ggg.Forecast, 0) AS Forecast,
+          ISNULL(fff.sales, 0) AS Sales,
+          ISNULL(iii.Produksi, 0) AS Produksi
+      FROM v_m_Product_aktif a
+
+      -- Release
+      LEFT JOIN (
+          SELECT 
+              st_productid, 
+              SUM(CASE 
+                  WHEN lock_batchno IS NULL 
+                  THEN st_awalrelease + st_terimarelease + st_terimalangsung - st_keluarrelease 
+                  ELSE 0 
+              END) AS stockRelease
+          FROM (
+              SELECT psp.*, lock_batchno 
+              FROM t_product_stock_position psp
+              LEFT JOIN vwbatchlock bl 
+                  ON bl.Lock_ProductID = psp.St_ProductID AND bl.Lock_Batchno = psp.St_BatchNo
+              WHERE psp.st_periode = @year + ' ' + @month
+          ) AS stock
+          GROUP BY st_productid
+      ) ccc ON ccc.st_productid = a.Product_ID
+
+      -- Forecast
+      LEFT JOIN (
+          SELECT 
+              Product_ID, 
+              CASE @month
+                  WHEN '01' THEN qty1
+                  WHEN '02' THEN qty2
+                  WHEN '03' THEN qty3
+                  WHEN '04' THEN qty4
+                  WHEN '05' THEN qty5
+                  WHEN '06' THEN qty6
+                  WHEN '07' THEN qty7
+                  WHEN '08' THEN qty8
+                  WHEN '09' THEN qty9
+                  WHEN '10' THEN qty10
+                  WHEN '11' THEN qty11
+                  WHEN '12' THEN qty12
+              END AS Forecast
+          FROM m_forecast
+          WHERE tahun = @year
+      ) ggg ON ggg.Product_ID = a.Product_ID
+
+      -- Sales
+      LEFT JOIN (
+          SELECT 
+              d.spb_productid, 
+              SUM(d.spb_qty) AS sales
+          FROM t_spb_detail d
+          INNER JOIN t_spb_header h ON d.spb_no = h.spb_no
+          WHERE 
+              CONVERT(VARCHAR(6), h.spb_date, 112) = @year + @month
+              AND h.spb_type IN ('501', '502')
+              AND d.spb_bonusQty <> 1
+          GROUP BY d.spb_productid
+      ) fff ON fff.spb_productid = a.Product_ID
+
+      -- Produksi
+      LEFT JOIN (
+          SELECT 
+              d.bphp_productid, 
+              SUM(d.bphp_jumlah) AS Produksi
+          FROM t_bphp_detail d
+          INNER JOIN t_bphp_header h ON d.bphp_no = h.bphp_no
+          WHERE d.bphp_no IN (
+              SELECT bphp_no 
+              FROM t_bphp_status 
+              WHERE 
+                  Approver_No = '3' 
+                  AND isReject = 0 
+                  AND CONVERT(VARCHAR(6), process_date, 112) = @year + @month
+          )
+          GROUP BY d.bphp_productid
+      ) iii ON iii.bphp_productid = a.Product_ID
+
+      WHERE 
+          ISNULL(a.Product_SalesID, '') <> ''
+          AND a.product_saleshna <> 0
+      ORDER BY a.product_shortname
+    `);
+
+  return result.recordset;
+}
+
+async function getForecast() {
+  const db = await connect();
+  const result = await db.request().query(`EXEC sp_Dashboard_DataReportManHours;`);
+  return result.recordset;
+}
+
+module.exports = { WorkInProgress, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast};

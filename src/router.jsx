@@ -2,7 +2,7 @@ import React from "react";
 import { BrowserRouter, Routes, Route } from "react-router";
 import App from "./App";
 import Reports from "./Reports";
-import ModularReportPage from "./components/ModularReportPage";
+import PCTReportPage from "./components/PCTReportPage";
 import AIChat from "./components/AIChat";
 
 export default function AppRouter() {
@@ -14,7 +14,7 @@ export default function AppRouter() {
         <Route
           path="/reports/pcttahunan"
           element={
-            <ModularReportPage
+            <PCTReportPage
               title="Product Cycle Time (PCT) Tahunan"
               apiEndpoint="/api/pctAverage"
               tableColumns={[
@@ -26,7 +26,9 @@ export default function AppRouter() {
                 { key: "rataRataPCT", label: "Rata-rata PCT (hari)" },
               ]}
               dataMapper={(rawData) => {
-                return rawData.map(item => ({
+                // Handle the response structure - data is nested in the response
+                const actualData = rawData.data || rawData || [];
+                return actualData.map(item => ({
                   kode: item.Product_ID || '-',
                   namaProduk: item.Product_Name || '-',
                   kategori: item.Kategori || '-',
@@ -41,7 +43,7 @@ export default function AppRouter() {
         <Route
           path="/reports/pct-monthly"
           element={
-            <ModularReportPage
+            <PCTReportPage
               title="Product Cycle Time (PCT) Monthly"
               apiEndpoint="/api/pct"
               tableColumns={[
@@ -64,7 +66,7 @@ export default function AppRouter() {
                   batchNo: item.Batch_No || '-',
                   batchDate: item.Batch_Date ? new Date(item.Batch_Date).toLocaleDateString('id-ID') : '-',
                   pct: item.PCT || 0,
-                  // Keep the raw PCT value for calculations (use 'pct' for the key expected by ModularReportPage)
+                  // Keep the raw PCT value for calculations (use 'pct' for the key expected by PCTReportPage)
                   rataRataPCT: item.PCT || 0,
                 }));
               }}

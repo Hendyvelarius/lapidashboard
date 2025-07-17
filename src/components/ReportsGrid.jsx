@@ -14,37 +14,37 @@ const cards = [
   {
     icon: <FaClipboardList size={36} color="#38e6c5" />, // Order Fulfillment
     title: "Order Fulfillment",
-    desc: "Pemenuhan produksi sesuai dengan target.",
+    desc: "Work in progress, coming soon.",
   },
   {
     icon: <FaBoxOpen size={36} color="#4f8cff" />, // Work In Progress
     title: "Work In Progress",
-    desc: "Produk dalam tahap pengerjaan.",
+    desc: "Work in progress, coming soon.",
   },
   {
     icon: <FaRegFileAlt size={36} color="#ffb347" />,
-    title: "Document Report",
-    desc: "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
+    title: "Forecast & Stock Report",
+    desc: "Laporan prediksi, penjualan, dan stok produk.",
   },
   {
     icon: <FaRegImage size={36} color="#6a5acd" />,
-    title: "Image Analysis",
-    desc: "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
+    title: "IN CONSTRUCTION",
+    desc: "Work in progress, coming soon.",
   },
   {
     icon: <FaRegPlayCircle size={36} color="#43a047" />,
-    title: "Video Review",
-    desc: "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
+    title: "IN CONSTRUCTION",
+    desc: "Work in progress, coming soon.",
   },
   {
     icon: <FaRegFolderOpen size={36} color="#e57373" />,
-    title: "Archive",
-    desc: "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
+    title: "IN CONSTRUCTION",
+    desc: "Work in progress, coming soon.",
   },
   {
     icon: <FaCog size={36} color="#222" />,
-    title: "Settings",
-    desc: "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
+    title: "IN CONSTRUCTION",
+    desc: "Work in progress, coming soon.",
   },
 ];
 
