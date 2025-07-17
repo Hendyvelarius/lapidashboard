@@ -12,38 +12,39 @@ const cards = [
     modal: true,
   },
   {
-    icon: <FaClipboardList size={36} color="#38e6c5" />, // Order Fulfillment
-    title: "Order Fulfillment",
-    desc: "Work in progress, coming soon.",
-  },
-  {
-    icon: <FaBoxOpen size={36} color="#4f8cff" />, // Work In Progress
-    title: "Work In Progress",
-    desc: "Work in progress, coming soon.",
-  },
-  {
     icon: <FaRegFileAlt size={36} color="#ffb347" />,
     title: "Forecast & Stock Report",
     desc: "Laporan prediksi, penjualan, dan stok produk.",
   },
   {
+    icon: <FaClipboardList size={36} color="#38e6c5" />, // Order Fulfillment
+    title: "In Construction",
+    desc: "Work in progress, coming soon.",
+  },
+  {
+    icon: <FaBoxOpen size={36} color="#4f8cff" />, // Work In Progress
+    title: "In Construction",
+    desc: "Work in progress, coming soon.",
+  },
+
+  {
     icon: <FaRegImage size={36} color="#6a5acd" />,
-    title: "IN CONSTRUCTION",
+    title: "In Construction",
     desc: "Work in progress, coming soon.",
   },
   {
     icon: <FaRegPlayCircle size={36} color="#43a047" />,
-    title: "IN CONSTRUCTION",
+    title: "In Construction",
     desc: "Work in progress, coming soon.",
   },
   {
     icon: <FaRegFolderOpen size={36} color="#e57373" />,
-    title: "IN CONSTRUCTION",
+    title: "In Construction",
     desc: "Work in progress, coming soon.",
   },
   {
     icon: <FaCog size={36} color="#222" />,
-    title: "IN CONSTRUCTION",
+    title: "In Construction",
     desc: "Work in progress, coming soon.",
   },
 ];
@@ -57,6 +58,15 @@ const pctReports = [
 export default function ReportsGrid() {
   const [pctModalOpen, setPctModalOpen] = useState(false);
   const navigate = useNavigate();
+
+  const handleCardClick = (card) => {
+    if (card.title === "Product Cycle Time" && card.modal) {
+      setPctModalOpen(true);
+    } else if (card.title === "Forecast & Stock Report") {
+      navigate("/stock-forecast");
+    }
+    // Add more navigation cases for other cards here later
+  };
 
   const handlePctReportClick = (reportTitle) => {
     setPctModalOpen(false);
@@ -79,7 +89,7 @@ export default function ReportsGrid() {
             key={idx}
             tabIndex={0}
             role="button"
-            onClick={() => card.modal ? setPctModalOpen(true) : null}
+            onClick={() => handleCardClick(card)}
           >
             <div className="report-card-icon">{card.icon}</div>
             <div className="report-card-title">{card.title}</div>

@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from "react-router";
 import App from "./App";
 import Reports from "./Reports";
 import PCTReportPage from "./components/PCTReportPage";
+import StockForecastDashboard from "./components/StockForecastDashboard";
 import AIChat from "./components/AIChat";
 
 export default function AppRouter() {
@@ -73,6 +74,7 @@ export default function AppRouter() {
             />
           }
         />
+        <Route path="/stock-forecast" element={<StockForecastDashboard />} />
         <Route path="/ai" element={<AIChat />} />
       </Routes>
     </BrowserRouter>

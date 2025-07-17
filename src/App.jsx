@@ -853,6 +853,10 @@ function App() {
   const stockReportChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
+    onClick: (event, elements) => {
+      // Navigate to Stock Forecast page when any part of the chart is clicked
+      navigate('/stock-forecast');
+    },
     plugins: {
       legend: { 
         display: true,
@@ -1136,6 +1140,7 @@ function App() {
                 style={{ color: '#4f8cff', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }}
                 onClick={() => setStockDropdownOpen(open => !open)}
                 tabIndex={0}
+                title="Click chart to view detailed Stock & Forecast Dashboard"
               >
                 {stockChartType === 'top10' ? 'Forecast vs Finished Goods (Top 10)' : 'Forecast by Category'}
                 <span style={{ marginLeft: 8, fontSize: 16 }}>▼</span>
@@ -1155,7 +1160,7 @@ function App() {
                 </div>
               )}
             </div>
-            <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+            <div style={{ flex: 1, minHeight: 0, position: 'relative', cursor: 'pointer' }} title="Click to view detailed Stock & Forecast Dashboard">
               {stockReportLoading ? (
                 <DashboardLoading loading={true} />
               ) : (

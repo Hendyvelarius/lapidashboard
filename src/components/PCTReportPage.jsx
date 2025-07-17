@@ -14,6 +14,7 @@ import {
 } from 'chart.js';
 import Sidebar from './Sidebar';
 import Modal from './Modal';
+import DashboardLoading from './DashboardLoading';
 import * as XLSX from 'xlsx';
 
 // Register Chart.js components
@@ -135,9 +136,12 @@ function TableCard({ title, columns, data, loading, error }) {
       </div>
       <div className="modular-table-content">
         {loading ? (
-          <div className="table-loading">
-            <div className="loading-spinner"></div>
-            <span>Loading data...</span>
+          <div style={{ position: 'relative', height: '280px' }}>
+            <DashboardLoading 
+              loading={true} 
+              text="Loading table data..." 
+              subtext="Processing PCT information..." 
+            />
           </div>
         ) : error ? (
           <div className="table-error">
@@ -925,6 +929,22 @@ export default function PCTReportPage({ title, apiEndpoint, tableColumns, dataMa
         setData(getMockData());
       });
   }, [apiEndpoint, dataMapper, title]);
+
+  if (loading) {
+    return (
+      <div className="dashboard-container">
+        <Sidebar />
+        <main className="content-area">
+          <DashboardLoading 
+            loading={true} 
+            text={`Loading ${title}...`} 
+            subtext="Fetching PCT data and analytics..." 
+            coverContentArea={true}
+          />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="dashboard-container">
