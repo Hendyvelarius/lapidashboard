@@ -1,52 +1,86 @@
-import React from "react";
-import { BrowserRouter, Routes, Route } from "react-router";
+import React, { useEffect } from "react";
+import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-router";
+import { AuthProvider } from "./context/AuthContext";
+import ProtectedRoute from "./components/ProtectedRoute";
 import App from "./App";
 import Reports from "./Reports";
 import PCTReportPage from "./components/PCTReportPage";
 import StockForecastDashboard from "./components/StockForecastDashboard";
 import AIChat from "./components/AIChat";
 
+// Component to handle auth token from URL
+function AuthHandler({ children }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const authToken = params.get('auth');
+    
+    if (authToken) {
+      // Store the auth token in localStorage
+      localStorage.setItem('authToken', authToken);
+      console.log('Auth token received and stored:', authToken);
+      
+      // Remove auth parameter from URL to clean it up
+      params.delete('auth');
+      const newSearch = params.toString();
+      const newPath = location.pathname + (newSearch ? `?${newSearch}` : '');
+      navigate(newPath, { replace: true });
+    }
+  }, [location, navigate]);
+
+  return children;
+}
+
 export default function AppRouter() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<App />} />
+      <AuthProvider>
+        <AuthHandler>
+          <Routes>
+            <Route path="/" element={<ProtectedRoute><App /></ProtectedRoute>} />
+            <Route path="/eDashboard-dev" element={<ProtectedRoute><App /></ProtectedRoute>} />
+            <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
         <Route path="/reports" element={<Reports />} />
         <Route
           path="/reports/pcttahunan"
           element={
-            <PCTReportPage
-              title="Product Cycle Time (PCT) Tahunan"
-              apiEndpoint="/api/pctAverage"
-              tableColumns={[
-                { key: "kode", label: "Kode" },
-                { key: "namaProduk", label: "Nama Produk" },
-                { key: "kategori", label: "Kategori" },
-                { key: "departemen", label: "Departemen" },
-                { key: "batch", label: "Batch" },
-                { key: "rataRataPCT", label: "Rata-rata PCT (hari)" },
-              ]}
-              dataMapper={(rawData) => {
-                // Handle the response structure - data is nested in the response
-                const actualData = rawData.data || rawData || [];
-                return actualData.map(item => ({
-                  kode: item.Product_ID || '-',
-                  namaProduk: item.Product_Name || '-',
-                  kategori: item.Kategori || '-',
-                  departemen: item.Dept || '-',
-                  batch: Array.isArray(item.Batch_Nos) ? item.Batch_Nos.length : 0,
-                  rataRataPCT: item.PCTAverage || 0,
-                }));
-              }}
-            />
+            <ProtectedRoute>
+              <PCTReportPage
+                title="Product Cycle Time (PCT) Tahunan"
+                apiEndpoint="/api/pctAverage"
+                tableColumns={[
+                  { key: "kode", label: "Kode" },
+                  { key: "namaProduk", label: "Nama Produk" },
+                  { key: "kategori", label: "Kategori" },
+                  { key: "departemen", label: "Departemen" },
+                  { key: "batch", label: "Batch" },
+                  { key: "rataRataPCT", label: "Rata-rata PCT (hari)" },
+                ]}
+                dataMapper={(rawData) => {
+                  // Handle the response structure - data is nested in the response
+                  const actualData = rawData.data || rawData || [];
+                  return actualData.map(item => ({
+                    kode: item.Product_ID || '-',
+                    namaProduk: item.Product_Name || '-',
+                    kategori: item.Kategori || '-',
+                    departemen: item.Dept || '-',
+                    batch: Array.isArray(item.Batch_Nos) ? item.Batch_Nos.length : 0,
+                    rataRataPCT: item.PCTAverage || 0,
+                  }));
+                }}
+              />
+            </ProtectedRoute>
           }
         />
         <Route
           path="/reports/pct-monthly"
           element={
-            <PCTReportPage
-              title="Product Cycle Time (PCT) Monthly"
-              apiEndpoint="/api/pct"
+            <ProtectedRoute>
+              <PCTReportPage
+                title="Product Cycle Time (PCT) Monthly"
+                apiEndpoint="/api/pct"
               tableColumns={[
                 { key: "kode", label: "Kode" },
                 { key: "namaProduk", label: "Nama Produk" },
@@ -71,12 +105,15 @@ export default function AppRouter() {
                   rataRataPCT: item.PCT || 0,
                 }));
               }}
-            />
+              />
+            </ProtectedRoute>
           }
         />
-        <Route path="/stock-forecast" element={<StockForecastDashboard />} />
-        <Route path="/ai" element={<AIChat />} />
+        <Route path="/stock-forecast" element={<ProtectedRoute><StockForecastDashboard /></ProtectedRoute>} />
+        <Route path="/ai" element={<ProtectedRoute><AIChat /></ProtectedRoute>} />
       </Routes>
+      </AuthHandler>
+      </AuthProvider>
     </BrowserRouter>
   );
 }
