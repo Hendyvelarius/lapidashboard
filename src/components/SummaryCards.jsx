@@ -2,7 +2,7 @@ import React from 'react';
 
 const SummaryCards = ({ 
   fulfillmentMetrics, 
-  fulfillmentLoading, 
+  loading, 
   wipTerlambatCount, 
   totalWipCount, 
   onWipTableClick 
@@ -12,7 +12,7 @@ const SummaryCards = ({
       <div className="summary-card">
         <div className="summary-title">Fulfillment Target</div>
         <div className="summary-value">
-          {fulfillmentLoading ? (
+          {loading ? (
             <span className="summary-loading">...</span>
           ) : (
             fulfillmentMetrics.fulfillmentTarget
@@ -23,7 +23,7 @@ const SummaryCards = ({
       <div className="summary-card">
         <div className="summary-title">Fulfillment Release</div>
         <div className="summary-value">
-          {fulfillmentLoading ? (
+          {loading ? (
             <span className="summary-loading">...</span>
           ) : (
             fulfillmentMetrics.fulfillmentRelease
@@ -34,7 +34,7 @@ const SummaryCards = ({
       <div className="summary-card">
         <div className="summary-title">Proses Karantina</div>
         <div className="summary-value">
-          {fulfillmentLoading ? (
+          {loading ? (
             <span className="summary-loading">...</span>
           ) : (
             fulfillmentMetrics.quarantined

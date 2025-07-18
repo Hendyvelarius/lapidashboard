@@ -52,17 +52,11 @@ function App() {
     pctRawData,
     stockReportData,
     loading,
-    fulfillmentLoading,
-    pctLoading,
-    stockReportLoading,
     refreshing,
     lastUpdated,
     handleRefresh,
     formatTimestamp
   } = useDashboardData();
-
-  // For WIP charts loading state (side card)
-  const wipLoading = loading;
 
   // Dropdown for stock report chart type
   const [stockChartType, setStockChartType] = useState('top10'); // 'top10' or 'category'
@@ -944,14 +938,12 @@ function App() {
           lastUpdated={lastUpdated}
           refreshing={refreshing}
           loading={loading}
-          fulfillmentLoading={fulfillmentLoading}
-          pctLoading={pctLoading}
           onRefresh={handleRefresh}
           formatTimestamp={formatTimestamp}
         />
         <SummaryCards
           fulfillmentMetrics={fulfillmentMetrics}
-          fulfillmentLoading={fulfillmentLoading}
+          loading={loading}
           wipTerlambatCount={wipTerlambatCount}
           totalWipCount={wipData.length}
           onWipTableClick={handleShowWipTable}
@@ -990,23 +982,11 @@ function App() {
             </div>
             <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
               {orderChartType === 'department' ? (
-                fulfillmentLoading ? (
-                  <DashboardLoading loading={true} />
-                ) : (
-                  <Bar data={newFulfillmentDeptChartData} options={newFulfillmentDeptChartOptions} />
-                )
+                <Bar data={newFulfillmentDeptChartData} options={newFulfillmentDeptChartOptions} />
               ) : orderChartType === 'departmentPercent' ? (
-                fulfillmentLoading ? (
-                  <DashboardLoading loading={true} />
-                ) : (
-                  <Bar data={newFulfillmentDeptPercentData} options={newFulfillmentDeptPercentChartOptions} />
-                )
+                <Bar data={newFulfillmentDeptPercentData} options={newFulfillmentDeptPercentChartOptions} />
               ) : (
-                fulfillmentLoading ? (
-                  <DashboardLoading loading={true} />
-                ) : (
-                  <Bar data={fulfillmentChartData} options={fulfillmentChartOptions} />
-                )
+                <Bar data={fulfillmentChartData} options={fulfillmentChartOptions} />
               )}
             </div>
           </div>
@@ -1071,48 +1051,40 @@ function App() {
                   />
                 )}
                 {wipDropdownValue === 'department' && (
-                  wipLoading ? (
-                    <DashboardLoading loading={true} />
-                  ) : (
-                    <Bar
-                      data={wipDeptBarData}
-                      options={{
-                        ...wipDeptBarOptions,
-                        onClick: (evt, elements) => {
-                          if (elements && elements.length > 0) {
-                            const idx = elements[0].index;
-                            const dept = wipDeptBarData.labels[idx];
-                            handleShowWipTable(null, { dept });
-                          }
-                        },
-                        onHover: (e, el) => {
-                          e.native.target.style.cursor = el && el.length ? 'pointer' : 'default';
-                        },
-                      }}
-                    />
-                  )
+                  <Bar
+                    data={wipDeptBarData}
+                    options={{
+                      ...wipDeptBarOptions,
+                      onClick: (evt, elements) => {
+                        if (elements && elements.length > 0) {
+                          const idx = elements[0].index;
+                          const dept = wipDeptBarData.labels[idx];
+                          handleShowWipTable(null, { dept });
+                        }
+                      },
+                      onHover: (e, el) => {
+                        e.native.target.style.cursor = el && el.length ? 'pointer' : 'default';
+                      },
+                    }}
+                  />
                 )}
                 {wipDropdownValue === 'category' && (
-                  wipLoading ? (
-                    <DashboardLoading loading={true} />
-                  ) : (
-                    <Bar
-                      data={wipGroupBarData}
-                      options={{
-                        ...wipGroupBarOptions,
-                        onClick: (evt, elements) => {
-                          if (elements && elements.length > 0) {
-                            const idx = elements[0].index;
-                            const kelompok = Object.keys(wipGroupAgg)[idx];
-                            handleShowWipTable(null, { kelompok });
-                          }
-                        },
-                        onHover: (e, el) => {
-                          e.native.target.style.cursor = el && el.length ? 'pointer' : 'default';
-                        },
-                      }}
-                    />
-                  )
+                  <Bar
+                    data={wipGroupBarData}
+                    options={{
+                      ...wipGroupBarOptions,
+                      onClick: (evt, elements) => {
+                        if (elements && elements.length > 0) {
+                          const idx = elements[0].index;
+                          const kelompok = Object.keys(wipGroupAgg)[idx];
+                          handleShowWipTable(null, { kelompok });
+                        }
+                      },
+                      onHover: (e, el) => {
+                        e.native.target.style.cursor = el && el.length ? 'pointer' : 'default';
+                      },
+                    }}
+                  />
                 )}
               </div>
             </div>
@@ -1126,11 +1098,7 @@ function App() {
               </span>
             </div>
             <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-              {pctLoading ? (
-                <DashboardLoading loading={true} />
-              ) : (
-                <Bar data={pctCategoryChartData} options={pctCategoryChartOptions} />
-              )}
+              <Bar data={pctCategoryChartData} options={pctCategoryChartOptions} />
             </div>
           </div>
           <div className="dashboard-side-card">
@@ -1161,11 +1129,7 @@ function App() {
               )}
             </div>
             <div style={{ flex: 1, minHeight: 0, position: 'relative', cursor: 'pointer' }} title="Click to view detailed Stock & Forecast Dashboard">
-              {stockReportLoading ? (
-                <DashboardLoading loading={true} />
-              ) : (
-                <Bar data={stockReportChartData} options={stockReportChartOptions} />
-              )}
+              <Bar data={stockReportChartData} options={stockReportChartOptions} />
             </div>
           </div>
         </div>

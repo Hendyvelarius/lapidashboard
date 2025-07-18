@@ -4,8 +4,6 @@ const DashboardHeader = ({
   lastUpdated, 
   refreshing, 
   loading, 
-  fulfillmentLoading, 
-  pctLoading, 
   onRefresh,
   formatTimestamp 
 }) => {
@@ -37,7 +35,7 @@ const DashboardHeader = ({
           </div>
           <button 
             onClick={onRefresh}
-            disabled={refreshing || loading || fulfillmentLoading || pctLoading}
+            disabled={refreshing || loading}
             style={{
               display: 'flex',
               alignItems: 'center',

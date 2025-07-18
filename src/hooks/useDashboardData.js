@@ -101,9 +101,6 @@ const useDashboardData = () => {
       const pctData = pctResult.processed || pctResult.data || pctResult || [];
       const stockReportData = stockReportResult.data || stockReportResult || [];
 
-      console.log('PCT API Response:', pctResult); // Debug log
-      console.log('Stock Report API Response:', stockReportResult); // Debug log
-
       setWipData(wipData);
       setFulfillmentRawData(fulfillmentData);
       setPctRawData(pctData);

@@ -420,6 +420,12 @@ function StockForecastDashboard() {
       };
     }
 
+    // Get current date to determine the latest valid period
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1; // getMonth() returns 0-11
+    const currentPeriod = `${currentYear}${currentMonth.toString().padStart(2, '0')}`;
+
     // Group by product to get unique products
     const productMap = {};
     data.forEach(item => {
@@ -440,11 +446,24 @@ function StockForecastDashboard() {
       productMap[key].totalSales += Number(item.Sales) || 0;
       productMap[key].totalProduksi += Number(item.Produksi) || 0;
       
-      // For stock, track the latest period (July 2025 = 202507)
+      // For stock, track the latest period up to current month with actual stock data
       const itemPeriod = item.Periode;
-      if (!productMap[key].latestPeriod || itemPeriod > productMap[key].latestPeriod) {
-        productMap[key].latestPeriod = itemPeriod;
-        productMap[key].latestStock = Number(item.Release) || 0;
+      const stockValue = Number(item.Release) || 0;
+      
+      // Only consider periods up to current month and with actual stock data
+      if (itemPeriod <= currentPeriod && stockValue > 0) {
+        if (!productMap[key].latestPeriod || itemPeriod > productMap[key].latestPeriod) {
+          productMap[key].latestPeriod = itemPeriod;
+          productMap[key].latestStock = stockValue;
+        }
+      }
+      
+      // If no stock found yet, try to find the most recent period with any data (even 0)
+      if (productMap[key].latestStock === 0 && itemPeriod <= currentPeriod) {
+        if (!productMap[key].latestPeriod || itemPeriod > productMap[key].latestPeriod) {
+          productMap[key].latestPeriod = itemPeriod;
+          productMap[key].latestStock = stockValue;
+        }
       }
       
       // Also keep cumulative stock for backward compatibility
@@ -477,6 +496,12 @@ function StockForecastDashboard() {
   const getSmallChartData = () => {
     if (!data || data.length === 0) return { labels: [], datasets: [] };
 
+    // Get current date to determine the latest valid period
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1; // getMonth() returns 0-11
+    const currentPeriod = `${currentYear}${currentMonth.toString().padStart(2, '0')}`;
+
     // Group by product code and aggregate totals
     const productMap = {};
     data.forEach(item => {
@@ -486,11 +511,35 @@ function StockForecastDashboard() {
           Product_Code: item.Product_Code,
           Product_NM: item.Product_NM,
           totalSales: 0,
-          totalStock: 0
+          totalStock: 0,
+          latestStock: 0,
+          latestPeriod: ''
         };
       }
       productMap[key].totalSales += Number(item.Sales) || 0;
-      productMap[key].totalStock += Number(item.Release) || 0;
+      
+      // For latest stock, use the same logic as other functions
+      const itemPeriod = item.Periode;
+      const stockValue = Number(item.Release) || 0;
+      
+      // Only consider periods up to current month and with actual stock data
+      if (itemPeriod <= currentPeriod && stockValue > 0) {
+        if (!productMap[key].latestPeriod || itemPeriod > productMap[key].latestPeriod) {
+          productMap[key].latestPeriod = itemPeriod;
+          productMap[key].latestStock = stockValue;
+        }
+      }
+      
+      // If no stock found yet, try to find the most recent period with any data (even 0)
+      if (productMap[key].latestStock === 0 && itemPeriod <= currentPeriod) {
+        if (!productMap[key].latestPeriod || itemPeriod > productMap[key].latestPeriod) {
+          productMap[key].latestPeriod = itemPeriod;
+          productMap[key].latestStock = stockValue;
+        }
+      }
+      
+      // Keep cumulative stock for backward compatibility
+      productMap[key].totalStock += stockValue;
     });
 
     const products = Object.values(productMap);
@@ -520,11 +569,11 @@ function StockForecastDashboard() {
         break;
       case 'lowStock':
         sortedProducts = products
-          .filter(p => p.totalStock > 0)
-          .sort((a, b) => a.totalStock - b.totalStock)
+          .filter(p => p.latestStock > 0)
+          .sort((a, b) => a.latestStock - b.latestStock)
           .slice(0, 10);
         chartTitle = 'Stock (Low Stock)';
-        dataKey = 'totalStock';
+        dataKey = 'latestStock';
         colors = ['#f59e0b', '#d97706', '#b45309', '#92400e', '#78350f', '#78350f', '#78350f', '#78350f', '#78350f', '#78350f'];
         break;
       default:
@@ -712,6 +761,12 @@ function StockForecastDashboard() {
   const tableData = useMemo(() => {
     if (!data || data.length === 0) return [];
 
+    // Get current date to determine the latest valid period
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1; // getMonth() returns 0-11
+    const currentPeriod = `${currentYear}${currentMonth.toString().padStart(2, '0')}`;
+
     // Group by product code and aggregate totals
     const productMap = {};
     
@@ -734,11 +789,24 @@ function StockForecastDashboard() {
       productMap[key].totalSales += Number(item.Sales) || 0;
       productMap[key].totalProduksi += Number(item.Produksi) || 0;
       
-      // For stock, we need to track the latest period (July 2025 = 202507)
+      // For stock, track the latest period up to current month with actual stock data
       const itemPeriod = item.Periode;
-      if (!productMap[key].latestPeriod || itemPeriod > productMap[key].latestPeriod) {
-        productMap[key].latestPeriod = itemPeriod;
-        productMap[key].latestStock = Number(item.Release) || 0;
+      const stockValue = Number(item.Release) || 0;
+      
+      // Only consider periods up to current month and with actual stock data
+      if (itemPeriod <= currentPeriod && stockValue > 0) {
+        if (!productMap[key].latestPeriod || itemPeriod > productMap[key].latestPeriod) {
+          productMap[key].latestPeriod = itemPeriod;
+          productMap[key].latestStock = stockValue;
+        }
+      }
+      
+      // If no stock found yet, try to find the most recent period with any data (even 0)
+      if (productMap[key].latestStock === 0 && itemPeriod <= currentPeriod) {
+        if (!productMap[key].latestPeriod || itemPeriod > productMap[key].latestPeriod) {
+          productMap[key].latestPeriod = itemPeriod;
+          productMap[key].latestStock = stockValue;
+        }
       }
       
       // Also keep cumulative stock for backward compatibility
@@ -824,7 +892,7 @@ function StockForecastDashboard() {
           <DashboardLoading 
             loading={true} 
             text="Loading Stock & Forecast Dashboard..." 
-            subtext="Fetching forecast data and analytics..." 
+            subtext="Sedang menarik data forecast dan stok dari server..." 
             coverContentArea={true}
           />
         </main>
@@ -884,7 +952,7 @@ function StockForecastDashboard() {
               title="Current Stock"
               value={formatNumber(stats.totalStock)}
               icon="📦"
-              change={`Latest Available Stock`}
+              change={`Latest Month Stock Data`}
               changeType="neutral"
             />
             <InfoCard

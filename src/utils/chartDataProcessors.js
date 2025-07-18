@@ -14,7 +14,6 @@ export const prepareFulfillmentCategoryData = (rawData) => {
   if (!rawData || rawData.length === 0) {
     return { labels: [], datasets: [] };
   }
-
   // Group data by Pengelompokan
   const groupedData = {};
   rawData.forEach(item => {
@@ -292,6 +291,19 @@ export const prepareFulfillmentDepartmentPercentData = (rawData) => {
  * @param {Array|Object} rawData - Raw data from API (can be array or object with data/processed arrays)
  * @returns {Object} Chart data object with labels and datasets
  */
+/**
+ * Generate gradient colors based on PCT values
+ * @param {number} pctValue - PCT value in days
+ * @returns {string} Color string
+ */
+const getBarColor = (pctValue) => {
+  if (pctValue < 20) return 'rgba(144, 238, 144, 0.8)'; // Light green
+  if (pctValue < 25) return 'rgba(0, 128, 0, 0.8)';     // Green
+  if (pctValue < 35) return 'rgba(255, 165, 0, 0.8)';   // Orange
+  if (pctValue < 40) return 'rgba(255, 99, 71, 0.8)';   // Red-orange
+  return 'rgba(255, 0, 0, 0.8)';                        // Red
+};
+
 export const preparePctCategoryData = (rawData) => {
   if (!rawData) {
     return { labels: [], datasets: [] };
@@ -336,14 +348,141 @@ export const preparePctCategoryData = (rawData) => {
     return data.count > 0 ? data.totalPct / data.count : 0;
   });
 
+  // Generate colors based on PCT values
+  const backgroundColors = averages.map(avg => getBarColor(avg));
+
   return {
     labels: categories,
     datasets: [
       {
         label: 'Average PCT (days)',
         data: averages,
-        backgroundColor: '#4f8cff',
-        borderColor: '#4f8cff',
+        backgroundColor: backgroundColors,
+        borderColor: backgroundColors,
+        borderWidth: 1,
+        borderRadius: 6,
+        barThickness: 40,
+      },
+    ]
+  };
+};
+
+/**
+ * Prepares PCT department data for bar chart
+ * @param {Array} rawData - Raw data from API
+ * @returns {Object} Chart data object with labels and datasets
+ */
+export const preparePctDepartmentData = (rawData) => {
+  if (!rawData) {
+    return { labels: [], datasets: [] };
+  }
+
+  // Handle different API response structures
+  let dataArray = rawData;
+  if (rawData.processed && Array.isArray(rawData.processed)) {
+    dataArray = rawData.processed;
+  } else if (rawData.data && Array.isArray(rawData.data)) {
+    dataArray = rawData.data;
+  } else if (!Array.isArray(rawData)) {
+    console.warn('PCT data is not an array:', rawData);
+    return { labels: [], datasets: [] };
+  }
+
+  if (dataArray.length === 0) {
+    return { labels: [], datasets: [] };
+  }
+
+  // Group data by Dept and calculate average PCT
+  const groupedData = {};
+  dataArray.forEach(item => {
+    const department = item.Dept || 'Uncategorized';
+    if (!groupedData[department]) {
+      groupedData[department] = {
+        totalPct: 0,
+        count: 0
+      };
+    }
+    
+    const pct = Number(item.PCTAverage) || 0;
+    groupedData[department].totalPct += pct;
+    groupedData[department].count += 1;
+  });
+
+  // Calculate averages
+  const departments = Object.keys(groupedData);
+  const averages = departments.map(dept => {
+    const data = groupedData[dept];
+    return data.count > 0 ? data.totalPct / data.count : 0;
+  });
+
+  // Generate colors based on PCT values
+  const backgroundColors = averages.map(avg => getBarColor(avg));
+
+  return {
+    labels: departments,
+    datasets: [
+      {
+        label: 'Average PCT (days)',
+        data: averages,
+        backgroundColor: backgroundColors,
+        borderColor: backgroundColors,
+        borderWidth: 1,
+        borderRadius: 6,
+        barThickness: 40,
+      },
+    ]
+  };
+};
+
+/**
+ * Prepares top 10 highest PCT data for bar chart
+ * @param {Array} rawData - Raw data from API
+ * @returns {Object} Chart data object with labels and datasets
+ */
+export const preparePctHighestData = (rawData) => {
+  if (!rawData) {
+    return { labels: [], datasets: [] };
+  }
+
+  // Handle different API response structures
+  let dataArray = rawData;
+  if (rawData.processed && Array.isArray(rawData.processed)) {
+    dataArray = rawData.processed;
+  } else if (rawData.data && Array.isArray(rawData.data)) {
+    dataArray = rawData.data;
+  } else if (!Array.isArray(rawData)) {
+    console.warn('PCT data is not an array:', rawData);
+    return { labels: [], datasets: [] };
+  }
+
+  if (dataArray.length === 0) {
+    return { labels: [], datasets: [] };
+  }
+
+  // Get all items with their PCT values and sort by highest
+  const itemsWithPct = dataArray
+    .map(item => ({
+      label: item.Product_Name || item.Product_Code || 'Unknown',
+      pct: Number(item.PCTAverage) || 0
+    }))
+    .filter(item => item.pct > 0)
+    .sort((a, b) => b.pct - a.pct)
+    .slice(0, 10); // Take top 10
+
+  const labels = itemsWithPct.map(item => item.label);
+  const pctValues = itemsWithPct.map(item => item.pct);
+
+  // Generate colors based on PCT values
+  const backgroundColors = pctValues.map(pct => getBarColor(pct));
+
+  return {
+    labels: labels,
+    datasets: [
+      {
+        label: 'PCT (days)',
+        data: pctValues,
+        backgroundColor: backgroundColors,
+        borderColor: backgroundColors,
         borderWidth: 1,
         borderRadius: 6,
         barThickness: 40,

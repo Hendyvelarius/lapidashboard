@@ -938,7 +938,7 @@ export default function PCTReportPage({ title, apiEndpoint, tableColumns, dataMa
           <DashboardLoading 
             loading={true} 
             text={`Loading ${title}...`} 
-            subtext="Fetching PCT data and analytics..." 
+            subtext="Sedang menarik data dan menganalisa PCT..." 
             coverContentArea={true}
           />
         </main>
