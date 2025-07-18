@@ -24,7 +24,9 @@ import {
   prepareFulfillmentCategoryData, 
   prepareFulfillmentDepartmentData, 
   prepareFulfillmentDepartmentPercentData, 
-  preparePctCategoryData 
+  preparePctCategoryData,
+  preparePctDepartmentData,
+  preparePctHighestData
 } from './utils/chartDataProcessors';
 import { apiUrl } from './api';
 import './App.css'
@@ -307,6 +309,8 @@ function App() {
 
   // Prepare PCT category chart data
   const pctCategoryChartData = preparePctCategoryData(pctRawData);
+  const pctDepartmentChartData = preparePctDepartmentData(pctRawData);
+  const pctHighestChartData = preparePctHighestData(pctRawData);
 
   // PCT chart options
   const pctCategoryChartOptions = {
@@ -457,6 +461,10 @@ function App() {
   // Only show Histogram WIP Aktif in side card
   const [sideCardType] = useState('wip');
   const [chartDropdownOpen, setChartDropdownOpen] = useState(false);
+
+  // State for PCT Chart Dropdown
+  const [pctDropdownOpen, setPctDropdownOpen] = useState(false);
+  const [pctChartType, setPctChartType] = useState('category');
 
   // State for WIP Histogram Dropdown (fix: ensure defined before use)
   const [wipDropdownOpen, setWipDropdownOpen] = useState(false);
@@ -1105,13 +1113,44 @@ function App() {
         </div>
         <div className="dashboard-main-row">
           <div className="dashboard-chart-card">
-            <div className="chart-title">
-              <span style={{ color: '#4f8cff', fontWeight: 600 }}>
-                Average PCT Per Category
+            <div className="chart-title" style={{ position: 'relative' }}>
+              <span
+                className="chart-title-clickable"
+                style={{ color: '#4f8cff', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }}
+                onClick={() => setPctDropdownOpen(open => !open)}
+                tabIndex={0}
+              >
+                {pctChartType === 'department' ? 'Average PCT Per Department' : pctChartType === 'highest' ? '10 Highest PCT' : 'Average PCT Per Category'}
+                <span style={{ marginLeft: 8, fontSize: 16 }}>▼</span>
               </span>
+              {pctDropdownOpen && (
+                <div style={{ position: 'absolute', top: '100%', left: 0, background: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', borderRadius: 8, zIndex: 10, minWidth: 220, marginTop: 4, padding: '6px 0', fontSize: 15 }}>
+                  <div
+                    className="chart-dropdown-option"
+                    style={{ padding: '10px 20px', cursor: 'pointer', color: '#222', fontWeight: 500, transition: 'color 0.15s' }}
+                    onClick={() => { setPctChartType('category'); setPctDropdownOpen(false); }}
+                  >Average PCT Per Category</div>
+                  <div
+                    className="chart-dropdown-option"
+                    style={{ padding: '10px 20px', cursor: 'pointer', color: '#222', fontWeight: 500, transition: 'color 0.15s' }}
+                    onClick={() => { setPctChartType('department'); setPctDropdownOpen(false); }}
+                  >Average PCT Per Department</div>
+                  <div
+                    className="chart-dropdown-option"
+                    style={{ padding: '10px 20px', cursor: 'pointer', color: '#222', fontWeight: 500, transition: 'color 0.15s' }}
+                    onClick={() => { setPctChartType('highest'); setPctDropdownOpen(false); }}
+                  >10 Highest PCT</div>
+                </div>
+              )}
             </div>
             <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-              <Bar data={pctCategoryChartData} options={pctCategoryChartOptions} />
+              {pctChartType === 'department' ? (
+                <Bar data={pctDepartmentChartData} options={pctCategoryChartOptions} />
+              ) : pctChartType === 'highest' ? (
+                <Bar data={pctHighestChartData} options={pctCategoryChartOptions} />
+              ) : (
+                <Bar data={pctCategoryChartData} options={pctCategoryChartOptions} />
+              )}
             </div>
           </div>
           <div className="dashboard-side-card">
