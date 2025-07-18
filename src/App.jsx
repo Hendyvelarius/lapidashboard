@@ -70,6 +70,22 @@ function App() {
     if (!wipGroupAgg[kelompok]) wipGroupAgg[kelompok] = 0;
     wipGroupAgg[kelompok]++;
   });
+
+  // Calculate PCT Average from pctRawData
+  const calculatePctAverage = () => {
+    if (!pctRawData || pctRawData.length === 0) return 0;
+    const validPctValues = pctRawData
+      .map(item => Number(item.PCTAverage) || 0)
+      .filter(value => value > 0);
+    
+    if (validPctValues.length === 0) return 0;
+    
+    const sum = validPctValues.reduce((total, value) => total + value, 0);
+    return Math.round(sum / validPctValues.length);
+  };
+
+  const pctAverageValue = calculatePctAverage();
+
   function capitalizeWords(str) {
     if (str === undefined || str === null) return 'Uncategorized';
     return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
@@ -533,9 +549,6 @@ function App() {
 
   const fulfillmentMetrics = calculateFulfillmentMetrics(fulfillmentRawData);
 
-  // Count WIP items with duration > 38
-  const wipTerlambatCount = wipData.filter(item => Number(item.duration) > 38).length;
-
   const wipHistogramData = getWipHistogram(wipData);
   const wipHistogramBarData = {
     labels: wipHistogramLabels,
@@ -944,7 +957,7 @@ function App() {
         <SummaryCards
           fulfillmentMetrics={fulfillmentMetrics}
           loading={loading}
-          wipTerlambatCount={wipTerlambatCount}
+          pctAverageValue={pctAverageValue}
           totalWipCount={wipData.length}
           onWipTableClick={handleShowWipTable}
         />

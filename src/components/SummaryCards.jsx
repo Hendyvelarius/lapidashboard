@@ -3,7 +3,7 @@ import React from 'react';
 const SummaryCards = ({ 
   fulfillmentMetrics, 
   loading, 
-  wipTerlambatCount, 
+  pctAverageValue, 
   totalWipCount, 
   onWipTableClick 
 }) => {
@@ -43,8 +43,14 @@ const SummaryCards = ({
       </div>
       
       <div className="summary-card">
-        <div className="summary-title">WIP Terlambat</div>
-        <div className="summary-value">{wipTerlambatCount}</div>
+        <div className="summary-title">PCT Average</div>
+        <div className="summary-value">
+          {loading ? (
+            <span className="summary-loading">...</span>
+          ) : (
+            `${pctAverageValue} Hari`
+          )}
+        </div>
       </div>
       
       <div 
