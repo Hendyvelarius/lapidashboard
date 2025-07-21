@@ -1,5 +1,5 @@
-import React, { useEffect } from "react";
-import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-router";
+import React from "react";
+import { BrowserRouter, Routes, Route } from "react-router";
 import { AuthProvider } from "./context/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import App from "./App";
@@ -10,26 +10,8 @@ import AIChat from "./components/AIChat";
 
 // Component to handle auth token from URL
 function AuthHandler({ children }) {
-  const location = useLocation();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const authToken = params.get('auth');
-    
-    if (authToken) {
-      // Store the auth token in localStorage
-      localStorage.setItem('authToken', authToken);
-      console.log('Auth token received and stored:', authToken);
-      
-      // Remove auth parameter from URL to clean it up
-      params.delete('auth');
-      const newSearch = params.toString();
-      const newPath = location.pathname + (newSearch ? `?${newSearch}` : '');
-      navigate(newPath, { replace: true });
-    }
-  }, [location, navigate]);
-
+  // URL authentication is now handled by AuthContext
+  // This component just provides the routing structure
   return children;
 }
 

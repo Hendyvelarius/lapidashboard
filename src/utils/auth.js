@@ -3,7 +3,14 @@
 // Verify auth token with backend
 export const verifyAuthToken = async () => {
   try {
-    const authToken = localStorage.getItem('authToken');
+    // Get current token using our secure method
+    const userInfo = getCurrentUser();
+    if (!userInfo) {
+      throw new Error('No authentication token found');
+    }
+
+    // Get the raw token for verification
+    let authToken = sessionStorage.getItem('access_token') || localStorage.getItem('access_token');
     if (!authToken) {
       throw new Error('No authentication token found');
     }
@@ -15,7 +22,6 @@ export const verifyAuthToken = async () => {
     }
 
     const data = await response.json();
-    console.log('Authentication verification successful:', data);
     return data;
   } catch (error) {
     console.error('Authentication verification failed:', error);
@@ -23,10 +29,61 @@ export const verifyAuthToken = async () => {
   }
 };
 
+// Store access token securely (session-only for security)
+export const storeAccessToken = (token) => {
+  try {
+    // Store in sessionStorage (clears when browser closes)
+    sessionStorage.setItem('access_token', token);
+    
+    // Also store in localStorage for development cross-port access
+    // This will be moved to sessionStorage on next access for security
+    if (window.location.hostname === 'localhost') {
+      localStorage.setItem('access_token', token);
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error storing access token:', error);
+    return false;
+  }
+};
+
+// Check if user has valid authentication
+export const hasValidAuth = () => {
+  try {
+    const userInfo = getCurrentUser();
+    if (!userInfo) return false;
+    
+    // Check if token is expired
+    const currentTime = Math.floor(Date.now() / 1000);
+    if (userInfo.exp && userInfo.exp < currentTime) {
+      clearAuthData();
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error checking authentication:', error);
+    return false;
+  }
+};
+
 // Get current user info from stored token (client-side decode)
 export const getCurrentUser = () => {
   try {
-    const authToken = localStorage.getItem('authToken');
+    // First try to get from sessionStorage (preferred for security)
+    let authToken = sessionStorage.getItem('access_token');
+    
+    // Fallback to localStorage if not in sessionStorage (for development)
+    if (!authToken) {
+      authToken = localStorage.getItem('access_token');
+      // If found in localStorage, also store in sessionStorage for this session
+      if (authToken) {
+        sessionStorage.setItem('access_token', authToken);
+        // Don't remove from localStorage - not our app's role to manage that
+      }
+    }
+    
     if (!authToken) {
       return null;
     }
@@ -44,12 +101,14 @@ export const getCurrentUser = () => {
     const decodedPayload = atob(paddedPayload);
     const tokenData = JSON.parse(decodedPayload);
     
-    return {
+    const userInfo = {
       user: tokenData.user,
       delegatedTo: tokenData.delegatedTo,
       exp: tokenData.exp,
       iat: tokenData.iat
     };
+    
+    return userInfo;
   } catch (error) {
     console.error('Error decoding token:', error);
     return null;
@@ -69,5 +128,45 @@ export const isTokenExpired = () => {
   } catch (error) {
     console.error('Error checking token expiration:', error);
     return true;
+  }
+};
+
+// Handle URL authentication parameter
+export const handleUrlAuth = () => {
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const authParam = urlParams.get('auth');
+    
+    if (authParam) {
+      // Store the token using our secure storage function
+      if (storeAccessToken(authParam)) {
+        // Clean up the URL by removing the auth parameter
+        const url = new URL(window.location);
+        url.searchParams.delete('auth');
+        window.history.replaceState({}, document.title, url.pathname + url.search);
+        
+        return true;
+      }
+    }
+    
+    return false;
+  } catch (error) {
+    console.error('Error handling URL authentication:', error);
+    return false;
+  }
+};
+
+// Clear all authentication data
+export const clearAuthData = () => {
+  try {
+    // Clear only our app's sessionStorage data
+    sessionStorage.removeItem('access_token');
+    sessionStorage.removeItem('authToken');
+    
+    // Don't clear localStorage access_token - not our app's role to manage that
+    // Only clear legacy authToken if it exists
+    localStorage.removeItem('authToken');
+  } catch (error) {
+    console.error('Error clearing authentication data:', error);
   }
 };

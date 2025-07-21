@@ -11,10 +11,39 @@ import {
 } from 'lucide-react'
 
 import { Link, useLocation } from 'react-router';
+import { useAuth } from '../context/AuthContext';
+import { clearAuthData } from '../utils/auth';
 import logoImage from '../assets/LAPILOGO_White.png'
 
 function Sidebar() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const { user, setIsAuthenticated, isLoading, isDecrypting } = useAuth();
+  
+  // Extract user information with fallbacks
+  const userName = user?.Nama || 'User';
+  const userRole = user?.Jabatan || 'Staff';
+  
+  // Function to truncate long job titles
+  const truncateRole = (role, maxLength = 20) => {
+    if (role.length <= maxLength) return role;
+    return role.substring(0, maxLength) + '...';
+  };
+  
+  // Get user initials for avatar
+  const getUserInitials = (name) => {
+    if (!name) return 'U';
+    const words = name.split(' ');
+    if (words.length === 1) return words[0].charAt(0).toUpperCase();
+    return (words[0].charAt(0) + words[words.length - 1].charAt(0)).toUpperCase();
+  };
+  
+  // Handle logout
+  const handleLogout = () => {
+    clearAuthData();
+    setIsAuthenticated(false);
+    setUserMenuOpen(false);
+    window.location.reload(); // Refresh to trigger auth check
+  };
 
   const location = useLocation();
   return (
@@ -63,11 +92,18 @@ function Sidebar() {
         <div 
           className="sidebar-user-info"
           onClick={() => setUserMenuOpen(!userMenuOpen)}
+          title={isLoading || isDecrypting ? 'Loading user info...' : `${userName} - ${userRole}`}
         >
-          <div className="user-avatar">R</div>
+          <div className="user-avatar">
+            {isLoading || isDecrypting ? '⋯' : getUserInitials(userName)}
+          </div>
           <div className="user-details">
-            <div className="user-name">Mr. Risang</div>
-            <div className="user-role">Head of Plant</div>
+            <div className="user-name">
+              {isLoading || isDecrypting ? 'Loading...' : userName}
+            </div>
+            <div className="user-role" title={userRole}>
+              {isLoading || isDecrypting ? 'Please wait...' : truncateRole(userRole)}
+            </div>
           </div>
           <ChevronDown 
             size={16} 
@@ -78,11 +114,11 @@ function Sidebar() {
         {/* User Dropdown Menu */}
         {userMenuOpen && (
           <div className="user-dropdown">
-            <button className="user-menu-item" onClick={() => console.log('Profile clicked')}>
+            <button className="user-menu-item" onClick={() => {}}>
               <User size={16} />
               <span>Profile</span>
             </button>
-            <button className="user-menu-item" onClick={() => console.log('Logout clicked')}>
+            <button className="user-menu-item" onClick={handleLogout}>
               <LogOut size={16} />
               <span>Logout</span>
             </button>
