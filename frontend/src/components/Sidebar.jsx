@@ -7,7 +7,8 @@ import {
   ChevronDown,
   User,
   LogOut,
-  MessageCircle
+  MessageCircle,
+  BarChart
 } from 'lucide-react'
 
 import { Link, useLocation } from 'react-router';
@@ -59,6 +60,10 @@ function Sidebar() {
           <Link to="/" className={`sidebar-btn${location.pathname === '/' ? ' active' : ''}`}> 
             <LayoutDashboard size={20} />
             <span>Dashboard</span>
+          </Link>
+          <Link to="/summary" className={`sidebar-btn${location.pathname === '/summary' ? ' active' : ''}`}> 
+            <BarChart size={20} />
+            <span>Summary</span>
           </Link>
           <Link to="/reports" className={`sidebar-btn${location.pathname === '/reports' ? ' active' : ''}`}> 
             <FileText size={20} />

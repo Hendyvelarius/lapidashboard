@@ -6,6 +6,7 @@ import App from "./App";
 import Reports from "./Reports";
 import PCTReportPage from "./components/PCTReportPage";
 import StockForecastDashboard from "./components/StockForecastDashboard";
+import SummaryDashboard from "./components/SummaryDashboard";
 import AIChat from "./components/AIChat";
 
 // Component to handle auth token from URL
@@ -23,6 +24,7 @@ export default function AppRouter() {
           <Routes>
             <Route path="/" element={<ProtectedRoute><App /></ProtectedRoute>} />
             <Route path="/eDashboard-dev" element={<ProtectedRoute><App /></ProtectedRoute>} />
+            <Route path="/summary" element={<ProtectedRoute><SummaryDashboard /></ProtectedRoute>} />
             <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
         <Route path="/reports" element={<Reports />} />
         <Route

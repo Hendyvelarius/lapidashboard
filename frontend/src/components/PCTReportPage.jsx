@@ -15,6 +15,7 @@ import {
 import Sidebar from './Sidebar';
 import Modal from './Modal';
 import DashboardLoading from './DashboardLoading';
+import { apiUrl } from '../api';
 import * as XLSX from 'xlsx';
 
 // Register Chart.js components
@@ -906,8 +907,8 @@ export default function PCTReportPage({ title, apiEndpoint, tableColumns, dataMa
     setLoading(true);
     setError(null);
     
-    // Add full URL for API calls
-    const fullUrl = apiEndpoint.startsWith('http') ? apiEndpoint : `http://localhost:4000${apiEndpoint}`;
+    // Use the centralized apiUrl function for proper environment handling
+    const fullUrl = apiEndpoint.startsWith('http') ? apiEndpoint : apiUrl(apiEndpoint);
     
     fetch(fullUrl)
       .then((res) => {

@@ -1,0 +1,624 @@
+/* Summary Dashboard Styles */
+.summary-dashboard {
+  padding: 2rem;
+  background-color: #f8fafc;
+  min-height: 100vh;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  grid-template-rows: 320px 200px 180px 160px;
+  gap: 1.5rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* Grid Layout Specific Positioning */
+.sales-card {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.of1-card {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.material-availability-card {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.ota-card {
+  grid-column: 3;
+  grid-row: 1;
+}
+
+.stock-out-card {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.coverage-card {
+  grid-column: 3;
+  grid-row: 2;
+}
+
+.wh-occupancy-card {
+  grid-column: 1 / 4;
+  grid-row: 3;
+}
+
+.inventory-oj-card {
+  grid-column: 1 / 2;
+  grid-row: 4;
+}
+
+.inventory-bb-bk-card {
+  grid-column: 2 / 4;
+  grid-row: 4;
+}
+
+/* Remove unused grid positioning */
+
+/* KPI Card Base Styles */
+.summary-kpi-card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  border: 2px solid #e5e7eb;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.summary-kpi-title {
+  background: #1f2937;
+  color: white;
+  padding: 0.75rem;
+  font-weight: bold;
+  font-size: 1rem;
+  text-align: center;
+  letter-spacing: 1px;
+  flex-shrink: 0;
+}
+
+.summary-kpi-content {
+  padding: 1rem;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 0;
+}
+
+/* Sales Card Specific */
+.sales-content {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 2rem;
+  height: 100%;
+  align-items: center;
+}
+
+.sales-left {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.sales-middle {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  text-align: center;
+}
+
+.sales-daily {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.sales-label {
+  font-size: 0.9rem;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.sales-value {
+  font-size: 2.5rem;
+  font-weight: bold;
+  color: #1f2937;
+}
+
+.sales-achievement {
+  font-size: 1rem;
+  color: #10b981;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sales-right {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 300px;
+}
+
+.sales-chart-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #374151;
+  text-align: center;
+}
+
+.sales-chart {
+  height: 180px;
+  width: 100%;
+}
+
+/* Inventory Grid */
+.inventory-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+  height: 100%;
+  align-items: center;
+}
+
+.inventory-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.inventory-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #374151;
+  text-align: center;
+}
+
+.inventory-value {
+  font-size: 0.8rem;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+/* Stock Out Styles */
+.stock-out-content {
+  display: flex;
+  flex-direction: row;
+  gap: 1rem;
+  height: 100%;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.stock-out-main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.stock-out-info-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1;
+  max-width: 120px;
+}
+
+.stock-out-info-card {
+  background: #f8fafc;
+  border-radius: 6px;
+  padding: 0.5rem;
+  text-align: center;
+  border: 1px solid #e5e7eb;
+}
+
+.stock-out-info-label {
+  font-size: 0.7rem;
+  color: #6b7280;
+  font-weight: 500;
+  line-height: 1.1;
+}
+
+.stock-out-info-value {
+  font-size: 1rem;
+  font-weight: bold;
+  color: #1f2937;
+}
+
+/* Coverage Styles */
+.coverage-content {
+  display: flex;
+  flex-direction: row;
+  gap: 1rem;
+  height: 100%;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.coverage-main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.coverage-info-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1;
+  max-width: 120px;
+}
+
+.coverage-info-card {
+  background: #f8fafc;
+  border-radius: 6px;
+  padding: 0.5rem;
+  text-align: center;
+  border: 1px solid #e5e7eb;
+}
+
+.coverage-info-label {
+  font-size: 0.7rem;
+  color: #6b7280;
+  font-weight: 500;
+  line-height: 1.1;
+}
+
+.coverage-info-value {
+  font-size: 1rem;
+  font-weight: bold;
+  color: #1f2937;
+}
+
+/* WH Occupancy */
+.wh-occupancy-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  height: 100%;
+  justify-content: center;
+}
+
+.wh-occupancy-top {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+}
+
+.wh-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.wh-label {
+  font-size: 1rem;
+  font-weight: bold;
+  color: #374151;
+}
+
+.wh-occupancy-bottom {
+  display: flex;
+  justify-content: space-around;
+  gap: 1rem;
+}
+
+/* OF1 Styles */
+.of1-content {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0.5rem;
+}
+
+.of1-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.5rem;
+  width: 100%;
+  height: 100%;
+}
+
+.of1-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+}
+
+.of1-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #374151;
+  text-align: center;
+  line-height: 1.1;
+}
+
+/* Material Availability */
+.material-availability-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  height: 100%;
+  justify-content: center;
+  padding: 0.5rem;
+}
+
+.material-info-card {
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 0.75rem;
+  text-align: center;
+  border: 2px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.material-info-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+.material-info-value {
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: #1f2937;
+}
+
+/* OTA Styles */
+.ota-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  height: 100%;
+  justify-content: center;
+  padding: 0.5rem;
+}
+
+/* Inventory OJ and BB-BK Styles */
+.inventory-oj-content,
+.inventory-bb-bk-content {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0rem 0.5rem 0.5rem 0.5rem;
+}
+
+.inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+}
+
+.inventory-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.inventory-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #374151;
+  text-align: center;
+  line-height: 1.1;
+}
+.summary-metric-box {
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 1rem;
+  text-align: center;
+  border: 2px solid;
+  transition: all 0.3s ease;
+}
+
+.summary-metric-box:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.summary-metric-value {
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+}
+
+.summary-metric-label {
+  font-size: 0.8rem;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+/* Circular Progress Component */
+.circular-progress {
+  position: relative;
+  display: inline-block;
+}
+
+.circular-progress canvas {
+  transform: rotate(-90deg);
+}
+
+.circular-progress-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: #1f2937;
+}
+
+/* Responsive Design */
+@media (max-width: 1400px) {
+  .summary-grid {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto auto auto auto auto;
+    gap: 1rem;
+  }
+
+  .sales-card {
+    grid-column: 1 / 3;
+    grid-row: 1;
+  }
+
+  .of1-card {
+    grid-column: 1 / 3;
+    grid-row: 2;
+  }
+
+  .material-availability-card {
+    grid-column: 1;
+    grid-row: 3;
+  }
+
+  .ota-card {
+    grid-column: 2;
+    grid-row: 3;
+  }
+
+  .stock-out-card {
+    grid-column: 1;
+    grid-row: 4;
+  }
+
+  .coverage-card {
+    grid-column: 2;
+    grid-row: 4;
+  }
+
+  .wh-occupancy-card {
+    grid-column: 1 / 3;
+    grid-row: 5;
+  }
+
+  .inventory-oj-card {
+    grid-column: 1;
+    grid-row: 6;
+  }
+
+  .inventory-bb-bk-card {
+    grid-column: 2;
+    grid-row: 6;
+  }
+
+  .of1-grid {
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+    gap: 0.5rem;
+  }
+
+  .inventory-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+  }
+}
+
+@media (max-width: 1024px) {
+  .summary-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    gap: 1rem;
+  }
+
+  .sales-card,
+  .of1-card,
+  .stock-out-card,
+  .coverage-card,
+  .wh-occupancy-card,
+  .material-availability-card,
+  .ota-card,
+  .inventory-oj-card,
+  .inventory-bb-bk-card {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .sales-content {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    text-align: center;
+  }
+
+  .of1-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+  }
+
+  .inventory-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+  }
+
+  .material-availability-content {
+    gap: 2rem;
+    padding: 1rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .summary-dashboard {
+    padding: 1rem;
+  }
+
+  .summary-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .sales-content {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+
+  .summary-header h1 {
+    font-size: 2rem;
+  }
+
+  .of1-grid {
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(4, 1fr);
+    gap: 0.5rem;
+  }
+
+  .inventory-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+  }
+
+  .wh-occupancy-top {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .wh-occupancy-bottom {
+    flex-direction: column;
+    gap: 1rem;
+  }
+}

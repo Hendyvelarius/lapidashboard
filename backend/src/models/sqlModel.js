@@ -283,4 +283,10 @@ async function getForecast() {
   return result.recordset;
 }
 
-module.exports = { WorkInProgress, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast};
+async function getofsummary() {
+  const db = await connect();
+  const result = await db.request().query(`EXEC sp_Dashboard_OF1 'SummaryByProsesGroup';`);
+  return result.recordset;
+}
+
+module.exports = { WorkInProgress, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary};

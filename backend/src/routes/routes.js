@@ -30,6 +30,7 @@ router.get('/fulfillment', SqlController.getFulfillment);
 router.get('/fulfillmentKelompok', SqlController.getFulfillmentPerKelompok);
 router.get('/fulfillmentDept', SqlController.getFulfillmentPerDept);
 router.get('/of', SqlController.getOrderFulfillment);
+router.get('/ofsummary', SqlController.getofsummary);
 
 // Routing Product Cycle Time
 router.get('/pct', SqlController.getProductCycleTime);

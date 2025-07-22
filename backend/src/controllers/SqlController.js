@@ -166,4 +166,14 @@ async function getForecast(req, res) {
   }
 }
 
-module.exports = { getWip, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getOrderFulfillment, getStockReport };
+async function getofsummary(req, res) {
+  try {
+    const data = await SqlModel.getofsummary();
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching Order Fulfillment Summary:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+module.exports = { getWip, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getOrderFulfillment, getStockReport, getofsummary };
