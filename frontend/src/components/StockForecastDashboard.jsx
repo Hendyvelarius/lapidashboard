@@ -75,13 +75,13 @@ function TableCard({ title, columns, data, loading, error, onProductClick, selec
       const targetPeriod = `2025${localSelectedMonth}`;
       const filteredRawData = rawData.filter(item => item.Periode === targetPeriod);
       
-      // Group by product code for the specific month
+      // Group by product ID for the specific month
       const productMap = {};
       filteredRawData.forEach(item => {
-        const key = item.Product_Code;
+        const key = item.Product_ID;
         if (!productMap[key]) {
           productMap[key] = {
-            Product_Code: item.Product_Code,
+            Product_ID: item.Product_ID,
             Product_NM: item.Product_NM,
             totalForecast: 0,
             totalStock: 0,
@@ -330,7 +330,7 @@ function TableCard({ title, columns, data, loading, error, onProductClick, selec
                   sortedData.map((row, i) => (
                     <tr 
                       key={i}
-                      className={`table-row ${selectedProduct && selectedProduct.Product_Code === row.Product_Code ? 'selected' : ''}`}
+                      className={`table-row ${selectedProduct && selectedProduct.Product_ID === row.Product_ID ? 'selected' : ''}`}
                       onClick={() => onProductClick && onProductClick(row)}
                       style={{ cursor: onProductClick ? 'pointer' : 'default' }}
                     >
@@ -429,10 +429,10 @@ function StockForecastDashboard() {
     // Group by product to get unique products
     const productMap = {};
     data.forEach(item => {
-      const key = item.Product_Code;
+      const key = item.Product_ID;
       if (!productMap[key]) {
         productMap[key] = {
-          Product_Code: item.Product_Code,
+          Product_ID: item.Product_ID,
           Product_NM: item.Product_NM,
           totalForecast: 0,
           totalStock: 0,
@@ -502,13 +502,13 @@ function StockForecastDashboard() {
     const currentMonth = now.getMonth() + 1; // getMonth() returns 0-11
     const currentPeriod = `${currentYear}${currentMonth.toString().padStart(2, '0')}`;
 
-    // Group by product code and aggregate totals
+    // Group by product ID and aggregate totals
     const productMap = {};
     data.forEach(item => {
-      const key = item.Product_Code;
+      const key = item.Product_ID;
       if (!productMap[key]) {
         productMap[key] = {
-          Product_Code: item.Product_Code,
+          Product_ID: item.Product_ID,
           Product_NM: item.Product_NM,
           totalSales: 0,
           totalStock: 0,
@@ -581,7 +581,7 @@ function StockForecastDashboard() {
     }
 
     const labels = sortedProducts.map(product => {
-      const name = product.Product_Code || 'Unknown';
+      const name = product.Product_ID || 'Unknown';
       return name.length > 8 ? name.substring(0, 8) + '...' : name;
     });
 
@@ -668,7 +668,7 @@ function StockForecastDashboard() {
 
     // Filter data based on selected product
     const filteredData = selectedProduct 
-      ? data.filter(item => item.Product_Code === selectedProduct.Product_Code)
+      ? data.filter(item => item.Product_ID === selectedProduct.Product_ID)
       : data;
 
     // Get all unique periods and sort them
@@ -767,14 +767,14 @@ function StockForecastDashboard() {
     const currentMonth = now.getMonth() + 1; // getMonth() returns 0-11
     const currentPeriod = `${currentYear}${currentMonth.toString().padStart(2, '0')}`;
 
-    // Group by product code and aggregate totals
+    // Group by product ID and aggregate totals
     const productMap = {};
     
     data.forEach(item => {
-      const key = item.Product_Code;
+      const key = item.Product_ID;
       if (!productMap[key]) {
         productMap[key] = {
-          Product_Code: item.Product_Code,
+          Product_ID: item.Product_ID,
           Product_NM: item.Product_NM,
           totalForecast: 0,
           totalStock: 0,
@@ -818,7 +818,7 @@ function StockForecastDashboard() {
 
   // Handle product selection
   const handleProductClick = (product) => {
-    if (selectedProduct && selectedProduct.Product_Code === product.Product_Code) {
+    if (selectedProduct && selectedProduct.Product_ID === product.Product_ID) {
       setSelectedProduct(null);
     } else {
       setSelectedProduct(product);
@@ -827,7 +827,7 @@ function StockForecastDashboard() {
 
   // Table columns definition
   const tableColumns = [
-    { key: 'Product_Code', label: 'Product Code' },
+    { key: 'Product_ID', label: 'Product ID' },
     { key: 'Product_NM', label: 'Product Name' },
     { key: 'totalForecast', label: 'Total Forecast' },
     { key: 'totalProduksi', label: 'Total Produksi' },
@@ -991,7 +991,7 @@ function StockForecastDashboard() {
                       title="Click to change chart type"
                     >
                       {selectedProduct 
-                        ? `Monthly Data for ${selectedProduct.Product_Code} - ${selectedProduct.Product_NM}`
+                        ? `Monthly Data for ${selectedProduct.Product_ID} - ${selectedProduct.Product_NM}`
                         : 'Monthly Overview - All Products'
                       } <span style={{ marginLeft: 8, fontSize: 16 }}>▼</span>
                     </h3>

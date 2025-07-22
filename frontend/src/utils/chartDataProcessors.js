@@ -462,7 +462,7 @@ export const preparePctHighestData = (rawData) => {
   // Get all items with their PCT values and sort by highest
   const itemsWithPct = dataArray
     .map(item => ({
-      label: item.Product_Name || item.Product_Code || 'Unknown',
+      label: item.Product_Name || item.Product_ID || 'Unknown',
       pct: Number(item.PCTAverage) || 0
     }))
     .filter(item => item.pct > 0)

@@ -63,7 +63,7 @@ const DashboardLoading = ({ loading, text = 'Loading Dashboard...', subtext = 'S
       transition: 'opacity 0.3s',
     }}>
       <div style={{ marginBottom: 32 }}>
-        <img src="/src/assets/LAPILOGO_White.png" alt="Logo" style={{ width: 120, filter: 'drop-shadow(0 2px 8px #4f8cff44)' }} onError={e => { e.target.onerror = null; e.target.src = '/src/assets/LAPILOGO_White.png'; }} />
+        <img src="./LAPILOGO_White.png" alt="Logo" style={{ width: 120, filter: 'drop-shadow(0 2px 8px #4f8cff44)' }} onError={e => { e.target.onerror = null; e.target.src = '/src/assets/LAPILOGO_White.png'; }} />
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <LoadingSpinner size={48} color="#4f8cff" />

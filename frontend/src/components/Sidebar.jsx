@@ -13,7 +13,6 @@ import {
 import { Link, useLocation } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import { clearAuthData } from '../utils/auth';
-import logoImage from '../assets/LAPILOGO_White.png'
 
 function Sidebar() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -50,7 +49,7 @@ function Sidebar() {
     <aside className="sidebar sidebar-dark sidebar-fixed">
       {/* Logo Section */}
       <div className="sidebar-logo">
-        <img src={logoImage} alt="LAPI Logo" className="logo-image" />
+        <img src="/LAPILOGO_White.png" alt="LAPI Logo" className="logo-image" />
       </div>
 
       {/* Main Menu Section */}

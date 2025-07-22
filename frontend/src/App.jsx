@@ -755,14 +755,14 @@ function App() {
       .sort((a, b) => (b.Forecast || 0) - (a.Forecast || 0))
       .slice(0, 10);
 
-    const labels = sortedData.map(item => item.Product_Code || item.Product_ID);
+    const labels = sortedData.map(item => item.Product_ID);
     const forecastData = sortedData.map(item => item.Forecast || 0);
     const releaseData = sortedData.map(item => item.Release || 0);
     const salesData = sortedData.map(item => item.Sales || 0);
     
     // Store product info for tooltips
     const productInfo = sortedData.map(item => ({
-      code: item.Product_Code || item.Product_ID,
+      code: item.Product_ID,
       name: item.Product_NM || 'Unknown Product'
     }));
 
