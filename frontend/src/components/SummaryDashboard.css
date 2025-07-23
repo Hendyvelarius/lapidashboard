@@ -21,8 +21,8 @@
 }
 
 .of1-card {
-  grid-column: 1;
-  grid-row: 2;
+  grid-column: 1 / 4;
+  grid-row: 3;
 }
 
 .material-availability-card {
@@ -46,8 +46,8 @@
 }
 
 .wh-occupancy-card {
-  grid-column: 1 / 4;
-  grid-row: 3;
+  grid-column: 1;
+  grid-row: 2;
 }
 
 .inventory-oj-card {

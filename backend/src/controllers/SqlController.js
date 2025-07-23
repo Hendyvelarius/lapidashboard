@@ -169,7 +169,7 @@ async function getForecast(req, res) {
 async function getofsummary(req, res) {
   try {
     const data = await SqlModel.getofsummary();
-    res.json({ data });
+    res.json( data );
   } catch (err) {
     console.error('Error in fetching Order Fulfillment Summary:', err);
     res.status(500).json({ success: false, error: 'Internal server error' });

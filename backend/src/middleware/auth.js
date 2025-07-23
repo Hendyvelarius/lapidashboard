@@ -16,10 +16,6 @@ const verifyToken = (req, res, next) => {
       return res.status(401).json({ error: 'Invalid token format' });
     }
 
-    console.log('Decoded JWT Token:', JSON.stringify(decoded, null, 2));
-    console.log('User Info:', decoded.user);
-    console.log('Delegated To:', decoded.delegatedTo);
-
     // Add decoded token to request object
     req.user = decoded.user;
     req.delegatedTo = decoded.delegatedTo;

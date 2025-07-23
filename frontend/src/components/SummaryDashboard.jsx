@@ -97,14 +97,14 @@ function SummaryDashboard() {
   });
 
   useEffect(() => {
+    
     const fetchAllData = async () => {
       try {
         setLoading(true);
         
-        // Fetch all required data
         const [wipRes, ofRes, pctRes, stockRes] = await Promise.all([
           fetch(apiUrl('/api/wip')),
-          fetch(apiUrl('/api/of')),
+          fetch(apiUrl('/api/ofsummary')),
           fetch(apiUrl('/api/pctAverage')),
           fetch(apiUrl('/api/forecast'))
         ]);
@@ -115,19 +115,43 @@ function SummaryDashboard() {
         const stockData = await stockRes.json();
 
         // Process and set data
-        setData({
+        const processedData = {
           sales: processSalesData(stockData.data || []),
           inventory: processInventoryData(stockData.data || []),
           stockOut: processStockOutData(stockData.data || []),
           coverage: processCoverageData(stockData.data || []),
           whOccupancy: processWHOccupancyData(wipData.data || []),
-          orderFulfillment: processOrderFulfillmentData(ofData.data || []),
+          orderFulfillment: processOrderFulfillmentData(ofData || []),
           materialAvailability: processMaterialAvailabilityData(stockData.data || []),
           inventoryOJ: processInventoryOJData(stockData.data || []),
           inventoryBBBK: processInventoryBBBKData(stockData.data || [])
-        });
+        };
+
+        setData(processedData);
       } catch (error) {
-        console.error('Error fetching summary data:', error);
+        console.error('❌ Error fetching summary data:', error);
+        console.log('🔄 Falling back to mock data');
+        // Fallback to mock data on error
+        setData({
+          sales: processSalesData([]),
+          inventory: processInventoryData([]),
+          stockOut: processStockOutData([]),
+          coverage: processCoverageData([]),
+          whOccupancy: processWHOccupancyData([]),
+          orderFulfillment: {
+            turunPpi: 78,
+            potongStock: 65,
+            proses: 88,
+            kemas: 92,
+            dokumen: 76,
+            rilisQc: 89,
+            rilisQa: 84
+          },
+          materialAvailability: processMaterialAvailabilityData([]),
+          inventoryOJ: processInventoryOJData([]),
+          inventoryBBBK: processInventoryBBBKData([])
+        });
+        console.log('📊 Using mock OF data for fallback');
       } finally {
         setLoading(false);
       }
@@ -205,16 +229,43 @@ function SummaryDashboard() {
   };
 
   const processOrderFulfillmentData = (ofData) => {
-    // Mock OF data
-    return {
-      turunPpi: 78,
-      potongStock: 65,
-      proses: 88,
-      kemas: 92,
-      dokumen: 76,
-      rilisQc: 89,
-      rilisQa: 84
+    
+    if (!ofData || ofData.length === 0) {
+      console.log('⚠️ No OF data available, returning zeros');
+      return {
+        turunPpi: 0,
+        potongStock: 0,
+        proses: 0,
+        kemas: 0,
+        dokumen: 0,
+        rilisQc: 0,
+        rilisQa: 0
+      };
+    }
+
+    const total = ofData.length;
+    
+    // Calculate percentages for each OF stage
+    const turunPpiTrue = ofData.filter(item => item.TurunPPI === 1).length;
+    const potongStockTrue = ofData.filter(item => item.PotongStock === 1).length;
+    const prosesTrue = ofData.filter(item => item.Proses === 1).length;
+    const kemasTrue = ofData.filter(item => item.Kemas === 1).length;
+    const dokumenTrue = ofData.filter(item => item.Dok === 1).length;
+    const qcTrue = ofData.filter(item => item.QC === 1).length;
+    const qaTrue = ofData.filter(item => item.QA === 1).length;
+
+
+    const result = {
+      turunPpi: Math.round((turunPpiTrue / total) * 100),
+      potongStock: Math.round((potongStockTrue / total) * 100),
+      proses: Math.round((prosesTrue / total) * 100),
+      kemas: Math.round((kemasTrue / total) * 100),
+      dokumen: Math.round((dokumenTrue / total) * 100),
+      rilisQc: Math.round((qcTrue / total) * 100),
+      rilisQa: Math.round((qaTrue / total) * 100)
     };
+
+    return result;
   };
 
   const processMaterialAvailabilityData = (stockData) => {
@@ -337,7 +388,7 @@ function SummaryDashboard() {
                     <CircularProgress 
                       percentage={data.orderFulfillment?.turunPpi || 0} 
                       color="#f59e0b"
-                      size={45}
+                      size={80}
                     />
                     <div className="of1-label">Turun PPI</div>
                   </div>
@@ -345,7 +396,7 @@ function SummaryDashboard() {
                     <CircularProgress 
                       percentage={data.orderFulfillment?.potongStock || 0} 
                       color="#10b981"
-                      size={45}
+                      size={80}
                     />
                     <div className="of1-label">Potong Stock</div>
                   </div>
@@ -353,7 +404,7 @@ function SummaryDashboard() {
                     <CircularProgress 
                       percentage={data.orderFulfillment?.proses || 0} 
                       color="#6b7280"
-                      size={45}
+                      size={80}
                     />
                     <div className="of1-label">Proses</div>
                   </div>
@@ -361,7 +412,7 @@ function SummaryDashboard() {
                     <CircularProgress 
                       percentage={data.orderFulfillment?.kemas || 0} 
                       color="#8b5cf6"
-                      size={45}
+                      size={80}
                     />
                     <div className="of1-label">Kemas</div>
                   </div>
@@ -369,7 +420,7 @@ function SummaryDashboard() {
                     <CircularProgress 
                       percentage={data.orderFulfillment?.dokumen || 0} 
                       color="#06b6d4"
-                      size={45}
+                      size={80}
                     />
                     <div className="of1-label">Dokumen</div>
                   </div>
@@ -377,7 +428,7 @@ function SummaryDashboard() {
                     <CircularProgress 
                       percentage={data.orderFulfillment?.rilisQc || 0} 
                       color="#f97316"
-                      size={45}
+                      size={80}
                     />
                     <div className="of1-label">Rilis QC</div>
                   </div>
@@ -385,7 +436,7 @@ function SummaryDashboard() {
                     <CircularProgress 
                       percentage={data.orderFulfillment?.rilisQa || 0} 
                       color="#ef4444"
-                      size={45}
+                      size={80}
                     />
                     <div className="of1-label">Rilis QA</div>
                   </div>
