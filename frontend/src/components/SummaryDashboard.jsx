@@ -289,9 +289,7 @@ function SummaryDashboard() {
   };
 
   const processInventoryBBBKData = (bbbkData) => {
-    
     if (!bbbkData || bbbkData.length === 0) {
-      console.log('⚠️ No BBBK data available, returning zeros');
       return {
         slowMoving: 0,
         deadStock: 0,
@@ -321,8 +319,8 @@ function SummaryDashboard() {
     });
     
     // Calculate Return Percentage
-    let totalValidReturns = 0;
-    let totalValidItems = 0;
+    let totalReturnPercentages = 0;
+    let validItemsCount = 0;
     
     bbbkData.forEach(item => {
       const totalRetur = item.totalRetur || 0;
@@ -331,12 +329,13 @@ function SummaryDashboard() {
       const denominator = totalPO - totalClose;
       
       if (denominator > 0) {
-        totalValidReturns += totalRetur;
-        totalValidItems += denominator;
+        const itemReturnPercentage = (totalRetur / denominator) * 100;
+        totalReturnPercentages += itemReturnPercentage;
+        validItemsCount++;
       }
     });
     
-    const returnPercentage = totalValidItems > 0 ? (totalValidReturns / totalValidItems) * 100 : 0;
+    const returnPercentage = validItemsCount > 0 ? (totalReturnPercentages / validItemsCount) : 0;
     const slowMovingPercentage = (slowMovingItems.length / totalItems) * 100;
     const deadStockPercentage = (deadStockItems.length / totalItems) * 100;
     
@@ -345,7 +344,7 @@ function SummaryDashboard() {
       deadStock: Math.round(deadStockPercentage),
       return: Math.round(returnPercentage)
     };
-
+    
     return result;
   };
 
