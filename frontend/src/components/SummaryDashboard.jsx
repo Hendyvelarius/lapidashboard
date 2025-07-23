@@ -100,19 +100,21 @@ function SummaryDashboard() {
     
     const fetchAllData = async () => {
       try {
-        setLoading(true);
-        
-        const [wipRes, ofRes, pctRes, stockRes] = await Promise.all([
+        setLoading(true);      
+        const [wipRes, ofRes, pctRes, stockRes, bbbkRes] = await Promise.all([
           fetch(apiUrl('/api/wip')),
           fetch(apiUrl('/api/ofsummary')),
           fetch(apiUrl('/api/pctAverage')),
-          fetch(apiUrl('/api/forecast'))
+          fetch(apiUrl('/api/forecast')),
+          fetch(apiUrl('/api/bbbk'))
         ]);
 
         const wipData = await wipRes.json();
         const ofData = await ofRes.json();
         const pctData = await pctRes.json();
         const stockData = await stockRes.json();
+        const bbbkData = await bbbkRes.json();
+
 
         // Process and set data
         const processedData = {
@@ -124,7 +126,7 @@ function SummaryDashboard() {
           orderFulfillment: processOrderFulfillmentData(ofData || []),
           materialAvailability: processMaterialAvailabilityData(stockData.data || []),
           inventoryOJ: processInventoryOJData(stockData.data || []),
-          inventoryBBBK: processInventoryBBBKData(stockData.data || [])
+          inventoryBBBK: processInventoryBBBKData(bbbkData || [])
         };
 
         setData(processedData);
@@ -151,7 +153,7 @@ function SummaryDashboard() {
           inventoryOJ: processInventoryOJData([]),
           inventoryBBBK: processInventoryBBBKData([])
         });
-        console.log('📊 Using mock OF data for fallback');
+        console.log('📊 Using mock data for fallback');
       } finally {
         setLoading(false);
       }
@@ -286,13 +288,65 @@ function SummaryDashboard() {
     };
   };
 
-  const processInventoryBBBKData = (stockData) => {
-    // Mock inventory BB-BK data with percentages for Slow Moving, Dead Stock, Return  
-    return {
-      slowMoving: 18,
-      deadStock: 15,
-      return: 5
+  const processInventoryBBBKData = (bbbkData) => {
+    
+    if (!bbbkData || bbbkData.length === 0) {
+      console.log('⚠️ No BBBK data available, returning zeros');
+      return {
+        slowMoving: 0,
+        deadStock: 0,
+        return: 0
+      };
+    }
+
+    const totalItems = bbbkData.length;
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth() + 1; // getMonth() returns 0-11
+    const threeMonthsAgo = new Date(currentYear, currentMonth - 4, 1); // 3 months ago
+    const threeMonthsAgoYYYYMM = threeMonthsAgo.getFullYear() * 100 + (threeMonthsAgo.getMonth() + 1);
+    
+    // Calculate Dead Stock (null last_transaction_period)
+    const deadStockItems = bbbkData.filter(item => 
+      item.last_transaction_period === null || item.last_transaction_period === ''
+    );
+    
+    // Calculate Slow Moving (last_transaction_period older than 3 months)
+    const slowMovingItems = bbbkData.filter(item => {
+      if (!item.last_transaction_period || item.last_transaction_period === null) {
+        return false; // Already counted as dead stock
+      }
+      const transactionPeriod = parseInt(item.last_transaction_period);
+      return transactionPeriod <= threeMonthsAgoYYYYMM;
+    });
+    
+    // Calculate Return Percentage
+    let totalValidReturns = 0;
+    let totalValidItems = 0;
+    
+    bbbkData.forEach(item => {
+      const totalRetur = item.totalRetur || 0;
+      const totalPO = item.totalPO || 0;
+      const totalClose = item.totalClose || 0;
+      const denominator = totalPO - totalClose;
+      
+      if (denominator > 0) {
+        totalValidReturns += totalRetur;
+        totalValidItems += denominator;
+      }
+    });
+    
+    const returnPercentage = totalValidItems > 0 ? (totalValidReturns / totalValidItems) * 100 : 0;
+    const slowMovingPercentage = (slowMovingItems.length / totalItems) * 100;
+    const deadStockPercentage = (deadStockItems.length / totalItems) * 100;
+    
+    const result = {
+      slowMoving: Math.round(slowMovingPercentage),
+      deadStock: Math.round(deadStockPercentage),
+      return: Math.round(returnPercentage)
     };
+
+    return result;
   };
 
   if (loading) {

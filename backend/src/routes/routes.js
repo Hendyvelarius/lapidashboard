@@ -41,6 +41,7 @@ router.get('/pctAverage', SqlController.getProductCycleTimeAverage);
 router.get('/stockReport', SqlController.getStockReport);
 router.get('/monthlyForecast', SqlController.getMonthlyForecast);
 router.get('/forecast', SqlController.getForecast);
+router.get('/bbbk', SqlController.getbbbk);
 
 // OpenAI chat endpoint
 router.use('/ai', openaiRoutes);

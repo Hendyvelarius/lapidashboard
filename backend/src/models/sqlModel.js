@@ -289,4 +289,10 @@ async function getofsummary() {
   return result.recordset;
 }
 
-module.exports = { WorkInProgress, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary};
+async function getbbbk() {
+  const db = await connect();
+  const result = await db.request().query(`sp_Dashboard_InventoryBBBK`);
+  return result.recordset;
+}
+
+module.exports = { WorkInProgress, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary};
