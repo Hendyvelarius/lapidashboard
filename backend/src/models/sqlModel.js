@@ -295,4 +295,41 @@ async function getbbbk() {
   return result.recordset;
 }
 
-module.exports = { WorkInProgress, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary};
+async function getDailySales() {
+  const db = await connect();
+  const result = await db.request().query(`DECLARE @TargetMonth NVARCHAR(6) = CONVERT(VARCHAR(6), GETDATE(), 112)
+DECLARE @Tahun NVARCHAR(4) = LEFT(@TargetMonth, 4)
+DECLARE @Bulan NVARCHAR(2) = RIGHT(@TargetMonth, 2)
+DECLARE @StartDate DATE = CAST(@Tahun + '-' + @Bulan + '-01' AS DATE)
+DECLARE @EndDate DATE = DATEADD(DAY, -1, DATEADD(MONTH, 1, @StartDate))
+
+SELECT 
+    b.spb_date AS SalesDate,
+    a.spb_productid AS Product_ID,
+    p.Product_SalesID AS Product_Code,
+    p.product_shortname AS Product_Name,
+    SUM(a.spb_qty) AS DailySales,
+    DAY(b.spb_date) AS DayOfMonth,
+    CEILING(CAST(DAY(b.spb_date) AS FLOAT) / 7.0) AS WeekOfMonth
+FROM t_spb_detail a
+INNER JOIN t_spb_header b ON a.spb_no = b.spb_no
+INNER JOIN v_m_Product_aktif p ON a.spb_productid = p.Product_ID 
+                               AND a.spb_productinit = p.Product_init
+WHERE b.spb_date >= @StartDate 
+  AND b.spb_date <= @EndDate
+  AND b.spb_type IN ('501','502')
+  AND a.spb_bonusQty <> 1
+  AND ISNULL(p.product_SalesID, '') <> '' 
+  AND p.product_saleshna <> 0
+GROUP BY 
+    b.spb_date,
+    a.spb_productid,
+    p.Product_SalesID,
+    p.product_shortname
+ORDER BY 
+    b.spb_date DESC,
+    p.product_shortname ASC;`)
+  return result.recordset;
+}
+
+module.exports = { WorkInProgress, getDailySales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary};

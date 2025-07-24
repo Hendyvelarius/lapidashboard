@@ -101,12 +101,13 @@ function SummaryDashboard() {
     const fetchAllData = async () => {
       try {
         setLoading(true);      
-        const [wipRes, ofRes, pctRes, stockRes, bbbkRes] = await Promise.all([
+        const [wipRes, ofRes, pctRes, stockRes, bbbkRes, dailySalesRes] = await Promise.all([
           fetch(apiUrl('/api/wip')),
           fetch(apiUrl('/api/ofsummary')),
           fetch(apiUrl('/api/pctAverage')),
           fetch(apiUrl('/api/forecast')),
-          fetch(apiUrl('/api/bbbk'))
+          fetch(apiUrl('/api/bbbk')),
+          fetch(apiUrl('/api/dailySales'))
         ]);
 
         const wipData = await wipRes.json();
@@ -114,10 +115,11 @@ function SummaryDashboard() {
         const pctData = await pctRes.json();
         const stockData = await stockRes.json();
         const bbbkData = await bbbkRes.json();
+        const dailySalesData = await dailySalesRes.json();
         
         // Process and set data
         const processedData = {
-          sales: processSalesData(stockData || []),
+          sales: processSalesData(stockData || [], dailySalesData || []),
           inventory: processInventoryData(stockData || []),
           stockOut: processStockOutData(stockData || []),
           coverage: processCoverageData(stockData || []),
@@ -133,7 +135,7 @@ function SummaryDashboard() {
         console.error('❌ Error fetching summary data:', error);
         // Fallback to mock data on error
         setData({
-          sales: processSalesData([]),
+          sales: processSalesData([], []),
           inventory: processInventoryData([]),
           stockOut: processStockOutData([]),
           coverage: processCoverageData([]),
@@ -160,18 +162,73 @@ function SummaryDashboard() {
   }, []);
 
   // Data processing functions
-  const processSalesData = (stockData) => {
-    const totalSales = stockData.reduce((sum, item) => sum + (item.Sales || 0), 0);
-    const totalForecast = stockData.reduce((sum, item) => sum + (item.Forecast || 0), 0);
-    const achievement = totalForecast > 0 ? (totalSales / totalForecast) * 100 : 0;
+  const processSalesData = (stockData, dailySalesData) => {
+    const today = new Date();
+    const currentMonth = today.getMonth() + 1;
+    const currentYear = today.getFullYear();
+    const todayDateString = today.toISOString().split('T')[0];
+
+    // Calculate today's total sales from daily sales data
+    const todaysSales = dailySalesData
+      .filter(item => {
+        const itemDate = new Date(item.SalesDate).toISOString().split('T')[0];
+        return itemDate === todayDateString;
+      })
+      .reduce((sum, item) => sum + (item.DailySales || 0), 0);
+
+    // Calculate cumulative monthly sales from daily sales data
+    const cumulativeMonthlySales = dailySalesData
+      .filter(item => {
+        const itemDate = new Date(item.SalesDate);
+        const itemMonth = itemDate.getMonth() + 1;
+        const itemYear = itemDate.getFullYear();
+        return itemMonth === currentMonth && itemYear === currentYear;
+      })
+      .reduce((sum, item) => sum + (item.DailySales || 0), 0);
+
+    // Calculate monthly forecast from stock data
+    const currentPeriod = currentYear * 100 + currentMonth;
+    const monthlyForecast = stockData
+      .filter(item => parseInt(item.Periode) === currentPeriod)
+      .reduce((sum, item) => sum + (item.Forecast || 0), 0);
+
+    // Calculate achievement percentage (cumulative monthly sales vs monthly forecast)
+    const achievement = monthlyForecast > 0 ? (cumulativeMonthlySales / monthlyForecast) * 100 : 0;
+
+    // Calculate weekly cumulative sales data for chart
+    const weeklyData = {};
+    const cumulativeWeeklyData = [];
     
-    // Generate weekly data (mock for demonstration)
-    const weeklyData = [72, 77, 69, 76, 83];
+    // Group sales by week for current month
+    dailySalesData.forEach(item => {
+      const itemDate = new Date(item.SalesDate);
+      const itemMonth = itemDate.getMonth() + 1;
+      const itemYear = itemDate.getFullYear();
+      
+      // Only include current month data
+      if (itemMonth === currentMonth && itemYear === currentYear) {
+        const week = item.WeekOfMonth;
+        if (!weeklyData[week]) {
+          weeklyData[week] = 0;
+        }
+        weeklyData[week] += item.DailySales || 0;
+      }
+    });
+
+    // Convert to cumulative chart data
+    let cumulativeTotal = 0;
+    for (let week = 1; week <= 5; week++) {
+      const weeklyAmount = weeklyData[week] || 0;
+      cumulativeTotal += weeklyAmount;
+      
+      cumulativeWeeklyData.push(cumulativeTotal);
+    }
     
     return {
-      dailySales: totalSales,
+      dailySales: todaysSales,
       achievement: achievement,
-      weeklyData: weeklyData
+      weeklyData: cumulativeWeeklyData,
+      monthlyForecast: monthlyForecast
     };
   };
 
@@ -462,7 +519,7 @@ function SummaryDashboard() {
     labels: ['W1', 'W2', 'W3', 'W4', 'W5'],
     datasets: [
       {
-        label: 'Actual',
+        label: 'Cumulative Sales',
         data: data.sales?.weeklyData || [],
         borderColor: '#3b82f6',
         backgroundColor: 'rgba(59, 130, 246, 0.1)',
@@ -470,12 +527,13 @@ function SummaryDashboard() {
         tension: 0.4
       },
       {
-        label: 'Forecast',
-        data: [70, 75, 72, 78, 80],
+        label: 'Monthly Forecast',
+        data: new Array(5).fill(data.sales?.monthlyForecast || 0),
         borderColor: '#ef4444',
         backgroundColor: 'rgba(239, 68, 68, 0.1)',
-        fill: true,
-        tension: 0.4
+        fill: false,
+        tension: 0,
+        borderDash: [5, 5]
       }
     ]
   };
@@ -485,7 +543,30 @@ function SummaryDashboard() {
     maintainAspectRatio: false,
     plugins: {
       legend: { position: 'top', labels: { font: { size: 10 } } },
-      tooltip: { enabled: true }
+      tooltip: { 
+        enabled: true,
+        callbacks: {
+          label: function(context) {
+            const datasetLabel = context.dataset.label;
+            const value = formatNumber(context.parsed.y);
+            
+            if (datasetLabel === 'Cumulative Sales') {
+              // Calculate weekly sales (difference from previous week)
+              const weekIndex = context.dataIndex;
+              const weeklyData = data.sales?.weeklyData || [];
+              const currentWeekTotal = weeklyData[weekIndex] || 0;
+              const previousWeekTotal = weekIndex > 0 ? (weeklyData[weekIndex - 1] || 0) : 0;
+              const weeklySales = currentWeekTotal - previousWeekTotal;
+              
+              return [
+                `Weekly Sales: ${formatNumber(weeklySales)}`,
+                `Monthly Sales: ${value}`
+              ];
+            }
+            return `${datasetLabel}: ${value}`;
+          }
+        }
+      }
     },
     scales: {
       x: { display: true, ticks: { font: { size: 10 } } },
@@ -514,7 +595,7 @@ function SummaryDashboard() {
                   <div className="sales-daily">
                     <div className="sales-label">Daily sales</div>
                     <div className="sales-value">{formatNumber(data.sales?.dailySales || 0)}</div>
-                    <div className="sales-achievement">Ach 90% 📈</div>
+                    <div className="sales-achievement">Ach {(data.sales?.achievement || 0).toFixed(1)}% 📈</div>
                   </div>
                 </div>
                 <div className="sales-right">
