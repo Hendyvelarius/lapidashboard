@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement } from 'chart.js';
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement, Filler } from 'chart.js';
 import { Line, Bar, Doughnut } from 'react-chartjs-2';
 import { apiUrl } from '../api';
 import Sidebar from './Sidebar';
@@ -7,7 +7,7 @@ import DashboardLoading from './DashboardLoading';
 import './SummaryDashboard.css';
 
 // Register Chart.js components
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement, Filler);
 
 // Helper function to format numbers
 const formatNumber = (num) => {
@@ -114,25 +114,23 @@ function SummaryDashboard() {
         const pctData = await pctRes.json();
         const stockData = await stockRes.json();
         const bbbkData = await bbbkRes.json();
-
-
+        
         // Process and set data
         const processedData = {
-          sales: processSalesData(stockData.data || []),
-          inventory: processInventoryData(stockData.data || []),
-          stockOut: processStockOutData(stockData.data || []),
-          coverage: processCoverageData(stockData.data || []),
+          sales: processSalesData(stockData || []),
+          inventory: processInventoryData(stockData || []),
+          stockOut: processStockOutData(stockData || []),
+          coverage: processCoverageData(stockData || []),
           whOccupancy: processWHOccupancyData(wipData.data || []),
           orderFulfillment: processOrderFulfillmentData(ofData || []),
-          materialAvailability: processMaterialAvailabilityData(stockData.data || []),
-          inventoryOJ: processInventoryOJData(stockData.data || []),
+          materialAvailability: processMaterialAvailabilityData(stockData || []),
+          inventoryOJ: processInventoryOJData(stockData || []),
           inventoryBBBK: processInventoryBBBKData(bbbkData || [])
         };
 
         setData(processedData);
       } catch (error) {
         console.error('❌ Error fetching summary data:', error);
-        console.log('🔄 Falling back to mock data');
         // Fallback to mock data on error
         setData({
           sales: processSalesData([]),
@@ -153,7 +151,6 @@ function SummaryDashboard() {
           inventoryOJ: processInventoryOJData([]),
           inventoryBBBK: processInventoryBBBKData([])
         });
-        console.log('📊 Using mock data for fallback');
       } finally {
         setLoading(false);
       }
@@ -231,9 +228,7 @@ function SummaryDashboard() {
   };
 
   const processOrderFulfillmentData = (ofData) => {
-    
     if (!ofData || ofData.length === 0) {
-      console.log('⚠️ No OF data available, returning zeros');
       return {
         turunPpi: 0,
         potongStock: 0,
@@ -280,12 +275,110 @@ function SummaryDashboard() {
   };
 
   const processInventoryOJData = (stockData) => {
-    // Mock inventory OJ data with percentages for Slow Moving, Dead Stock, Return
-    return {
-      slowMoving: 25,
-      deadStock: 12,
-      return: 8
+    if (!stockData || stockData.length === 0) {
+      return {
+        slowMoving: 0,
+        deadStock: 0,
+        return: 0
+      };
+    }
+
+    // Calculate current period dynamically based on actual date
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth() + 1; // getMonth() returns 0-11
+    const currentPeriod = currentYear * 100 + currentMonth;
+    
+    // Calculate period ranges dynamically
+    const last6MonthsPeriods = [];
+    const last3MonthsPeriods = [];
+    
+    for (let i = 5; i >= 0; i--) {
+      const date = new Date(currentYear, currentMonth - 1 - i, 1);
+      const period = date.getFullYear() * 100 + (date.getMonth() + 1);
+      last6MonthsPeriods.push(period);
+      
+      if (i < 3) {
+        last3MonthsPeriods.push(period);
+      }
+    }
+    
+    // Group data by Product_ID to analyze each product's sales and release history
+    const productHistory = {};
+    
+    stockData.forEach(item => {
+      const productId = item.Product_ID;
+      const period = parseInt(item.Periode);
+      const sales = item.Sales || 0;
+      const release = item.Release || 0;
+      
+      if (!productHistory[productId]) {
+        productHistory[productId] = {};
+      }
+      productHistory[productId][period] = { sales, release };
+    });
+    
+    const productIds = Object.keys(productHistory);
+    const totalProducts = productIds.length;
+    
+    let deadStockCount = 0;
+    let slowMovingCount = 0;
+    
+    productIds.forEach(productId => {
+      const history = productHistory[productId];
+      
+      // Check for dead stock (0 sales for last 6 months AND stock available in earliest and current periods)
+      const hasSalesInLast6Months = last6MonthsPeriods.some(period => 
+        (history[period]?.sales || 0) > 0
+      );
+      
+      // Check if stock was available in earliest (6 months ago) and current periods
+      const earliestPeriod = last6MonthsPeriods[0]; // First period in the 6-month range
+      const currentPeriod = last6MonthsPeriods[last6MonthsPeriods.length - 1]; // Last period (current)
+      
+      const hasStockInEarliestPeriod = (history[earliestPeriod]?.release || 0) > 0;
+      const hasStockInCurrentPeriod = (history[currentPeriod]?.release || 0) > 0;
+      
+      const isDeadStock = !hasSalesInLast6Months && hasStockInEarliestPeriod && hasStockInCurrentPeriod;
+      
+      if (isDeadStock) {
+        deadStockCount++;
+      } else {
+        // Only check for slow moving if not dead stock
+        // Check for slow moving (0 sales for last 3 months AND stock available in earliest and current periods)
+        const hasSalesInLast3Months = last3MonthsPeriods.some(period => 
+          (history[period]?.sales || 0) > 0
+        );
+        
+        // Check if stock was available in earliest (3 months ago) and current periods for slow moving
+        const earliestPeriod3M = last3MonthsPeriods[0]; // First period in the 3-month range
+        const currentPeriod3M = last3MonthsPeriods[last3MonthsPeriods.length - 1]; // Last period (current)
+        
+        const hasStockInEarliestPeriod3M = (history[earliestPeriod3M]?.release || 0) > 0;
+        const hasStockInCurrentPeriod3M = (history[currentPeriod3M]?.release || 0) > 0;
+        
+        const isSlowMoving = !hasSalesInLast3Months && hasStockInEarliestPeriod3M && hasStockInCurrentPeriod3M;
+        
+        if (isSlowMoving) {
+          slowMovingCount++;
+        }
+      }
+    });
+    
+    const deadStockPercentage = totalProducts > 0 ? (deadStockCount / totalProducts) * 100 : 0;
+    const slowMovingPercentage = totalProducts > 0 ? (slowMovingCount / totalProducts) * 100 : 0;
+    
+    // For return percentage, we'll use a mock calculation for now
+    // as the return logic wasn't specified for OJ inventory
+    const returnPercentage = 8; // Mock value
+    
+    const result = {
+      slowMoving: Math.round(slowMovingPercentage),
+      deadStock: Math.round(deadStockPercentage),
+      return: returnPercentage
     };
+    
+    return result;
   };
 
   const processInventoryBBBKData = (bbbkData) => {
