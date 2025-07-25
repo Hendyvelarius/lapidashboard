@@ -86,6 +86,7 @@ const MetricBox = ({ label, value, color = '#4f8cff' }) => (
 
 function SummaryDashboard() {
   const [loading, setLoading] = useState(true);
+  const [salesChartType, setSalesChartType] = useState('Weekly'); // 'Weekly' or 'Daily'
   const [data, setData] = useState({
     sales: null,
     inventory: null,
@@ -223,11 +224,40 @@ function SummaryDashboard() {
       
       cumulativeWeeklyData.push(cumulativeTotal);
     }
+
+    // Calculate current week's daily sales data
+    const currentWeekStart = new Date(today);
+    const dayOfWeek = currentWeekStart.getDay(); // 0 = Sunday, 1 = Monday, etc.
+    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // Adjust to get Monday
+    currentWeekStart.setDate(currentWeekStart.getDate() + mondayOffset);
+    
+    const dailyWeekData = [];
+    const dailyWeekLabels = [];
+    
+    for (let i = 0; i < 7; i++) {
+      const currentDay = new Date(currentWeekStart);
+      currentDay.setDate(currentWeekStart.getDate() + i);
+      
+      const dayString = currentDay.toISOString().split('T')[0];
+      const dayLabel = currentDay.getDate().toString();
+      
+      const daySales = dailySalesData
+        .filter(item => {
+          const itemDate = new Date(item.SalesDate).toISOString().split('T')[0];
+          return itemDate === dayString;
+        })
+        .reduce((sum, item) => sum + (item.DailySales || 0), 0);
+      
+      dailyWeekData.push(daySales);
+      dailyWeekLabels.push(dayLabel);
+    }
     
     return {
       dailySales: todaysSales,
       achievement: achievement,
       weeklyData: cumulativeWeeklyData,
+      dailyWeekData: dailyWeekData,
+      dailyWeekLabels: dailyWeekLabels,
       monthlyForecast: monthlyForecast
     };
   };
@@ -515,28 +545,48 @@ function SummaryDashboard() {
   }
 
   // Chart configurations
-  const salesLineData = {
-    labels: ['W1', 'W2', 'W3', 'W4', 'W5'],
-    datasets: [
-      {
-        label: 'Cumulative Sales',
-        data: data.sales?.weeklyData || [],
-        borderColor: '#3b82f6',
-        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-        fill: true,
-        tension: 0.4
-      },
-      {
-        label: 'Monthly Forecast',
-        data: new Array(5).fill(data.sales?.monthlyForecast || 0),
-        borderColor: '#ef4444',
-        backgroundColor: 'rgba(239, 68, 68, 0.1)',
-        fill: false,
-        tension: 0,
-        borderDash: [5, 5]
-      }
-    ]
+  const getSalesChartData = () => {
+    if (salesChartType === 'Daily') {
+      return {
+        labels: data.sales?.dailyWeekLabels || [],
+        datasets: [
+          {
+            label: 'Daily Sales',
+            data: data.sales?.dailyWeekData || [],
+            borderColor: '#3b82f6',
+            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            fill: true,
+            tension: 0.4
+          }
+        ]
+      };
+    } else {
+      return {
+        labels: ['W1', 'W2', 'W3', 'W4', 'W5'],
+        datasets: [
+          {
+            label: 'Cumulative Sales',
+            data: data.sales?.weeklyData || [],
+            borderColor: '#3b82f6',
+            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            fill: true,
+            tension: 0.4
+          },
+          {
+            label: 'Monthly Forecast',
+            data: new Array(5).fill(data.sales?.monthlyForecast || 0),
+            borderColor: '#ef4444',
+            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+            fill: false,
+            tension: 0,
+            borderDash: [5, 5]
+          }
+        ]
+      };
+    }
   };
+
+  const salesLineData = getSalesChartData();
 
   const salesLineOptions = {
     responsive: true,
@@ -550,7 +600,9 @@ function SummaryDashboard() {
             const datasetLabel = context.dataset.label;
             const value = formatNumber(context.parsed.y);
             
-            if (datasetLabel === 'Cumulative Sales') {
+            if (salesChartType === 'Daily') {
+              return `${datasetLabel}: ${value}`;
+            } else if (datasetLabel === 'Cumulative Sales') {
               // Calculate weekly sales (difference from previous week)
               const weekIndex = context.dataIndex;
               const weeklyData = data.sales?.weeklyData || [];
@@ -599,7 +651,13 @@ function SummaryDashboard() {
                   </div>
                 </div>
                 <div className="sales-right">
-                  <div className="sales-chart-title">Weekly Sales</div>
+                  <div 
+                    className="sales-chart-title clickable" 
+                    onClick={() => setSalesChartType(salesChartType === 'Weekly' ? 'Daily' : 'Weekly')}
+                    title="Click to toggle between Weekly and Daily view"
+                  >
+                    {salesChartType} Sales 🔄
+                  </div>
                   <div className="sales-chart">
                     <Line data={salesLineData} options={salesLineOptions} />
                   </div>

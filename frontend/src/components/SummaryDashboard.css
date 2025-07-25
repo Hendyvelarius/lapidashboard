@@ -162,6 +162,20 @@
   text-align: center;
 }
 
+.sales-chart-title.clickable {
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s ease;
+  padding: 0.5rem;
+  border-radius: 0.375rem;
+}
+
+.sales-chart-title.clickable:hover {
+  background-color: #f3f4f6;
+  color: #1f2937;
+  transform: translateY(-1px);
+}
+
 .sales-chart {
   height: 180px;
   width: 100%;
