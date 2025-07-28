@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement, Filler } from 'chart.js';
 import { Line, Bar, Doughnut } from 'react-chartjs-2';
+import { useNavigate } from 'react-router';
 import { apiUrl } from '../api';
 import Sidebar from './Sidebar';
 import DashboardLoading from './DashboardLoading';
@@ -18,14 +19,19 @@ const formatNumber = (num) => {
 };
 
 // Circular Progress Chart Component
-const CircularProgress = ({ percentage, size = 120, strokeWidth = 12, color = '#4f8cff', backgroundColor = '#e5e7eb' }) => {
+const CircularProgress = ({ percentage, size = 120, strokeWidth = 12, color = '#4f8cff', backgroundColor = '#e5e7eb', title, onClick, className = '' }) => {
   const radius = (size - strokeWidth) / 2;
   const circumference = radius * 2 * Math.PI;
   const strokeDasharray = circumference;
   const strokeDashoffset = circumference - (percentage / 100) * circumference;
 
   return (
-    <div className="circular-progress" style={{ width: size, height: size, position: 'relative' }}>
+    <div 
+      className={`circular-progress ${onClick ? 'clickable' : ''} ${className}`} 
+      style={{ width: size, height: size, position: 'relative', cursor: onClick ? 'pointer' : 'default' }}
+      onClick={onClick}
+      title={title}
+    >
       <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
         <circle
           cx={size / 2}
@@ -84,9 +90,141 @@ const MetricBox = ({ label, value, color = '#4f8cff' }) => (
   </div>
 );
 
+// OF Details Modal Component
+const OFDetailsModal = ({ isOpen, onClose, stageName, ofRawData }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  if (!isOpen || !stageName) return null;
+
+  const stageFieldMap = {
+    'Turun PPI': 'TurunPPI',
+    'Potong Stock': 'PotongStock', 
+    'Proses': 'Proses',
+    'Kemas': 'Kemas',
+    'Dokumen': 'Dok',
+    'Rilis QC': 'QC',
+    'Rilis QA': 'QA'
+  };
+  
+  const fieldName = stageFieldMap[stageName];
+  if (!fieldName) return null;
+  
+  const allCompleted = ofRawData.filter(item => item[fieldName] === 1);
+  const allPending = ofRawData.filter(item => item[fieldName] === 0);
+
+  // Filter based on search term
+  const filterBatches = (batches) => {
+    if (!searchTerm.trim()) return batches;
+    
+    return batches.filter(batch => {
+      const batchNo = (batch.ListBet || '').toLowerCase();
+      const productId = (batch.ProductID || '').toString().toLowerCase();
+      const productName = (batch.Product_Name || '').toLowerCase();
+      const search = searchTerm.toLowerCase();
+      
+      return batchNo.includes(search) || 
+             productId.includes(search) || 
+             productName.includes(search);
+    });
+  };
+
+  const completed = filterBatches(allCompleted);
+  const pending = filterBatches(allPending);
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content of-modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Detail {stageName}</h2>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <div className="modal-body">
+          {/* Search Bar */}
+          <div className="search-container" style={{ marginBottom: '20px' }}>
+            <input
+              type="text"
+              placeholder="Search by batch number, product ID, or product name..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px 15px',
+                border: '1px solid #d1d5db',
+                borderRadius: '8px',
+                fontSize: '14px',
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+          
+          {/* Search Results Summary */}
+          {searchTerm.trim() && (
+            <div style={{ marginBottom: '15px', fontSize: '14px', color: '#6b7280' }}>
+              Found {completed.length + pending.length} results for "{searchTerm}"
+              {completed.length + pending.length !== allCompleted.length + allPending.length && 
+                ` (filtered from ${allCompleted.length + allPending.length} total)`}
+            </div>
+          )}
+          
+          <div className="of-details-container">
+            {/* Completed Batches */}
+            <div className="of-details-section">
+              <h3 className="of-section-title completed">
+                ✅ Batch sudah {stageName} ({completed.length})
+              </h3>
+              <div className="of-batch-list">
+                {completed.length > 0 ? (
+                  completed.map((batch, index) => (
+                    <div key={index} className="of-batch-item completed">
+                      <div className="batch-code">Batch: {batch.ListBet}</div>
+                      <div className="product-info">
+                        <span className="product-id">ID: {batch.ProductID}</span>
+                        <span className="product-name">{batch.Product_Name || 'N/A'}</span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-data">Tidak ada batch yang telah selesai</div>
+                )}
+              </div>
+            </div>
+
+            {/* Pending Batches */}
+            <div className="of-details-section">
+              <h3 className="of-section-title pending">
+                ⏳ Batch belum {stageName} ({pending.length})
+              </h3>
+              <div className="of-batch-list">
+                {pending.length > 0 ? (
+                  pending.map((batch, index) => (
+                    <div key={index} className="of-batch-item pending">
+                      <div className="batch-code">Batch: {batch.ListBet}</div>
+                      <div className="product-info">
+                        <span className="product-id">ID: {batch.ProductID}</span>
+                        <span className="product-name">{batch.Product_Name || 'N/A'}</span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-data">Semua batch telah selesai</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 function SummaryDashboard() {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [salesChartType, setSalesChartType] = useState('Weekly'); // 'Weekly' or 'Daily'
+  const [ofModalOpen, setOfModalOpen] = useState(false);
+  const [selectedOfStage, setSelectedOfStage] = useState(null);
+  const [ofRawData, setOfRawData] = useState([]);
   const [data, setData] = useState({
     sales: null,
     inventory: null,
@@ -96,6 +234,43 @@ function SummaryDashboard() {
     orderFulfillment: null,
     materialAvailability: null
   });
+
+  // Helper functions for OF stage analysis
+  const getOfStageDetails = (stageName) => {
+    if (!ofRawData || ofRawData.length === 0) return { completed: [], pending: [] };
+    
+    const stageFieldMap = {
+      'Turun PPI': 'TurunPPI',
+      'Potong Stock': 'PotongStock', 
+      'Proses': 'Proses',
+      'Kemas': 'Kemas',
+      'Dokumen': 'Dok',
+      'Rilis QC': 'QC',
+      'Rilis QA': 'QA'
+    };
+    
+    const fieldName = stageFieldMap[stageName];
+    if (!fieldName) return { completed: [], pending: [] };
+    
+    const completed = ofRawData.filter(item => item[fieldName] === 1);
+    const pending = ofRawData.filter(item => item[fieldName] === 0);
+    
+    return { completed, pending };
+  };
+
+  const getOfStageTooltip = (stageName) => {
+    const { completed, pending } = getOfStageDetails(stageName);
+    return `Completed: ${completed.length}\nPending: ${pending.length}\nTotal: ${completed.length + pending.length}`;
+  };
+
+  const handleOfStageClick = (stageName) => {
+    setSelectedOfStage(stageName);
+    setOfModalOpen(true);
+  };
+
+  const handlePCTClick = () => {
+    navigate("/reports/pct-monthly");
+  };
 
   useEffect(() => {
     
@@ -118,6 +293,9 @@ function SummaryDashboard() {
         const bbbkData = await bbbkRes.json();
         const dailySalesData = await dailySalesRes.json();
         
+        // Store raw OF data for detailed analysis
+        setOfRawData(ofData || []);
+        
         // Process and set data
         const processedData = {
           sales: processSalesData(stockData || [], dailySalesData || []),
@@ -128,7 +306,8 @@ function SummaryDashboard() {
           orderFulfillment: processOrderFulfillmentData(ofData || []),
           materialAvailability: processMaterialAvailabilityData(stockData || []),
           inventoryOJ: processInventoryOJData(stockData || []),
-          inventoryBBBK: processInventoryBBBKData(bbbkData || [])
+          inventoryBBBK: processInventoryBBBKData(bbbkData || []),
+          pct: processPCTData(pctData || [])
         };
 
         setData(processedData);
@@ -152,7 +331,8 @@ function SummaryDashboard() {
           },
           materialAvailability: processMaterialAvailabilityData([]),
           inventoryOJ: processInventoryOJData([]),
-          inventoryBBBK: processInventoryBBBKData([])
+          inventoryBBBK: processInventoryBBBKData([]),
+          pct: { average: 5.2, longest: 12.8, percentage: 40.6 }
         });
       } finally {
         setLoading(false);
@@ -169,15 +349,15 @@ function SummaryDashboard() {
     const currentYear = today.getFullYear();
     const todayDateString = today.toISOString().split('T')[0];
 
-    // Calculate today's total sales from daily sales data
+    // Calculate today's total sales value from daily sales data
     const todaysSales = dailySalesData
       .filter(item => {
         const itemDate = new Date(item.SalesDate).toISOString().split('T')[0];
         return itemDate === todayDateString;
       })
-      .reduce((sum, item) => sum + (item.DailySales || 0), 0);
+      .reduce((sum, item) => sum + (item.TotalPrice || 0), 0);
 
-    // Calculate cumulative monthly sales from daily sales data
+    // Calculate cumulative monthly sales value from daily sales data
     const cumulativeMonthlySales = dailySalesData
       .filter(item => {
         const itemDate = new Date(item.SalesDate);
@@ -185,18 +365,23 @@ function SummaryDashboard() {
         const itemYear = itemDate.getFullYear();
         return itemMonth === currentMonth && itemYear === currentYear;
       })
-      .reduce((sum, item) => sum + (item.DailySales || 0), 0);
+      .reduce((sum, item) => sum + (item.TotalPrice || 0), 0);
 
-    // Calculate monthly forecast from stock data
+    // Calculate monthly forecast value from stock data
     const currentPeriod = currentYear * 100 + currentMonth;
     const monthlyForecast = stockData
       .filter(item => parseInt(item.Periode) === currentPeriod)
-      .reduce((sum, item) => sum + (item.Forecast || 0), 0);
+      .reduce((sum, item) => {
+        const forecastUnits = item.Forecast || 0;
+        const hnaPrice = item.HNA || 0;
+        const forecastValue = forecastUnits * hnaPrice;
+        return sum + forecastValue;
+      }, 0);
 
     // Calculate achievement percentage (cumulative monthly sales vs monthly forecast)
     const achievement = monthlyForecast > 0 ? (cumulativeMonthlySales / monthlyForecast) * 100 : 0;
 
-    // Calculate weekly cumulative sales data for chart
+    // Calculate weekly cumulative sales value data for chart
     const weeklyData = {};
     const cumulativeWeeklyData = [];
     
@@ -212,7 +397,7 @@ function SummaryDashboard() {
         if (!weeklyData[week]) {
           weeklyData[week] = 0;
         }
-        weeklyData[week] += item.DailySales || 0;
+        weeklyData[week] += item.TotalPrice || 0;
       }
     });
 
@@ -225,7 +410,7 @@ function SummaryDashboard() {
       cumulativeWeeklyData.push(cumulativeTotal);
     }
 
-    // Calculate current week's daily sales data
+    // Calculate current week's daily sales value data
     const currentWeekStart = new Date(today);
     const dayOfWeek = currentWeekStart.getDay(); // 0 = Sunday, 1 = Monday, etc.
     const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // Adjust to get Monday
@@ -246,7 +431,7 @@ function SummaryDashboard() {
           const itemDate = new Date(item.SalesDate).toISOString().split('T')[0];
           return itemDate === dayString;
         })
-        .reduce((sum, item) => sum + (item.DailySales || 0), 0);
+        .reduce((sum, item) => sum + (item.TotalPrice || 0), 0);
       
       dailyWeekData.push(daySales);
       dailyWeekLabels.push(dayLabel);
@@ -528,6 +713,51 @@ function SummaryDashboard() {
     return result;
   };
 
+  const processPCTData = (pctData) => {
+    if (!pctData) {
+      return {
+        average: 0,
+        longest: 0,
+        percentage: 0
+      };
+    }
+
+    // Handle both array and object responses from the API
+    let dataArray = [];
+    if (Array.isArray(pctData)) {
+      dataArray = pctData;
+    } else if (pctData.data && Array.isArray(pctData.data)) {
+      dataArray = pctData.data;
+    } else if (typeof pctData === 'object') {
+      // If it's a single object, convert to array
+      dataArray = [pctData];
+    }
+
+    if (dataArray.length === 0) {
+      return {
+        average: 0,
+        longest: 0,
+        percentage: 0
+      };
+    }
+
+    // Calculate average PCT from all PCTAverage values
+    const totalPCT = dataArray.reduce((sum, item) => sum + (item.PCTAverage || 0), 0);
+    const averagePCT = dataArray.length > 0 ? totalPCT / dataArray.length : 0;
+    
+    // Find the longest PCT
+    const longestPCT = Math.max(...dataArray.map(item => item.PCTAverage || 0));
+    
+    // Calculate percentage (average against longest)
+    const percentage = longestPCT > 0 ? (averagePCT / longestPCT) * 100 : 0;
+    
+    return {
+      average: Math.round(averagePCT * 10) / 10, // Round to 1 decimal place
+      longest: Math.round(longestPCT * 10) / 10, // Round to 1 decimal place
+      percentage: Math.round(percentage)
+    };
+  };
+
   if (loading) {
     return (
       <div className="dashboard-container">
@@ -551,7 +781,7 @@ function SummaryDashboard() {
         labels: data.sales?.dailyWeekLabels || [],
         datasets: [
           {
-            label: 'Daily Sales',
+            label: 'Daily Sales Value',
             data: data.sales?.dailyWeekData || [],
             borderColor: '#3b82f6',
             backgroundColor: 'rgba(59, 130, 246, 0.1)',
@@ -565,7 +795,7 @@ function SummaryDashboard() {
         labels: ['W1', 'W2', 'W3', 'W4', 'W5'],
         datasets: [
           {
-            label: 'Cumulative Sales',
+            label: 'Cumulative Sales Value',
             data: data.sales?.weeklyData || [],
             borderColor: '#3b82f6',
             backgroundColor: 'rgba(59, 130, 246, 0.1)',
@@ -602,8 +832,8 @@ function SummaryDashboard() {
             
             if (salesChartType === 'Daily') {
               return `${datasetLabel}: ${value}`;
-            } else if (datasetLabel === 'Cumulative Sales') {
-              // Calculate weekly sales (difference from previous week)
+            } else if (datasetLabel === 'Cumulative Sales Value') {
+              // Calculate weekly sales value (difference from previous week)
               const weekIndex = context.dataIndex;
               const weeklyData = data.sales?.weeklyData || [];
               const currentWeekTotal = weeklyData[weekIndex] || 0;
@@ -611,8 +841,8 @@ function SummaryDashboard() {
               const weeklySales = currentWeekTotal - previousWeekTotal;
               
               return [
-                `Weekly Sales: ${formatNumber(weeklySales)}`,
-                `Monthly Sales: ${value}`
+                `Weekly Sales Value: ${formatNumber(weeklySales)}`,
+                `Monthly Sales Value: ${value}`
               ];
             }
             return `${datasetLabel}: ${value}`;
@@ -622,7 +852,15 @@ function SummaryDashboard() {
     },
     scales: {
       x: { display: true, ticks: { font: { size: 10 } } },
-      y: { display: true, ticks: { font: { size: 10 } } }
+      y: { 
+        display: true, 
+        ticks: { 
+          font: { size: 10 },
+          callback: function(value) {
+            return formatNumber(value);
+          }
+        } 
+      }
     }
   };
 
@@ -645,7 +883,7 @@ function SummaryDashboard() {
                 </div>
                 <div className="sales-middle">
                   <div className="sales-daily">
-                    <div className="sales-label">Daily sales</div>
+                    <div className="sales-label">Daily sales value</div>
                     <div className="sales-value">{formatNumber(data.sales?.dailySales || 0)}</div>
                     <div className="sales-achievement">Ach {(data.sales?.achievement || 0).toFixed(1)}% 📈</div>
                   </div>
@@ -674,6 +912,8 @@ function SummaryDashboard() {
                       percentage={data.orderFulfillment?.turunPpi || 0} 
                       color="#f59e0b"
                       size={80}
+                      title={getOfStageTooltip('Turun PPI')}
+                      onClick={() => handleOfStageClick('Turun PPI')}
                     />
                     <div className="of1-label">Turun PPI</div>
                   </div>
@@ -682,6 +922,8 @@ function SummaryDashboard() {
                       percentage={data.orderFulfillment?.potongStock || 0} 
                       color="#10b981"
                       size={80}
+                      title={getOfStageTooltip('Potong Stock')}
+                      onClick={() => handleOfStageClick('Potong Stock')}
                     />
                     <div className="of1-label">Potong Stock</div>
                   </div>
@@ -690,6 +932,8 @@ function SummaryDashboard() {
                       percentage={data.orderFulfillment?.proses || 0} 
                       color="#6b7280"
                       size={80}
+                      title={getOfStageTooltip('Proses')}
+                      onClick={() => handleOfStageClick('Proses')}
                     />
                     <div className="of1-label">Proses</div>
                   </div>
@@ -698,6 +942,8 @@ function SummaryDashboard() {
                       percentage={data.orderFulfillment?.kemas || 0} 
                       color="#8b5cf6"
                       size={80}
+                      title={getOfStageTooltip('Kemas')}
+                      onClick={() => handleOfStageClick('Kemas')}
                     />
                     <div className="of1-label">Kemas</div>
                   </div>
@@ -706,6 +952,8 @@ function SummaryDashboard() {
                       percentage={data.orderFulfillment?.dokumen || 0} 
                       color="#06b6d4"
                       size={80}
+                      title={getOfStageTooltip('Dokumen')}
+                      onClick={() => handleOfStageClick('Dokumen')}
                     />
                     <div className="of1-label">Dokumen</div>
                   </div>
@@ -714,6 +962,8 @@ function SummaryDashboard() {
                       percentage={data.orderFulfillment?.rilisQc || 0} 
                       color="#f97316"
                       size={80}
+                      title={getOfStageTooltip('Rilis QC')}
+                      onClick={() => handleOfStageClick('Rilis QC')}
                     />
                     <div className="of1-label">Rilis QC</div>
                   </div>
@@ -722,6 +972,8 @@ function SummaryDashboard() {
                       percentage={data.orderFulfillment?.rilisQa || 0} 
                       color="#ef4444"
                       size={80}
+                      title={getOfStageTooltip('Rilis QA')}
+                      onClick={() => handleOfStageClick('Rilis QA')}
                     />
                     <div className="of1-label">Rilis QA</div>
                   </div>
@@ -780,7 +1032,7 @@ function SummaryDashboard() {
                   <CircularProgress 
                     percentage={data.stockOut?.percentage || 0} 
                     color="#1f2937"
-                    size={70}
+                    size={90}
                   />
                 </div>
                 <div className="stock-out-info-cards">
@@ -803,7 +1055,7 @@ function SummaryDashboard() {
                   <CircularProgress 
                     percentage={data.coverage?.percentage || 0} 
                     color="#1f2937"
-                    size={70}
+                    size={90}
                   />
                 </div>
                 <div className="coverage-info-cards">
@@ -827,7 +1079,7 @@ function SummaryDashboard() {
                     <CircularProgress 
                       percentage={data.whOccupancy?.oj || 0} 
                       color="#f59e0b"
-                      size={80}
+                      size={60}
                     />
                     <div className="wh-label">OJ</div>
                   </div>
@@ -835,7 +1087,7 @@ function SummaryDashboard() {
                     <CircularProgress 
                       percentage={data.whOccupancy?.bb || 0} 
                       color="#10b981"
-                      size={80}
+                      size={60}
                     />
                     <div className="wh-label">BB</div>
                   </div>
@@ -843,10 +1095,62 @@ function SummaryDashboard() {
                     <CircularProgress 
                       percentage={data.whOccupancy?.bk || 0} 
                       color="#6b7280"
-                      size={80}
+                      size={60}
                     />
                     <div className="wh-label">BK</div>
                   </div>
+                </div>
+              </div>
+            </KPICard>
+
+            {/* PCT */}
+            <KPICard title="PCT" className="pct-card">
+              <div className="pct-content">
+                <div className="pct-speedometer">
+                  <div 
+                    className="circular-progress clickable"
+                    style={{ width: 70, height: 70, position: 'relative', cursor: 'pointer' }}
+                    title={`Average PCT: ${data.pct?.average || 0} hari\nPCT Terlama: ${data.pct?.longest || 0} hari`}
+                    onClick={handlePCTClick}
+                  >
+                    <svg width={70} height={70} style={{ transform: 'rotate(-90deg)' }}>
+                      <circle
+                        cx={35}
+                        cy={35}
+                        r={29}
+                        stroke="#e5e7eb"
+                        strokeWidth={12}
+                        fill="transparent"
+                      />
+                      <circle
+                        cx={35}
+                        cy={35}
+                        r={29}
+                        stroke="#3b82f6"
+                        strokeWidth={12}
+                        fill="transparent"
+                        strokeDasharray={182.2}
+                        strokeDashoffset={182.2 - ((data.pct?.percentage || 0) / 100) * 182.2}
+                        strokeLinecap="round"
+                        style={{ transition: 'stroke-dashoffset 0.5s ease-in-out' }}
+                      />
+                    </svg>
+                    <div 
+                      style={{
+                        position: 'absolute',
+                        top: '50%',
+                        left: '50%',
+                        transform: 'translate(-50%, -50%)',
+                        textAlign: 'center',
+                        fontSize: '18px',
+                        fontWeight: 'bold',
+                        color: '#1f2937'
+                      }}
+                    >
+                      {data.pct?.average || 0}
+                    </div>
+                  </div>
+                  <div className="pct-label">PCT Average (hari)</div>
                 </div>
               </div>
             </KPICard>
@@ -916,6 +1220,14 @@ function SummaryDashboard() {
             </KPICard>
           </div>
         </div>
+        
+        {/* OF Details Modal */}
+        <OFDetailsModal 
+          isOpen={ofModalOpen}
+          onClose={() => setOfModalOpen(false)}
+          stageName={selectedOfStage}
+          ofRawData={ofRawData}
+        />
       </main>
     </div>
   );
