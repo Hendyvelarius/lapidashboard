@@ -1038,11 +1038,11 @@ function SummaryDashboard() {
                 <div className="stock-out-info-cards">
                   <div className="stock-out-info-card">
                     <div className="stock-out-info-value">{data.stockOut?.focus || 0}</div>
-                    <div className="stock-out-info-label">Stockout - Fokus</div>
+                    <div className="stock-out-info-label">Fokus</div>
                   </div>
                   <div className="stock-out-info-card">
                     <div className="stock-out-info-value">{data.stockOut?.nonFocus || 0}</div>
-                    <div className="stock-out-info-label">Stockout - Non Fokus</div>
+                    <div className="stock-out-info-label">Non Fokus</div>
                   </div>
                 </div>
               </div>
