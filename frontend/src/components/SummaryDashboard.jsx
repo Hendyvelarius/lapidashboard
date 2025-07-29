@@ -91,6 +91,328 @@ const MetricBox = ({ label, value, color = '#4f8cff' }) => (
   </div>
 );
 
+// Inventory OJ Details Modal Component
+const InventoryOJDetailsModal = ({ isOpen, onClose, forecastData }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  if (!isOpen || !forecastData) return null;
+
+  // Calculate current period dynamically based on actual date
+  const currentDate = new Date();
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = currentDate.getMonth() + 1;
+  
+  // Calculate period ranges dynamically
+  const last6MonthsPeriods = [];
+  const last3MonthsPeriods = [];
+  
+  for (let i = 5; i >= 0; i--) {
+    const date = new Date(currentYear, currentMonth - 1 - i, 1);
+    const period = date.getFullYear() * 100 + (date.getMonth() + 1);
+    last6MonthsPeriods.push(period);
+    
+    if (i < 3) {
+      last3MonthsPeriods.push(period);
+    }
+  }
+  
+  // Group data by Product_ID to analyze each product's sales and release history
+  const productHistory = {};
+  const productDetails = {};
+  
+  forecastData.forEach(item => {
+    const productId = item.Product_ID;
+    const period = parseInt(item.Periode);
+    const sales = item.Sales || 0;
+    const release = item.Release || 0;
+    
+    if (!productHistory[productId]) {
+      productHistory[productId] = {};
+      productDetails[productId] = {
+        Product_ID: productId,
+        Product_Name: item.Product_Name || item.Product_NM || 'N/A',
+        Product_Group: item.Product_Group || 'Unknown'
+      };
+    }
+    productHistory[productId][period] = { sales, release };
+  });
+  
+  const productIds = Object.keys(productHistory);
+  
+  let allDeadStockProducts = [];
+  let allSlowMovingProducts = [];
+  
+  productIds.forEach(productId => {
+    const history = productHistory[productId];
+    const productDetail = productDetails[productId];
+    
+    // Check for dead stock (0 sales for last 6 months AND stock available in earliest and current periods)
+    const hasSalesInLast6Months = last6MonthsPeriods.some(period => 
+      (history[period]?.sales || 0) > 0
+    );
+    
+    const earliestPeriod = last6MonthsPeriods[0];
+    const currentPeriod = last6MonthsPeriods[last6MonthsPeriods.length - 1];
+    
+    const hasStockInEarliestPeriod = (history[earliestPeriod]?.release || 0) > 0;
+    const hasStockInCurrentPeriod = (history[currentPeriod]?.release || 0) > 0;
+    
+    const isDeadStock = !hasSalesInLast6Months && hasStockInEarliestPeriod && hasStockInCurrentPeriod;
+    
+    if (isDeadStock) {
+      allDeadStockProducts.push(productDetail);
+    } else {
+      // Check for slow moving (0 sales for last 3 months AND stock available in earliest and current periods)
+      const hasSalesInLast3Months = last3MonthsPeriods.some(period => 
+        (history[period]?.sales || 0) > 0
+      );
+      
+      const earliestPeriod3M = last3MonthsPeriods[0];
+      const currentPeriod3M = last3MonthsPeriods[last3MonthsPeriods.length - 1];
+      
+      const hasStockInEarliestPeriod3M = (history[earliestPeriod3M]?.release || 0) > 0;
+      const hasStockInCurrentPeriod3M = (history[currentPeriod3M]?.release || 0) > 0;
+      
+      const isSlowMoving = !hasSalesInLast3Months && hasStockInEarliestPeriod3M && hasStockInCurrentPeriod3M;
+      
+      if (isSlowMoving) {
+        allSlowMovingProducts.push(productDetail);
+      }
+    }
+  });
+
+  // Filter based on search term
+  const filterProducts = (products) => {
+    if (!searchTerm.trim()) return products;
+    
+    return products.filter(product => {
+      const productId = (product.Product_ID || '').toString().toLowerCase();
+      const productName = (product.Product_Name || '').toLowerCase();
+      const search = searchTerm.toLowerCase();
+      
+      return productId.includes(search) || productName.includes(search);
+    });
+  };
+
+  const slowMovingProducts = filterProducts(allSlowMovingProducts);
+  const deadStockProducts = filterProducts(allDeadStockProducts);
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content of-modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Detail Inventory OJ</h2>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <div className="modal-body">
+          {/* Search Bar */}
+          <div className="search-container" style={{ marginBottom: '20px' }}>
+            <input
+              type="text"
+              placeholder="Search by product ID or product name..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px 15px',
+                border: '1px solid #d1d5db',
+                borderRadius: '8px',
+                fontSize: '14px',
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+          
+          {/* Search Results Summary */}
+          {searchTerm.trim() && (
+            <div style={{ marginBottom: '15px', fontSize: '14px', color: '#6b7280' }}>
+              Found {slowMovingProducts.length + deadStockProducts.length} results for "{searchTerm}"
+              {slowMovingProducts.length + deadStockProducts.length !== allSlowMovingProducts.length + allDeadStockProducts.length && 
+                ` (filtered from ${allSlowMovingProducts.length + allDeadStockProducts.length} total)`}
+            </div>
+          )}
+          
+          <div className="of-details-container">
+            {/* Slow Moving Products */}
+            <div className="of-details-section">
+              <h3 className="of-section-title completed">
+                🐌 Slow Moving ({slowMovingProducts.length})
+              </h3>
+              <div className="of-batch-list">
+                {slowMovingProducts.length > 0 ? (
+                  slowMovingProducts.map((product, index) => (
+                    <div key={index} className="of-batch-item completed">
+                      <div className="batch-code">ID: {product.Product_ID}</div>
+                      <div className="product-info">
+                        <span className="product-name">{product.Product_Name}</span>
+                        <span className="product-id">Group: {product.Product_Group}</span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-data">Tidak ada produk slow moving</div>
+                )}
+              </div>
+            </div>
+
+            {/* Dead Stock Products */}
+            <div className="of-details-section">
+              <h3 className="of-section-title pending">
+                💀 Dead Stock ({deadStockProducts.length})
+              </h3>
+              <div className="of-batch-list">
+                {deadStockProducts.length > 0 ? (
+                  deadStockProducts.map((product, index) => (
+                    <div key={index} className="of-batch-item pending">
+                      <div className="batch-code">ID: {product.Product_ID}</div>
+                      <div className="product-info">
+                        <span className="product-name">{product.Product_Name}</span>
+                        <span className="product-id">Group: {product.Product_Group}</span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-data">Tidak ada produk dead stock</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Inventory BB-BK Details Modal Component
+const InventoryBBBKDetailsModal = ({ isOpen, onClose, bbbkData }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  if (!isOpen || !bbbkData) return null;
+
+  const currentDate = new Date();
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = currentDate.getMonth() + 1;
+  const threeMonthsAgo = new Date(currentYear, currentMonth - 4, 1);
+  const threeMonthsAgoYYYYMM = threeMonthsAgo.getFullYear() * 100 + (threeMonthsAgo.getMonth() + 1);
+  
+  // Calculate Dead Stock (null last_transaction_period)
+  const allDeadStockItems = bbbkData.filter(item => 
+    item.last_transaction_period === null || item.last_transaction_period === ''
+  );
+  
+  // Calculate Slow Moving (last_transaction_period older than 3 months)
+  const allSlowMovingItems = bbbkData.filter(item => {
+    if (!item.last_transaction_period || item.last_transaction_period === null) {
+      return false; // Already counted as dead stock
+    }
+    const transactionPeriod = parseInt(item.last_transaction_period);
+    return transactionPeriod <= threeMonthsAgoYYYYMM;
+  });
+
+  // Filter based on search term
+  const filterItems = (items) => {
+    if (!searchTerm.trim()) return items;
+    
+    return items.filter(item => {
+      const itemCode = (item.item_code || '').toString().toLowerCase();
+      const itemName = (item.item_name || '').toLowerCase();
+      const search = searchTerm.toLowerCase();
+      
+      return itemCode.includes(search) || itemName.includes(search);
+    });
+  };
+
+  const slowMovingItems = filterItems(allSlowMovingItems);
+  const deadStockItems = filterItems(allDeadStockItems);
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content of-modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Detail Inventory BB-BK</h2>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <div className="modal-body">
+          {/* Search Bar */}
+          <div className="search-container" style={{ marginBottom: '20px' }}>
+            <input
+              type="text"
+              placeholder="Search by item code or item name..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px 15px',
+                border: '1px solid #d1d5db',
+                borderRadius: '8px',
+                fontSize: '14px',
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+          
+          {/* Search Results Summary */}
+          {searchTerm.trim() && (
+            <div style={{ marginBottom: '15px', fontSize: '14px', color: '#6b7280' }}>
+              Found {slowMovingItems.length + deadStockItems.length} results for "{searchTerm}"
+              {slowMovingItems.length + deadStockItems.length !== allSlowMovingItems.length + allDeadStockItems.length && 
+                ` (filtered from ${allSlowMovingItems.length + allDeadStockItems.length} total)`}
+            </div>
+          )}
+          
+          <div className="of-details-container">
+            {/* Slow Moving Items */}
+            <div className="of-details-section">
+              <h3 className="of-section-title completed">
+                🐌 Slow Moving ({slowMovingItems.length})
+              </h3>
+              <div className="of-batch-list">
+                {slowMovingItems.length > 0 ? (
+                  slowMovingItems.map((item, index) => (
+                    <div key={index} className="of-batch-item completed">
+                      <div className="batch-code">Code: {item.item_code}</div>
+                      <div className="product-info">
+                        <span className="product-name">{item.item_name || 'N/A'}</span>
+                        <span className="product-id">Last Transaction: {item.last_transaction_period || 'N/A'}</span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-data">Tidak ada item slow moving</div>
+                )}
+              </div>
+            </div>
+
+            {/* Dead Stock Items */}
+            <div className="of-details-section">
+              <h3 className="of-section-title pending">
+                💀 Dead Stock ({deadStockItems.length})
+              </h3>
+              <div className="of-batch-list">
+                {deadStockItems.length > 0 ? (
+                  deadStockItems.map((item, index) => (
+                    <div key={index} className="of-batch-item pending">
+                      <div className="batch-code">Code: {item.item_code}</div>
+                      <div className="product-info">
+                        <span className="product-name">{item.item_name || 'N/A'}</span>
+                        <span className="product-id">Last Transaction: None</span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-data">Tidak ada item dead stock</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Lost Sales Details Modal Component
 const LostSalesDetailsModal = ({ isOpen, onClose, lostSalesData }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -482,6 +804,9 @@ function SummaryDashboard() {
   const [forecastRawData, setForecastRawData] = useState([]);
   const [lostSalesModalOpen, setLostSalesModalOpen] = useState(false);
   const [lostSalesRawData, setLostSalesRawData] = useState([]);
+  const [inventoryOJModalOpen, setInventoryOJModalOpen] = useState(false);
+  const [inventoryBBBKModalOpen, setInventoryBBBKModalOpen] = useState(false);
+  const [bbbkRawData, setBbbkRawData] = useState([]);
   const [data, setData] = useState({
     sales: null,
     inventory: null,
@@ -533,6 +858,14 @@ function SummaryDashboard() {
     setLostSalesModalOpen(true);
   };
 
+  const handleInventoryOJClick = () => {
+    setInventoryOJModalOpen(true);
+  };
+
+  const handleInventoryBBBKClick = () => {
+    setInventoryBBBKModalOpen(true);
+  };
+
   const handlePCTClick = () => {
     navigate("/reports/pct-monthly");
   };
@@ -569,6 +902,8 @@ function SummaryDashboard() {
         setForecastRawData(forecastData || []);
         // Store raw lost sales data for Lost Sales modal
         setLostSalesRawData(lostSalesData || []);
+        // Store raw BBBK data for Inventory BB-BK modal
+        setBbbkRawData(bbbkData || []);
         
         // Process and set data
         const processedData = {
@@ -1474,6 +1809,8 @@ function SummaryDashboard() {
                       percentage={data.inventoryOJ?.slowMoving || 0} 
                       color="#f59e0b"
                       size={60}
+                      onClick={handleInventoryOJClick}
+                      title="Click to view slow moving products"
                     />
                     <div className="inventory-label">Slow Moving</div>
                   </div>
@@ -1482,6 +1819,8 @@ function SummaryDashboard() {
                       percentage={data.inventoryOJ?.deadStock || 0} 
                       color="#ef4444"
                       size={60}
+                      onClick={handleInventoryOJClick}
+                      title="Click to view dead stock products"
                     />
                     <div className="inventory-label">Dead Stock</div>
                   </div>
@@ -1506,6 +1845,8 @@ function SummaryDashboard() {
                       percentage={data.inventoryBBBK?.slowMoving || 0} 
                       color="#f59e0b"
                       size={60}
+                      onClick={handleInventoryBBBKClick}
+                      title="Click to view slow moving items"
                     />
                     <div className="inventory-label">Slow Moving</div>
                   </div>
@@ -1514,6 +1855,8 @@ function SummaryDashboard() {
                       percentage={data.inventoryBBBK?.deadStock || 0} 
                       color="#ef4444"
                       size={60}
+                      onClick={handleInventoryBBBKClick}
+                      title="Click to view dead stock items"
                     />
                     <div className="inventory-label">Dead Stock</div>
                   </div>
@@ -1551,6 +1894,20 @@ function SummaryDashboard() {
           isOpen={lostSalesModalOpen}
           onClose={() => setLostSalesModalOpen(false)}
           lostSalesData={lostSalesRawData}
+        />
+        
+        {/* Inventory OJ Details Modal */}
+        <InventoryOJDetailsModal 
+          isOpen={inventoryOJModalOpen}
+          onClose={() => setInventoryOJModalOpen(false)}
+          forecastData={forecastRawData}
+        />
+        
+        {/* Inventory BB-BK Details Modal */}
+        <InventoryBBBKDetailsModal 
+          isOpen={inventoryBBBKModalOpen}
+          onClose={() => setInventoryBBBKModalOpen(false)}
+          bbbkData={bbbkRawData}
         />
       </main>
     </div>
