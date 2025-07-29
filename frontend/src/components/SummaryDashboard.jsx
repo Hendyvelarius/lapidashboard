@@ -18,8 +18,8 @@ const formatNumber = (num) => {
   return num?.toLocaleString() || '0';
 };
 
-// Circular Progress Chart Component
-const CircularProgress = ({ percentage, size = 120, strokeWidth = 12, color = '#4f8cff', backgroundColor = '#e5e7eb', title, onClick, className = '' }) => {
+// Circular Progress Chart Component with Custom Center Content
+const CircularProgress = ({ percentage, size = 120, strokeWidth = 12, color = '#4f8cff', backgroundColor = '#e5e7eb', title, onClick, className = '', centerContent, showPercentage = true }) => {
   const radius = (size - strokeWidth) / 2;
   const circumference = radius * 2 * Math.PI;
   const strokeDasharray = circumference;
@@ -61,12 +61,13 @@ const CircularProgress = ({ percentage, size = 120, strokeWidth = 12, color = '#
           left: '50%',
           transform: 'translate(-50%, -50%)',
           textAlign: 'center',
-          fontSize: '24px',
+          fontSize: centerContent ? '16px' : '24px',
           fontWeight: 'bold',
-          color: '#1f2937'
+          color: '#1f2937',
+          lineHeight: '1.2'
         }}
       >
-        {percentage.toFixed(0)}%
+        {centerContent || (showPercentage ? `${percentage.toFixed(0)}%` : '')}
       </div>
     </div>
   );
@@ -89,6 +90,258 @@ const MetricBox = ({ label, value, color = '#4f8cff' }) => (
     <div className="summary-metric-label">{label}</div>
   </div>
 );
+
+// Lost Sales Details Modal Component
+const LostSalesDetailsModal = ({ isOpen, onClose, lostSalesData }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  if (!isOpen || !lostSalesData) return null;
+
+  // Split by Product_Group
+  const allFokusProducts = lostSalesData.filter(item => 
+    item.Product_Group === "1. PRODUK FOKUS"
+  );
+  const allNonFokusProducts = lostSalesData.filter(item => 
+    item.Product_Group === "2. PRODUK NON FOKUS"
+  );
+
+  // Filter based on search term
+  const filterProducts = (products) => {
+    if (!searchTerm.trim()) return products;
+    
+    return products.filter(product => {
+      const productId = (product.MSO_ProductID || '').toString().toLowerCase();
+      const productName = (product.Product_Name || '').toLowerCase();
+      const search = searchTerm.toLowerCase();
+      
+      return productId.includes(search) || productName.includes(search);
+    });
+  };
+
+  const fokusProducts = filterProducts(allFokusProducts);
+  const nonFokusProducts = filterProducts(allNonFokusProducts);
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content of-modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Detail Lost Sales</h2>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <div className="modal-body">
+          {/* Search Bar */}
+          <div className="search-container" style={{ marginBottom: '20px' }}>
+            <input
+              type="text"
+              placeholder="Search by product ID or product name..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px 15px',
+                border: '1px solid #d1d5db',
+                borderRadius: '8px',
+                fontSize: '14px',
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+          
+          {/* Search Results Summary */}
+          {searchTerm.trim() && (
+            <div style={{ marginBottom: '15px', fontSize: '14px', color: '#6b7280' }}>
+              Found {fokusProducts.length + nonFokusProducts.length} results for "{searchTerm}"
+              {fokusProducts.length + nonFokusProducts.length !== allFokusProducts.length + allNonFokusProducts.length && 
+                ` (filtered from ${allFokusProducts.length + allNonFokusProducts.length} total)`}
+            </div>
+          )}
+          
+          <div className="of-details-container">
+            {/* Fokus Products */}
+            <div className="of-details-section">
+              <h3 className="of-section-title completed">
+                🎯 Produk Fokus ({fokusProducts.length})
+              </h3>
+              <div className="of-batch-list">
+                {fokusProducts.length > 0 ? (
+                  fokusProducts.map((product, index) => (
+                    <div key={index} className="of-batch-item completed">
+                      <div className="batch-code">ID: {product.MSO_ProductID}</div>
+                      <div className="product-info">
+                        <span className="product-name">{product.Product_Name || 'N/A'}</span>
+                        <span className="product-id">
+                          Booked: {product.Qty_Booked || 0} | 
+                          Price: {formatNumber(product.Product_SalesHNA || 0)} | 
+                          Potential: {formatNumber(product.TotalPending || 0)}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-data">Tidak ada produk fokus dengan lost sales</div>
+                )}
+              </div>
+            </div>
+
+            {/* Non Fokus Products */}
+            <div className="of-details-section">
+              <h3 className="of-section-title pending">
+                📦 Produk Non Fokus ({nonFokusProducts.length})
+              </h3>
+              <div className="of-batch-list">
+                {nonFokusProducts.length > 0 ? (
+                  nonFokusProducts.map((product, index) => (
+                    <div key={index} className="of-batch-item pending">
+                      <div className="batch-code">ID: {product.MSO_ProductID}</div>
+                      <div className="product-info">
+                        <span className="product-name">{product.Product_Name || 'N/A'}</span>
+                        <span className="product-id">
+                          Booked: {product.Qty_Booked || 0} | 
+                          Price: {formatNumber(product.Product_SalesHNA || 0)} | 
+                          Potential: {formatNumber(product.TotalPending || 0)}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-data">Tidak ada produk non fokus dengan lost sales</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Stock Out Details Modal Component
+const StockOutDetailsModal = ({ isOpen, onClose, stockOutData }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  if (!isOpen || !stockOutData) return null;
+
+  // Get current period for filtering
+  const currentDate = new Date();
+  const currentPeriod = `${currentDate.getFullYear()}${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+  
+  // Filter forecast data by current period and stock out products (Release = 0)
+  const currentPeriodData = stockOutData.filter(item => 
+    String(item.Periode || '').toString() === currentPeriod
+  );
+  const stockOutProducts = currentPeriodData.filter(item => (item.Release || 0) === 0);
+  
+  // Split by Product_Group
+  const allFokusProducts = stockOutProducts.filter(item => 
+    item.Product_Group === "1. PRODUK FOKUS"
+  );
+  const allNonFokusProducts = stockOutProducts.filter(item => 
+    item.Product_Group === "2. PRODUK NON FOKUS"
+  );
+
+  // Filter based on search term
+  const filterProducts = (products) => {
+    if (!searchTerm.trim()) return products;
+    
+    return products.filter(product => {
+      const productId = (product.Product_ID || '').toString().toLowerCase();
+      const productName = (product.Product_Name || '').toLowerCase();
+      const search = searchTerm.toLowerCase();
+      
+      return productId.includes(search) || productName.includes(search);
+    });
+  };
+
+  const fokusProducts = filterProducts(allFokusProducts);
+  const nonFokusProducts = filterProducts(allNonFokusProducts);
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content of-modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Detail Stock Out</h2>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <div className="modal-body">
+          {/* Search Bar */}
+          <div className="search-container" style={{ marginBottom: '20px' }}>
+            <input
+              type="text"
+              placeholder="Search by product ID or product name..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px 15px',
+                border: '1px solid #d1d5db',
+                borderRadius: '8px',
+                fontSize: '14px',
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+          
+          {/* Search Results Summary */}
+          {searchTerm.trim() && (
+            <div style={{ marginBottom: '15px', fontSize: '14px', color: '#6b7280' }}>
+              Found {fokusProducts.length + nonFokusProducts.length} results for "{searchTerm}"
+              {fokusProducts.length + nonFokusProducts.length !== allFokusProducts.length + allNonFokusProducts.length && 
+                ` (filtered from ${allFokusProducts.length + allNonFokusProducts.length} total)`}
+            </div>
+          )}
+          
+          <div className="of-details-container">
+            {/* Fokus Products */}
+            <div className="of-details-section">
+              <h3 className="of-section-title completed">
+                🎯 Produk Fokus ({fokusProducts.length})
+              </h3>
+              <div className="of-batch-list">
+                {fokusProducts.length > 0 ? (
+                  fokusProducts.map((product, index) => (
+                    <div key={index} className="of-batch-item completed">
+                      <div className="batch-code">ID: {product.Product_ID}</div>
+                      <div className="product-info">
+                        <span className="product-name">{product.Product_NM || 'N/A'}</span>
+                        <span className="product-id">Produksi: {product.Produksi || 0} | WIP: {product.WIP || 0}</span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-data">Tidak ada produk fokus yang stock out</div>
+                )}
+              </div>
+            </div>
+
+            {/* Non Fokus Products */}
+            <div className="of-details-section">
+              <h3 className="of-section-title pending">
+                📦 Produk Non Fokus ({nonFokusProducts.length})
+              </h3>
+              <div className="of-batch-list">
+                {nonFokusProducts.length > 0 ? (
+                  nonFokusProducts.map((product, index) => (
+                    <div key={index} className="of-batch-item pending">
+                      <div className="batch-code">ID: {product.Product_ID}</div>
+                      <div className="product-info">
+                        <span className="product-name">{product.Product_NM || 'N/A'}</span>
+                        <span className="product-id">Produksi: {product.Produksi || 0} | WIP: {product.WIP || 0}</span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-data">Tidak ada produk non fokus yang stock out</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // OF Details Modal Component
 const OFDetailsModal = ({ isOpen, onClose, stageName, ofRawData }) => {
@@ -225,6 +478,10 @@ function SummaryDashboard() {
   const [ofModalOpen, setOfModalOpen] = useState(false);
   const [selectedOfStage, setSelectedOfStage] = useState(null);
   const [ofRawData, setOfRawData] = useState([]);
+  const [stockOutModalOpen, setStockOutModalOpen] = useState(false);
+  const [forecastRawData, setForecastRawData] = useState([]);
+  const [lostSalesModalOpen, setLostSalesModalOpen] = useState(false);
+  const [lostSalesRawData, setLostSalesRawData] = useState([]);
   const [data, setData] = useState({
     sales: null,
     inventory: null,
@@ -268,6 +525,14 @@ function SummaryDashboard() {
     setOfModalOpen(true);
   };
 
+  const handleStockOutClick = () => {
+    setStockOutModalOpen(true);
+  };
+
+  const handleLostSalesClick = () => {
+    setLostSalesModalOpen(true);
+  };
+
   const handlePCTClick = () => {
     navigate("/reports/pct-monthly");
   };
@@ -277,35 +542,44 @@ function SummaryDashboard() {
     const fetchAllData = async () => {
       try {
         setLoading(true);      
-        const [wipRes, ofRes, pctRes, stockRes, bbbkRes, dailySalesRes] = await Promise.all([
+        const [wipRes, ofRes, pctRes, forecastRes, bbbkRes, dailySalesRes, lostSalesRes] = await Promise.all([
           fetch(apiUrl('/api/wip')),
           fetch(apiUrl('/api/ofsummary')),
           fetch(apiUrl('/api/pctAverage')),
           fetch(apiUrl('/api/forecast')),
           fetch(apiUrl('/api/bbbk')),
-          fetch(apiUrl('/api/dailySales'))
+          fetch(apiUrl('/api/dailySales')),
+          fetch(apiUrl('/api/lostSales'))
         ]);
 
         const wipData = await wipRes.json();
         const ofData = await ofRes.json();
         const pctData = await pctRes.json();
-        const stockData = await stockRes.json();
+        const forecastData = await forecastRes.json();
         const bbbkData = await bbbkRes.json();
         const dailySalesData = await dailySalesRes.json();
+        const lostSalesData = await lostSalesRes.json();
+        
+        console.log('📊 Lost Sales Data:', lostSalesData);
+        console.log('📈 Forecast Data Sample:', forecastData?.slice(0, 3));
         
         // Store raw OF data for detailed analysis
         setOfRawData(ofData || []);
+        // Store raw forecast data for Stock Out modal
+        setForecastRawData(forecastData || []);
+        // Store raw lost sales data for Lost Sales modal
+        setLostSalesRawData(lostSalesData || []);
         
         // Process and set data
         const processedData = {
-          sales: processSalesData(stockData || [], dailySalesData || []),
-          inventory: processInventoryData(stockData || []),
-          stockOut: processStockOutData(stockData || []),
-          coverage: processCoverageData(stockData || []),
+          sales: processSalesData(forecastData || [], dailySalesData || []),
+          inventory: processInventoryData(forecastData || []),
+          stockOut: processStockOutData(forecastData || [], lostSalesData || []),
+          coverage: processCoverageData(forecastData || []),
           whOccupancy: processWHOccupancyData(wipData.data || []),
           orderFulfillment: processOrderFulfillmentData(ofData || []),
-          materialAvailability: processMaterialAvailabilityData(stockData || []),
-          inventoryOJ: processInventoryOJData(stockData || []),
+          materialAvailability: processMaterialAvailabilityData(forecastData || []),
+          inventoryOJ: processInventoryOJData(forecastData || []),
           inventoryBBBK: processInventoryBBBKData(bbbkData || []),
           pct: processPCTData(pctData || [])
         };
@@ -317,7 +591,7 @@ function SummaryDashboard() {
         setData({
           sales: processSalesData([], []),
           inventory: processInventoryData([]),
-          stockOut: processStockOutData([]),
+          stockOut: processStockOutData([], []),
           coverage: processCoverageData([]),
           whOccupancy: processWHOccupancyData([]),
           orderFulfillment: {
@@ -461,17 +735,43 @@ function SummaryDashboard() {
     };
   };
 
-  const processStockOutData = (stockData) => {
-    const totalProducts = stockData.length;
-    const stockOutProducts = stockData.filter(item => (item.Release || 0) === 0).length;
-    const focusProducts = Math.floor(stockOutProducts * 0.3);
-    const nonFocusProducts = stockOutProducts - focusProducts;
+  const processStockOutData = (forecastData, lostSalesData) => {
+    // Calculate total lost sales from lostSales API
+    const totalLostSales = lostSalesData.reduce((sum, item) => sum + (item.TotalPending || 0), 0);
+    
+    // Get current period (YYYYMM format)
+    const currentDate = new Date();
+    const currentPeriod = `${currentDate.getFullYear()}${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+    console.log('📅 Current Period:', currentPeriod);
+    
+    // Filter forecast data by current period
+    const currentPeriodData = forecastData.filter(item => 
+      String(item.Periode || '').toString() === currentPeriod
+    );
+    console.log('📊 Current Period Data Count:', currentPeriodData.length, 'of', forecastData.length);
+    
+    // Calculate stock out products from forecast API (Release = 0) for current period only
+    const totalProducts = currentPeriodData.length;
+    const stockOutProducts = currentPeriodData.filter(item => (item.Release || 0) === 0);
+    
+    // Count focus and non-focus products based on Product_Group for current period
+    const focusProducts = stockOutProducts.filter(item => 
+      item.Product_Group === "1. PRODUK FOKUS"
+    ).length;
+    
+    const nonFocusProducts = stockOutProducts.filter(item => 
+      item.Product_Group === "2. PRODUK NON FOKUS"
+    ).length;
+    
+    const totalStockOut = stockOutProducts.length;
     
     return {
-      total: stockOutProducts,
-      percentage: (stockOutProducts / totalProducts) * 100,
+      total: totalStockOut,
+      percentage: totalProducts > 0 ? (totalStockOut / totalProducts) * 100 : 0,
       focus: focusProducts,
-      nonFocus: nonFocusProducts
+      nonFocus: nonFocusProducts,
+      lostSales: totalLostSales,
+      lostSalesFormatted: formatNumber(totalLostSales)
     };
   };
 
@@ -1033,14 +1333,24 @@ function SummaryDashboard() {
                     percentage={data.stockOut?.percentage || 0} 
                     color="#1f2937"
                     size={90}
+                    centerContent={
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#1f2937' }}>
+                          {data.stockOut?.lostSalesFormatted || '0'}
+                        </div>
+                      </div>
+                    }
+                    showPercentage={false}
+                    onClick={handleLostSalesClick}
+                    title="Click to view lost sales details"
                   />
                 </div>
                 <div className="stock-out-info-cards">
-                  <div className="stock-out-info-card">
+                  <div className="stock-out-info-card" onClick={handleStockOutClick} style={{ cursor: 'pointer' }} title="Click to view stock out products">
                     <div className="stock-out-info-value">{data.stockOut?.focus || 0}</div>
                     <div className="stock-out-info-label">Fokus</div>
                   </div>
-                  <div className="stock-out-info-card">
+                  <div className="stock-out-info-card" onClick={handleStockOutClick} style={{ cursor: 'pointer' }} title="Click to view stock out products">
                     <div className="stock-out-info-value">{data.stockOut?.nonFocus || 0}</div>
                     <div className="stock-out-info-label">Non Fokus</div>
                   </div>
@@ -1227,6 +1537,20 @@ function SummaryDashboard() {
           onClose={() => setOfModalOpen(false)}
           stageName={selectedOfStage}
           ofRawData={ofRawData}
+        />
+        
+        {/* Stock Out Details Modal */}
+        <StockOutDetailsModal 
+          isOpen={stockOutModalOpen}
+          onClose={() => setStockOutModalOpen(false)}
+          stockOutData={forecastRawData}
+        />
+        
+        {/* Lost Sales Details Modal */}
+        <LostSalesDetailsModal 
+          isOpen={lostSalesModalOpen}
+          onClose={() => setLostSalesModalOpen(false)}
+          lostSalesData={lostSalesRawData}
         />
       </main>
     </div>

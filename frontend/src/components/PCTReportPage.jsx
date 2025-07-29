@@ -212,6 +212,7 @@ export default function PCTReportPage({ title, apiEndpoint, tableColumns, dataMa
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [tableFilter, setTableFilter] = useState(null);
   
   // Chart selection states
   const [smallChartModalOpen, setSmallChartModalOpen] = useState(false);
@@ -293,6 +294,78 @@ export default function PCTReportPage({ title, apiEndpoint, tableColumns, dataMa
   };
 
   const pctStats = calculatePCTStats(data);
+
+  // Table filtering logic
+  const getFilteredTableData = useMemo(() => {
+    if (!tableFilter) return data;
+    
+    switch (tableFilter.type) {
+      case 'kategori':
+        return data.filter(item => item.kategori === tableFilter.value);
+      case 'departemen':
+        return data.filter(item => item.departemen === tableFilter.value);
+      case 'pctRange':
+        return data.filter(item => {
+          const pct = item.rataRataPCT || item.pct || 0;
+          return pct >= tableFilter.min && pct <= tableFilter.max;
+        });
+      case 'batchPerformance':
+        return data.filter(item => {
+          const pct = item.rataRataPCT || item.pct || 0;
+          if (tableFilter.value === 'good') return pct <= 30;
+          if (tableFilter.value === 'needsImprovement') return pct > 30;
+          return true;
+        });
+      default:
+        return data;
+    }
+  }, [data, tableFilter]);
+
+  // Chart click handlers
+  const handleCategoryChartClick = (type, elements, chart) => {
+    if (elements.length > 0) {
+      const idx = elements[0].index;
+      const label = chart.data.labels[idx];
+      if (tableFilter && tableFilter.type === type && tableFilter.value === label) {
+        setTableFilter(null); // Toggle off
+      } else {
+        setTableFilter({ type, value: label });
+      }
+    }
+  };
+
+  const handlePCTDistributionClick = (elements, chart) => {
+    if (elements.length > 0) {
+      const idx = elements[0].index;
+      const pctRanges = [
+        { label: 'Low PCT (≤20 days)', min: 0, max: 20 },
+        { label: 'Medium PCT (21-40 days)', min: 21, max: 40 },
+        { label: 'High PCT (>40 days)', min: 41, max: Infinity }
+      ];
+      const range = pctRanges[idx];
+      if (tableFilter && tableFilter.type === 'pctRange' && tableFilter.min === range.min && tableFilter.max === range.max) {
+        setTableFilter(null);
+      } else {
+        setTableFilter({ type: 'pctRange', min: range.min, max: range.max });
+      }
+    }
+  };
+
+  const handleBatchStatusClick = (elements, chart) => {
+    if (elements.length > 0) {
+      const idx = elements[0].index;
+      const isMonthly = title.toLowerCase().includes('monthly');
+      if (!isMonthly) {
+        // For yearly: Good Performance vs Needs Improvement
+        const performance = idx === 0 ? 'good' : 'needsImprovement';
+        if (tableFilter && tableFilter.type === 'batchPerformance' && tableFilter.value === performance) {
+          setTableFilter(null);
+        } else {
+          setTableFilter({ type: 'batchPerformance', value: performance });
+        }
+      }
+    }
+  };
 
   // Chart data preparation functions
   const getProductCountByCategory = () => {
@@ -761,6 +834,17 @@ export default function PCTReportPage({ title, apiEndpoint, tableColumns, dataMa
   const donutChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
+    onClick: (event, elements, chart) => {
+      if (selectedSmallChart === 'pctDistribution') {
+        handlePCTDistributionClick(elements, chart);
+      } else if (selectedSmallChart === 'productByCategory') {
+        handleCategoryChartClick('kategori', elements, chart);
+      } else if (selectedSmallChart === 'productByDepartment') {
+        handleCategoryChartClick('departemen', elements, chart);
+      } else if (selectedSmallChart === 'batchStatus') {
+        handleBatchStatusClick(elements, chart);
+      }
+    },
     plugins: {
       legend: {
         position: 'bottom',
@@ -790,6 +874,13 @@ export default function PCTReportPage({ title, apiEndpoint, tableColumns, dataMa
   const barChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
+    onClick: (event, elements, chart) => {
+      if (selectedLargeChart === 'avgPCTByCategory') {
+        handleCategoryChartClick('kategori', elements, chart);
+      } else if (selectedLargeChart === 'avgPCTByDepartment') {
+        handleCategoryChartClick('departemen', elements, chart);
+      }
+    },
     plugins: {
       legend: {
         display: false
@@ -1004,7 +1095,7 @@ export default function PCTReportPage({ title, apiEndpoint, tableColumns, dataMa
                 </h3>
                 <span className="chart-subtitle">{getSmallChartSubtitle()}</span>
               </div>
-              <div className="chart-container small-chart">
+              <div className="chart-container small-chart" style={{ cursor: 'pointer' }}>
                 {renderSmallChart()}
               </div>
             </div>
@@ -1019,7 +1110,7 @@ export default function PCTReportPage({ title, apiEndpoint, tableColumns, dataMa
                 </h3>
                 <span className="chart-subtitle">{getLargeChartSubtitle()}</span>
               </div>
-              <div className="chart-container big-chart">
+              <div className="chart-container big-chart" style={{ cursor: 'pointer' }}>
                 {renderLargeChart()}
               </div>
             </div>
@@ -1086,12 +1177,56 @@ export default function PCTReportPage({ title, apiEndpoint, tableColumns, dataMa
             </div>
           </Modal>
 
+          {/* Filter Status Indicator */}
+          {tableFilter && (
+            <div className="filter-indicator" style={{
+              backgroundColor: '#f0f4ff',
+              border: '1px solid #4f8cff',
+              borderRadius: '8px',
+              padding: '12px 16px',
+              margin: '16px 0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ color: '#4f8cff', fontWeight: '500' }}>
+                  🔍 Filter aktif: {
+                    tableFilter.type === 'kategori' ? `Kategori = "${tableFilter.value}"` :
+                    tableFilter.type === 'departemen' ? `Departemen = "${tableFilter.value}"` :
+                    tableFilter.type === 'pctRange' ? `PCT ${tableFilter.min} - ${tableFilter.max === Infinity ? '∞' : tableFilter.max} hari` :
+                    tableFilter.type === 'batchPerformance' ? (tableFilter.value === 'good' ? 'Good Performance (PCT ≤30)' : 'Needs Improvement (PCT >30)') :
+                    'Unknown Filter'
+                  }
+                </span>
+                <span style={{ color: '#6b7280', fontSize: '14px' }}>
+                  ({getFilteredTableData.length} dari {data.length} item)
+                </span>
+              </div>
+              <button
+                onClick={() => setTableFilter(null)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#4f8cff',
+                  cursor: 'pointer',
+                  fontSize: '16px',
+                  padding: '4px 8px',
+                  borderRadius: '4px'
+                }}
+                title="Clear filter"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           {/* Table Row */}
           <div className="modular-table-row">
             <TableCard
               title="Data Table"
               columns={tableColumns || []}
-              data={data}
+              data={getFilteredTableData}
               loading={loading}
               error={error}
             />

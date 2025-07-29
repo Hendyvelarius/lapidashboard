@@ -43,6 +43,7 @@ router.get('/monthlyForecast', SqlController.getMonthlyForecast);
 router.get('/forecast', SqlController.getForecast);
 router.get('/bbbk', SqlController.getbbbk);
 router.get('/dailySales', SqlController.getDailySales);
+router.get('/lostSales', SqlController.getLostSales);
 
 // OpenAI chat endpoint
 router.use('/ai', openaiRoutes);
