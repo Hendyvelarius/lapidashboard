@@ -284,6 +284,144 @@ const InventoryOJDetailsModal = ({ isOpen, onClose, forecastData }) => {
   );
 };
 
+// Coverage Details Modal Component
+const CoverageDetailsModal = ({ isOpen, onClose, forecastData }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  if (!isOpen || !forecastData) return null;
+
+  // Get current period for filtering
+  const currentDate = new Date();
+  const currentPeriod = `${currentDate.getFullYear()}${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+  
+  // Filter forecast data by current period
+  const currentPeriodData = forecastData.filter(item => 
+    String(item.Periode || '').toString() === currentPeriod
+  );
+
+  // Categorize products based on forecast vs stock
+  const allUnderProducts = currentPeriodData.filter(item => {
+    const forecast = item.Forecast || 0;
+    const stock = item.Release || 0;
+    return forecast > stock;
+  });
+
+  const allOverProducts = currentPeriodData.filter(item => {
+    const forecast = item.Forecast || 0;
+    const stock = item.Release || 0;
+    return stock > forecast;
+  });
+
+  // Filter based on search term
+  const filterProducts = (products) => {
+    if (!searchTerm.trim()) return products;
+    
+    return products.filter(product => {
+      const productId = (product.Product_ID || '').toString().toLowerCase();
+      const productName = (product.Product_NM || '').toString().toLowerCase();
+      const searchLower = searchTerm.toLowerCase();
+      
+      return productId.includes(searchLower) || productName.includes(searchLower);
+    });
+  };
+
+  const underProducts = filterProducts(allUnderProducts);
+  const overProducts = filterProducts(allOverProducts);
+
+  // Calculate coverage percentage for display
+  const getCoverage = (product) => {
+    const forecast = product.Forecast || 0;
+    const stock = product.Release || 0;
+    return forecast > 0 ? Math.round((stock / forecast) * 100) : 0;
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content of-modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Detail Coverage Stock FG</h2>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <div className="modal-body">
+          <div className="search-container" style={{ marginBottom: '20px' }}>
+            <input
+              type="text"
+              placeholder="Search by product ID or product name..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px 15px',
+                border: '1px solid #d1d5db',
+                borderRadius: '8px',
+                fontSize: '14px',
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+          
+          {searchTerm.trim() && (
+            <div style={{ marginBottom: '15px', fontSize: '14px', color: '#6b7280' }}>
+              Found {underProducts.length + overProducts.length} results for "{searchTerm}"
+              {underProducts.length + overProducts.length !== allUnderProducts.length + allOverProducts.length && 
+                ` (filtered from ${allUnderProducts.length + allOverProducts.length} total)`}
+            </div>
+          )}
+          
+          <div className="of-details-container">
+            <div className="of-details-section">
+              <h3 className="of-section-title" style={{ color: '#ef4444' }}>
+                📉 SKU Under ({underProducts.length})
+              </h3>
+              <div className="of-batch-list">
+                {underProducts.length > 0 ? (
+                  underProducts.map((product, index) => (
+                    <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #ef4444' }}>
+                      <div className="batch-code">ID: {product.Product_ID}</div>
+                      <div className="product-info">
+                        <span className="product-name">{product.Product_NM || 'N/A'}</span>
+                        <span className="product-id">
+                          Coverage: {getCoverage(product)}% | Stock: {product.Release || 0} | Forecast: {product.Forecast || 0}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-data">Tidak ada produk SKU Under</div>
+                )}
+              </div>
+            </div>
+
+            <div className="of-details-section">
+              <h3 className="of-section-title" style={{ color: '#10b981' }}>
+                📈 SKU Over ({overProducts.length})
+              </h3>
+              <div className="of-batch-list">
+                {overProducts.length > 0 ? (
+                  overProducts.map((product, index) => (
+                    <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #10b981' }}>
+                      <div className="batch-code">ID: {product.Product_ID}</div>
+                      <div className="product-info">
+                        <span className="product-name">{product.Product_NM || 'N/A'}</span>
+                        <span className="product-id">
+                          Coverage: {getCoverage(product)}% | Stock: {product.Release || 0} | Forecast: {product.Forecast || 0}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-data">Tidak ada produk SKU Over</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Inventory BB-BK Details Modal Component
 const InventoryBBBKDetailsModal = ({ isOpen, onClose, bbbkData }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -807,6 +945,7 @@ function SummaryDashboard() {
   const [inventoryOJModalOpen, setInventoryOJModalOpen] = useState(false);
   const [inventoryBBBKModalOpen, setInventoryBBBKModalOpen] = useState(false);
   const [bbbkRawData, setBbbkRawData] = useState([]);
+  const [coverageModalOpen, setCoverageModalOpen] = useState(false);
   const [data, setData] = useState({
     sales: null,
     inventory: null,
@@ -864,6 +1003,10 @@ function SummaryDashboard() {
 
   const handleInventoryBBBKClick = () => {
     setInventoryBBBKModalOpen(true);
+  };
+
+  const handleCoverageClick = () => {
+    setCoverageModalOpen(true);
   };
 
   const handlePCTClick = () => {
@@ -1111,14 +1254,62 @@ function SummaryDashboard() {
   };
 
   const processCoverageData = (stockData) => {
-    // Mock coverage calculations
-    const underCoverage = stockData.filter(item => (item.Release || 0) < (item.Forecast || 0) * 0.5).length;
-    const overCoverage = stockData.filter(item => (item.Release || 0) > (item.Forecast || 0) * 1.5).length;
+    if (!stockData || stockData.length === 0) {
+      return {
+        percentage: 0,
+        under: 0,
+        over: 0
+      };
+    }
+
+    // Get current period (YYYYMM format)
+    const currentDate = new Date();
+    const currentPeriod = `${currentDate.getFullYear()}${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+    
+    // Filter data by current period
+    const currentPeriodData = stockData.filter(item => 
+      String(item.Periode || '').toString() === currentPeriod
+    );
+    
+    if (currentPeriodData.length === 0) {
+      return {
+        percentage: 0,
+        under: 0,
+        over: 0
+      };
+    }
+    
+    let underCount = 0;
+    let overCount = 0;
+    let totalCoveragePercentage = 0;
+    let validProductsCount = 0;
+    
+    currentPeriodData.forEach(item => {
+      const forecast = item.Forecast || 0;
+      const stock = item.Release || 0;
+      
+      // Count Under/Over stock
+      if (forecast > stock) {
+        underCount++;
+      } else if (stock > forecast) {
+        overCount++;
+      }
+      
+      // Calculate coverage percentage for each product
+      if (forecast > 0) {
+        const coveragePercentage = (stock / forecast) * 100;
+        totalCoveragePercentage += coveragePercentage;
+        validProductsCount++;
+      }
+    });
+    
+    // Calculate average coverage percentage
+    const averageCoverage = validProductsCount > 0 ? totalCoveragePercentage / validProductsCount : 0;
     
     return {
-      percentage: 65.5, // Mock percentage
-      under: underCoverage,
-      over: overCoverage
+      percentage: Math.round(averageCoverage),
+      under: underCount,
+      over: overCount
     };
   };
 
@@ -1701,14 +1892,16 @@ function SummaryDashboard() {
                     percentage={data.coverage?.percentage || 0} 
                     color="#1f2937"
                     size={90}
+                    onClick={handleCoverageClick}
+                    title="Click to view coverage details"
                   />
                 </div>
                 <div className="coverage-info-cards">
-                  <div className="coverage-info-card">
+                  <div className="coverage-info-card" onClick={handleCoverageClick} style={{ cursor: 'pointer' }} title="Click to view coverage details">
                     <div className="coverage-info-value">{data.coverage?.under || 0}</div>
                     <div className="coverage-info-label">SKU Under</div>
                   </div>
-                  <div className="coverage-info-card">
+                  <div className="coverage-info-card" onClick={handleCoverageClick} style={{ cursor: 'pointer' }} title="Click to view coverage details">
                     <div className="coverage-info-value">{data.coverage?.over || 0}</div>
                     <div className="coverage-info-label">SKU Over</div>
                   </div>
@@ -1900,6 +2093,13 @@ function SummaryDashboard() {
         <InventoryOJDetailsModal 
           isOpen={inventoryOJModalOpen}
           onClose={() => setInventoryOJModalOpen(false)}
+          forecastData={forecastRawData}
+        />
+        
+        {/* Coverage Details Modal */}
+        <CoverageDetailsModal 
+          isOpen={coverageModalOpen}
+          onClose={() => setCoverageModalOpen(false)}
           forecastData={forecastRawData}
         />
         
