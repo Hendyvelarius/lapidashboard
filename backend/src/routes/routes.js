@@ -5,7 +5,7 @@ const { verifyToken } = require('../middleware/auth');
 
 const openaiRoutes = require('./openai');
 
-// Authentication endpoint to verify and decode JWT token (optional)
+// Authentication endpoint to verify and decode JWT token
 router.get('/auth/verify', verifyToken, (req, res) => {
   res.json({
     message: 'Authentication successful',
@@ -14,9 +14,6 @@ router.get('/auth/verify', verifyToken, (req, res) => {
     tokenData: req.tokenData
   });
 });
-
-// Remove global auth middleware - make routes accessible without auth for now
-
 
 // Routing WIP 
 router.get('/wip', SqlController.getWip);

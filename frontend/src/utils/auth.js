@@ -1,5 +1,7 @@
 // Authentication utility functions
 
+const VITE_API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:4000/api';
+
 // Verify auth token with backend
 export const verifyAuthToken = async () => {
   try {
@@ -15,8 +17,8 @@ export const verifyAuthToken = async () => {
       throw new Error('No authentication token found');
     }
 
-    const response = await fetch(`http://localhost:4000/api/auth/verify?auth=${encodeURIComponent(authToken)}`);
-    
+    const response = await fetch(`${API_BASE_URL}/auth/verify?auth=${encodeURIComponent(authToken)}`);
+
     if (!response.ok) {
       throw new Error(`Authentication failed: ${response.status}`);
     }
