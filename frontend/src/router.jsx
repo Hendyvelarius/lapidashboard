@@ -23,7 +23,7 @@ export default function AppRouter() {
         <AuthHandler>
           <Routes>
             <Route path="/" element={<ProtectedRoute><App /></ProtectedRoute>} />
-            <Route path="/eDashboard-dev" element={<ProtectedRoute><App /></ProtectedRoute>} />
+            <Route path="/eDashboard" element={<ProtectedRoute><App /></ProtectedRoute>} />
             <Route path="/summary" element={<ProtectedRoute><SummaryDashboard /></ProtectedRoute>} />
             <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
         <Route path="/reports" element={<Reports />} />

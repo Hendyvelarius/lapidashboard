@@ -1,6 +1,8 @@
 import React from 'react';
 
-const UnauthorizedPage = () => {
+const UnauthorizedPage = ({ message }) => {
+  const defaultMessage = "Mohon Maaf, Kamu tidak memiliki otoritas untuk mengakses aplikasi ini.";
+  
   return (
     <div style={{
       display: 'flex',
@@ -41,7 +43,7 @@ const UnauthorizedPage = () => {
           lineHeight: '1.6',
           margin: 0
         }}>
-          Mohon Maaf, Kamu tidak memiliki otoritas untuk mengakses aplikasi ini.
+          {message || defaultMessage}
         </p>
         <div style={{
           marginTop: '2rem',
