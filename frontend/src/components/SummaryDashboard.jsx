@@ -74,9 +74,16 @@ const CircularProgress = ({ percentage, size = 120, strokeWidth = 12, color = '#
 };
 
 // KPI Card Component
-const KPICard = ({ title, children, className = '' }) => (
+const KPICard = ({ title, children, className = '', headerComponent = null }) => (
   <div className={`summary-kpi-card ${className}`}>
-    <div className="summary-kpi-title">{title}</div>
+    <div className="summary-kpi-header">
+      <div className="summary-kpi-title">{title}</div>
+      {headerComponent && (
+        <div className="summary-kpi-header-component">
+          {headerComponent}
+        </div>
+      )}
+    </div>
     <div className="summary-kpi-content">
       {children}
     </div>
@@ -299,17 +306,27 @@ const CoverageDetailsModal = ({ isOpen, onClose, forecastData }) => {
     String(item.Periode || '').toString() === currentPeriod
   );
 
-  // Categorize products based on forecast vs stock
+  // Calculate coverage percentage for a product
+  const getCoverage = (product) => {
+    const forecast = product.Forecast || 0;
+    const stock = product.Release || 0;
+    return forecast > 0 ? Math.round((stock / forecast) * 100) : 0;
+  };
+
+  // Categorize products based on coverage percentage
   const allUnderProducts = currentPeriodData.filter(item => {
-    const forecast = item.Forecast || 0;
-    const stock = item.Release || 0;
-    return forecast > stock;
+    const coverage = getCoverage(item);
+    return coverage < 100;
+  });
+
+  const allNormalProducts = currentPeriodData.filter(item => {
+    const coverage = getCoverage(item);
+    return coverage >= 100 && coverage <= 299;
   });
 
   const allOverProducts = currentPeriodData.filter(item => {
-    const forecast = item.Forecast || 0;
-    const stock = item.Release || 0;
-    return stock > forecast;
+    const coverage = getCoverage(item);
+    return coverage >= 300;
   });
 
   // Filter based on search term
@@ -326,23 +343,40 @@ const CoverageDetailsModal = ({ isOpen, onClose, forecastData }) => {
   };
 
   const underProducts = filterProducts(allUnderProducts);
+  const normalProducts = filterProducts(allNormalProducts);
   const overProducts = filterProducts(allOverProducts);
-
-  // Calculate coverage percentage for display
-  const getCoverage = (product) => {
-    const forecast = product.Forecast || 0;
-    const stock = product.Release || 0;
-    return forecast > 0 ? Math.round((stock / forecast) * 100) : 0;
-  };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content of-modal" onClick={e => e.stopPropagation()}>
+      <div className="modal-content of-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '1200px', width: '90vw' }}>
         <div className="modal-header">
           <h2>Detail Coverage Stock FG</h2>
           <button className="modal-close" onClick={onClose}>&times;</button>
         </div>
         <div className="modal-body">
+          <div className="modal-summary" style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            marginBottom: '20px',
+            padding: '15px',
+            backgroundColor: '#f8f9fa',
+            borderRadius: '8px',
+            fontSize: '14px'
+          }}>
+            <div>
+              <strong>Total Products:</strong> {currentPeriodData.length}
+            </div>
+            <div style={{ color: '#ef4444' }}>
+              <strong>SKU Under (&lt;100%):</strong> {allUnderProducts.length}
+            </div>
+            <div style={{ color: '#10b981' }}>
+              <strong>SKU Normal (100-299%):</strong> {allNormalProducts.length}
+            </div>
+            <div style={{ color: '#f59e0b' }}>
+              <strong>SKU Over (≥300%):</strong> {allOverProducts.length}
+            </div>
+          </div>
+          
           <div className="search-container" style={{ marginBottom: '20px' }}>
             <input
               type="text"
@@ -363,25 +397,26 @@ const CoverageDetailsModal = ({ isOpen, onClose, forecastData }) => {
           
           {searchTerm.trim() && (
             <div style={{ marginBottom: '15px', fontSize: '14px', color: '#6b7280' }}>
-              Found {underProducts.length + overProducts.length} results for "{searchTerm}"
-              {underProducts.length + overProducts.length !== allUnderProducts.length + allOverProducts.length && 
-                ` (filtered from ${allUnderProducts.length + allOverProducts.length} total)`}
+              Found {underProducts.length + normalProducts.length + overProducts.length} results for "{searchTerm}"
+              {underProducts.length + normalProducts.length + overProducts.length !== allUnderProducts.length + allNormalProducts.length + allOverProducts.length && 
+                ` (filtered from ${allUnderProducts.length + allNormalProducts.length + allOverProducts.length} total)`}
             </div>
           )}
           
-          <div className="of-details-container">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', minHeight: '400px' }}>
+            {/* SKU Under */}
             <div className="of-details-section">
               <h3 className="of-section-title" style={{ color: '#ef4444' }}>
-                📉 SKU Under ({underProducts.length})
+                📉 SKU Under (&lt;100%) ({underProducts.length})
               </h3>
-              <div className="of-batch-list">
+              <div className="of-batch-list" style={{ maxHeight: '350px', overflowY: 'auto' }}>
                 {underProducts.length > 0 ? (
                   underProducts.map((product, index) => (
-                    <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #ef4444' }}>
+                    <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #ef4444', marginBottom: '8px' }}>
                       <div className="batch-code">ID: {product.Product_ID}</div>
                       <div className="product-info">
-                        <span className="product-name">{product.Product_NM || 'N/A'}</span>
-                        <span className="product-id">
+                        <span className="product-name" style={{ fontSize: '12px' }}>{product.Product_NM || 'N/A'}</span>
+                        <span className="product-id" style={{ fontSize: '11px' }}>
                           Coverage: {getCoverage(product)}% | Stock: {product.Release || 0} | Forecast: {product.Forecast || 0}
                         </span>
                       </div>
@@ -393,18 +428,43 @@ const CoverageDetailsModal = ({ isOpen, onClose, forecastData }) => {
               </div>
             </div>
 
+            {/* SKU Normal */}
             <div className="of-details-section">
               <h3 className="of-section-title" style={{ color: '#10b981' }}>
-                📈 SKU Over ({overProducts.length})
+                📊 SKU Normal (100-299%) ({normalProducts.length})
               </h3>
-              <div className="of-batch-list">
-                {overProducts.length > 0 ? (
-                  overProducts.map((product, index) => (
-                    <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #10b981' }}>
+              <div className="of-batch-list" style={{ maxHeight: '350px', overflowY: 'auto' }}>
+                {normalProducts.length > 0 ? (
+                  normalProducts.map((product, index) => (
+                    <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #10b981', marginBottom: '8px' }}>
                       <div className="batch-code">ID: {product.Product_ID}</div>
                       <div className="product-info">
-                        <span className="product-name">{product.Product_NM || 'N/A'}</span>
-                        <span className="product-id">
+                        <span className="product-name" style={{ fontSize: '12px' }}>{product.Product_NM || 'N/A'}</span>
+                        <span className="product-id" style={{ fontSize: '11px' }}>
+                          Coverage: {getCoverage(product)}% | Stock: {product.Release || 0} | Forecast: {product.Forecast || 0}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-data">Tidak ada produk SKU Normal</div>
+                )}
+              </div>
+            </div>
+
+            {/* SKU Over */}
+            <div className="of-details-section">
+              <h3 className="of-section-title" style={{ color: '#f59e0b' }}>
+                📈 SKU Over (≥300%) ({overProducts.length})
+              </h3>
+              <div className="of-batch-list" style={{ maxHeight: '350px', overflowY: 'auto' }}>
+                {overProducts.length > 0 ? (
+                  overProducts.map((product, index) => (
+                    <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #f59e0b', marginBottom: '8px' }}>
+                      <div className="batch-code">ID: {product.Product_ID}</div>
+                      <div className="product-info">
+                        <span className="product-name" style={{ fontSize: '12px' }}>{product.Product_NM || 'N/A'}</span>
+                        <span className="product-id" style={{ fontSize: '11px' }}>
                           Coverage: {getCoverage(product)}% | Stock: {product.Release || 0} | Forecast: {product.Forecast || 0}
                         </span>
                       </div>
@@ -551,6 +611,150 @@ const InventoryBBBKDetailsModal = ({ isOpen, onClose, bbbkData }) => {
   );
 };
 
+// PCT Details Modal Component
+const PCTDetailsModal = ({ isOpen, onClose, pctData }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  if (!isOpen || !pctData) return null;
+
+  // Split products by PCT performance (under 38 days = on time, 38+ days = past deadline)
+  const allOnTimeProducts = pctData.filter(item => (item.PCTAverage || 0) < 38);
+  const allPastDeadlineProducts = pctData.filter(item => (item.PCTAverage || 0) >= 38);
+
+  // Filter based on search term
+  const filterProducts = (products) => {
+    if (!searchTerm.trim()) return products;
+    const lower = searchTerm.toLowerCase();
+    return products.filter(product =>
+      (product.Product_ID || '').toLowerCase().includes(lower) ||
+      (product.Product_Name || '').toLowerCase().includes(lower) ||
+      (product.Kategori || '').toLowerCase().includes(lower) ||
+      (product.Dept || '').toLowerCase().includes(lower)
+    );
+  };
+
+  const onTimeProducts = filterProducts(allOnTimeProducts);
+  const pastDeadlineProducts = filterProducts(allPastDeadlineProducts);
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content of-modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Detail PCT Performance</h2>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <div className="modal-body">
+          <div className="modal-summary" style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            marginBottom: '20px',
+            padding: '15px',
+            backgroundColor: '#f8f9fa',
+            borderRadius: '8px',
+            fontSize: '14px'
+          }}>
+            <div>
+              <strong>Total Products:</strong> {pctData.length}
+            </div>
+            <div style={{ color: '#10b981' }}>
+              <strong>On Time (&lt;38 days):</strong> {allOnTimeProducts.length}
+            </div>
+            <div style={{ color: '#ef4444' }}>
+              <strong>Past Deadline (≥38 days):</strong> {allPastDeadlineProducts.length}
+            </div>
+          </div>
+          
+          <div className="search-container" style={{ marginBottom: '20px' }}>
+            <input
+              type="text"
+              placeholder="Search by product ID, name, category, or department..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px 15px',
+                border: '1px solid #d1d5db',
+                borderRadius: '8px',
+                fontSize: '14px',
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+          
+          {searchTerm.trim() && (
+            <div style={{ marginBottom: '15px', fontSize: '14px', color: '#6b7280' }}>
+              Found {onTimeProducts.length + pastDeadlineProducts.length} results for "{searchTerm}"
+              {onTimeProducts.length + pastDeadlineProducts.length !== allOnTimeProducts.length + allPastDeadlineProducts.length && 
+                ` (filtered from ${allOnTimeProducts.length + allPastDeadlineProducts.length} total)`}
+            </div>
+          )}
+          
+          <div className="of-details-container">
+            {/* On Time Products */}
+            <div className="of-details-section">
+              <h3 className="of-section-title completed">
+                ✅ PCT On Time - Under 38 Days ({onTimeProducts.length})
+              </h3>
+              <div className="of-batch-list">
+                {onTimeProducts.length > 0 ? (
+                  onTimeProducts.map((product, index) => (
+                    <div key={index} className="of-batch-item completed">
+                      <div className="batch-code">ID: {product.Product_ID}</div>
+                      <div className="product-info">
+                        <span className="product-name">{product.Product_Name || 'N/A'}</span>
+                        <span className="product-id">
+                          PCT: {product.PCTAverage} hari | {product.Kategori} | {product.Dept}
+                        </span>
+                        {product.Batch_Nos && product.Batch_Nos.length > 0 && (
+                          <span className="product-id">
+                            Batches: {product.Batch_Nos.join(', ')}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-data">Tidak ada produk dengan PCT on time</div>
+                )}
+              </div>
+            </div>
+
+            {/* Past Deadline Products */}
+            <div className="of-details-section">
+              <h3 className="of-section-title pending">
+                ⏰ PCT Past Deadline - 38+ Days ({pastDeadlineProducts.length})
+              </h3>
+              <div className="of-batch-list">
+                {pastDeadlineProducts.length > 0 ? (
+                  pastDeadlineProducts.map((product, index) => (
+                    <div key={index} className="of-batch-item pending">
+                      <div className="batch-code">ID: {product.Product_ID}</div>
+                      <div className="product-info">
+                        <span className="product-name">{product.Product_Name || 'N/A'}</span>
+                        <span className="product-id">
+                          PCT: {product.PCTAverage} hari | {product.Kategori} | {product.Dept}
+                        </span>
+                        {product.Batch_Nos && product.Batch_Nos.length > 0 && (
+                          <span className="product-id">
+                            Batches: {product.Batch_Nos.join(', ')}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-data">Semua produk memiliki PCT on time</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Lost Sales Details Modal Component
 const LostSalesDetailsModal = ({ isOpen, onClose, lostSalesData }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -620,13 +824,13 @@ const LostSalesDetailsModal = ({ isOpen, onClose, lostSalesData }) => {
           <div className="of-details-container">
             {/* Fokus Products */}
             <div className="of-details-section">
-              <h3 className="of-section-title completed">
+              <h3 className="of-section-title" style={{ color: '#ef4444' }}>
                 🎯 Produk Fokus ({fokusProducts.length})
               </h3>
               <div className="of-batch-list">
                 {fokusProducts.length > 0 ? (
                   fokusProducts.map((product, index) => (
-                    <div key={index} className="of-batch-item completed">
+                    <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #ef4444' }}>
                       <div className="batch-code">ID: {product.MSO_ProductID}</div>
                       <div className="product-info">
                         <span className="product-name">{product.Product_Name || 'N/A'}</span>
@@ -646,13 +850,13 @@ const LostSalesDetailsModal = ({ isOpen, onClose, lostSalesData }) => {
 
             {/* Non Fokus Products */}
             <div className="of-details-section">
-              <h3 className="of-section-title pending">
+              <h3 className="of-section-title" style={{ color: '#f59e0b' }}>
                 📦 Produk Non Fokus ({nonFokusProducts.length})
               </h3>
               <div className="of-batch-list">
                 {nonFokusProducts.length > 0 ? (
                   nonFokusProducts.map((product, index) => (
-                    <div key={index} className="of-batch-item pending">
+                    <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #f59e0b' }}>
                       <div className="batch-code">ID: {product.MSO_ProductID}</div>
                       <div className="product-info">
                         <span className="product-name">{product.Product_Name || 'N/A'}</span>
@@ -755,13 +959,13 @@ const StockOutDetailsModal = ({ isOpen, onClose, stockOutData }) => {
           <div className="of-details-container">
             {/* Fokus Products */}
             <div className="of-details-section">
-              <h3 className="of-section-title completed">
+              <h3 className="of-section-title" style={{ color: '#ef4444' }}>
                 🎯 Produk Fokus ({fokusProducts.length})
               </h3>
               <div className="of-batch-list">
                 {fokusProducts.length > 0 ? (
                   fokusProducts.map((product, index) => (
-                    <div key={index} className="of-batch-item completed">
+                    <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #ef4444' }}>
                       <div className="batch-code">ID: {product.Product_ID}</div>
                       <div className="product-info">
                         <span className="product-name">{product.Product_NM || 'N/A'}</span>
@@ -777,13 +981,13 @@ const StockOutDetailsModal = ({ isOpen, onClose, stockOutData }) => {
 
             {/* Non Fokus Products */}
             <div className="of-details-section">
-              <h3 className="of-section-title pending">
+              <h3 className="of-section-title" style={{ color: '#f59e0b' }}>
                 📦 Produk Non Fokus ({nonFokusProducts.length})
               </h3>
               <div className="of-batch-list">
                 {nonFokusProducts.length > 0 ? (
                   nonFokusProducts.map((product, index) => (
-                    <div key={index} className="of-batch-item pending">
+                    <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #f59e0b' }}>
                       <div className="batch-code">ID: {product.Product_ID}</div>
                       <div className="product-info">
                         <span className="product-name">{product.Product_NM || 'N/A'}</span>
@@ -934,6 +1138,8 @@ const OFDetailsModal = ({ isOpen, onClose, stageName, ofRawData }) => {
 function SummaryDashboard() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastFetchTime, setLastFetchTime] = useState(null);
   const [salesChartType, setSalesChartType] = useState('Weekly'); // 'Weekly' or 'Daily'
   const [ofModalOpen, setOfModalOpen] = useState(false);
   const [selectedOfStage, setSelectedOfStage] = useState(null);
@@ -946,6 +1152,8 @@ function SummaryDashboard() {
   const [inventoryBBBKModalOpen, setInventoryBBBKModalOpen] = useState(false);
   const [bbbkRawData, setBbbkRawData] = useState([]);
   const [coverageModalOpen, setCoverageModalOpen] = useState(false);
+  const [pctModalOpen, setPctModalOpen] = useState(false);
+  const [pctRawData, setPctRawData] = useState([]);
   const [data, setData] = useState({
     sales: null,
     inventory: null,
@@ -955,6 +1163,166 @@ function SummaryDashboard() {
     orderFulfillment: null,
     materialAvailability: null
   });
+
+  // Helper functions for data caching
+  const CACHE_KEY = 'SummaryDashboardData';
+  const CACHE_DURATION = 60 * 60 * 1000; // 1 hour in milliseconds
+
+  const saveDataToCache = (data, rawData) => {
+    const cacheData = {
+      data,
+      rawData,
+      timestamp: Date.now()
+    };
+    localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
+  };
+
+  const getCachedData = () => {
+    try {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (!cached) return null;
+      
+      const parsedCache = JSON.parse(cached);
+      const now = Date.now();
+      const isExpired = (now - parsedCache.timestamp) > CACHE_DURATION;
+      
+      return {
+        ...parsedCache,
+        isExpired
+      };
+    } catch (error) {
+      console.error('Error reading cache:', error);
+      return null;
+    }
+  };
+
+  const formatLastUpdateTime = (timestamp) => {
+    if (!timestamp) return 'Never';
+    const date = new Date(timestamp);
+    return date.toLocaleString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+      month: 'short',
+      day: 'numeric'
+    });
+  };
+
+  const handleManualRefresh = () => {
+    fetchAllData(true);
+  };
+
+  const fetchAllData = async (forceRefresh = false) => {
+    try {
+      // Check cache first unless force refresh
+      if (!forceRefresh) {
+        const cachedData = getCachedData();
+        if (cachedData && !cachedData.isExpired) {
+          console.log('📦 Using cached data');
+          setData(cachedData.data);
+          setOfRawData(cachedData.rawData.ofData || []);
+          setForecastRawData(cachedData.rawData.forecastData || []);
+          setLostSalesRawData(cachedData.rawData.lostSalesData || []);
+          setBbbkRawData(cachedData.rawData.bbbkData || []);
+          setPctRawData(cachedData.rawData.pctData || []);
+          setLastFetchTime(cachedData.timestamp);
+          setLoading(false);
+          return;
+        }
+      }
+
+      console.log('🔄 Fetching fresh data');
+      if (forceRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      
+      const [wipRes, ofRes, pctRes, forecastRes, bbbkRes, dailySalesRes, lostSalesRes] = await Promise.all([
+        fetch(apiUrl('/api/wip')),
+        fetch(apiUrl('/api/ofsummary')),
+        fetch(apiUrl('/api/pctAverage')),
+        fetch(apiUrl('/api/forecast')),
+        fetch(apiUrl('/api/bbbk')),
+        fetch(apiUrl('/api/dailySales')),
+        fetch(apiUrl('/api/lostSales'))
+      ]);
+
+      const wipData = await wipRes.json();
+      const ofData = await ofRes.json();
+      const pctData = await pctRes.json();
+      const forecastData = await forecastRes.json();
+      const bbbkData = await bbbkRes.json();
+      const dailySalesData = await dailySalesRes.json();
+      const lostSalesData = await lostSalesRes.json();
+      
+      console.log('📊 Lost Sales Data:', lostSalesData);
+      console.log('📈 Forecast Data Sample:', forecastData?.slice(0, 3));
+      
+      // Store raw data
+      const rawData = {
+        ofData: ofData || [],
+        forecastData: forecastData || [],
+        lostSalesData: lostSalesData || [],
+        bbbkData: bbbkData || [],
+        pctData: pctData?.data || pctData || []
+      };
+
+      setOfRawData(rawData.ofData);
+      setForecastRawData(rawData.forecastData);
+      setLostSalesRawData(rawData.lostSalesData);
+      setBbbkRawData(rawData.bbbkData);
+      setPctRawData(rawData.pctData);
+      
+      // Process and set data
+      const processedData = {
+        sales: processSalesData(forecastData || [], dailySalesData || []),
+        inventory: processInventoryData(forecastData || []),
+        stockOut: processStockOutData(forecastData || [], lostSalesData || []),
+        coverage: processCoverageData(forecastData || []),
+        whOccupancy: processWHOccupancyData(wipData.data || []),
+        orderFulfillment: processOrderFulfillmentData(ofData || []),
+        materialAvailability: processMaterialAvailabilityData(forecastData || []),
+        inventoryOJ: processInventoryOJData(forecastData || []),
+        inventoryBBBK: processInventoryBBBKData(bbbkData || []),
+        pct: processPCTData(pctData || [])
+      };
+
+      setData(processedData);
+      
+      // Save to cache
+      const timestamp = Date.now();
+      saveDataToCache(processedData, rawData);
+      setLastFetchTime(timestamp);
+      
+    } catch (error) {
+      console.error('❌ Error fetching summary data:', error);
+      // Fallback to mock data on error
+      setData({
+        sales: processSalesData([], []),
+        inventory: processInventoryData([]),
+        stockOut: processStockOutData([], []),
+        coverage: processCoverageData([]),
+        whOccupancy: processWHOccupancyData([]),
+        orderFulfillment: {
+          turunPpi: 78,
+          potongStock: 65,
+          proses: 88,
+          kemas: 92,
+          dokumen: 76,
+          rilisQc: 89,
+          rilisQa: 84
+        },
+        materialAvailability: processMaterialAvailabilityData([]),
+        inventoryOJ: processInventoryOJData([]),
+        inventoryBBBK: processInventoryBBBKData([]),
+        pct: { average: 5.2, longest: 12.8, percentage: 40.6 }
+      });
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
 
   // Helper functions for OF stage analysis
   const getOfStageDetails = (stageName) => {
@@ -1010,88 +1378,27 @@ function SummaryDashboard() {
   };
 
   const handlePCTClick = () => {
-    navigate("/reports/pct-monthly");
+    setPctModalOpen(true);
+  };
+
+  const handleSalesClick = () => {
+    navigate("/stock-forecast");
   };
 
   useEffect(() => {
-    
-    const fetchAllData = async () => {
-      try {
-        setLoading(true);      
-        const [wipRes, ofRes, pctRes, forecastRes, bbbkRes, dailySalesRes, lostSalesRes] = await Promise.all([
-          fetch(apiUrl('/api/wip')),
-          fetch(apiUrl('/api/ofsummary')),
-          fetch(apiUrl('/api/pctAverage')),
-          fetch(apiUrl('/api/forecast')),
-          fetch(apiUrl('/api/bbbk')),
-          fetch(apiUrl('/api/dailySales')),
-          fetch(apiUrl('/api/lostSales'))
-        ]);
-
-        const wipData = await wipRes.json();
-        const ofData = await ofRes.json();
-        const pctData = await pctRes.json();
-        const forecastData = await forecastRes.json();
-        const bbbkData = await bbbkRes.json();
-        const dailySalesData = await dailySalesRes.json();
-        const lostSalesData = await lostSalesRes.json();
-        
-        console.log('📊 Lost Sales Data:', lostSalesData);
-        console.log('📈 Forecast Data Sample:', forecastData?.slice(0, 3));
-        
-        // Store raw OF data for detailed analysis
-        setOfRawData(ofData || []);
-        // Store raw forecast data for Stock Out modal
-        setForecastRawData(forecastData || []);
-        // Store raw lost sales data for Lost Sales modal
-        setLostSalesRawData(lostSalesData || []);
-        // Store raw BBBK data for Inventory BB-BK modal
-        setBbbkRawData(bbbkData || []);
-        
-        // Process and set data
-        const processedData = {
-          sales: processSalesData(forecastData || [], dailySalesData || []),
-          inventory: processInventoryData(forecastData || []),
-          stockOut: processStockOutData(forecastData || [], lostSalesData || []),
-          coverage: processCoverageData(forecastData || []),
-          whOccupancy: processWHOccupancyData(wipData.data || []),
-          orderFulfillment: processOrderFulfillmentData(ofData || []),
-          materialAvailability: processMaterialAvailabilityData(forecastData || []),
-          inventoryOJ: processInventoryOJData(forecastData || []),
-          inventoryBBBK: processInventoryBBBKData(bbbkData || []),
-          pct: processPCTData(pctData || [])
-        };
-
-        setData(processedData);
-      } catch (error) {
-        console.error('❌ Error fetching summary data:', error);
-        // Fallback to mock data on error
-        setData({
-          sales: processSalesData([], []),
-          inventory: processInventoryData([]),
-          stockOut: processStockOutData([], []),
-          coverage: processCoverageData([]),
-          whOccupancy: processWHOccupancyData([]),
-          orderFulfillment: {
-            turunPpi: 78,
-            potongStock: 65,
-            proses: 88,
-            kemas: 92,
-            dokumen: 76,
-            rilisQc: 89,
-            rilisQa: 84
-          },
-          materialAvailability: processMaterialAvailabilityData([]),
-          inventoryOJ: processInventoryOJData([]),
-          inventoryBBBK: processInventoryBBBKData([]),
-          pct: { average: 5.2, longest: 12.8, percentage: 40.6 }
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
+    // Initial load
     fetchAllData();
+
+    // Set up periodic check for cache expiration
+    const intervalId = setInterval(() => {
+      const cachedData = getCachedData();
+      if (cachedData && cachedData.isExpired) {
+        console.log('⏰ Cache expired, fetching fresh data');
+        fetchAllData(true);
+      }
+    }, 5 * 60 * 1000); // Check every 5 minutes
+
+    return () => clearInterval(intervalId);
   }, []);
 
   // Data processing functions
@@ -1220,13 +1527,11 @@ function SummaryDashboard() {
     // Get current period (YYYYMM format)
     const currentDate = new Date();
     const currentPeriod = `${currentDate.getFullYear()}${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
-    console.log('📅 Current Period:', currentPeriod);
     
     // Filter forecast data by current period
     const currentPeriodData = forecastData.filter(item => 
       String(item.Periode || '').toString() === currentPeriod
     );
-    console.log('📊 Current Period Data Count:', currentPeriodData.length, 'of', forecastData.length);
     
     // Calculate stock out products from forecast API (Release = 0) for current period only
     const totalProducts = currentPeriodData.length;
@@ -1288,22 +1593,23 @@ function SummaryDashboard() {
       const forecast = item.Forecast || 0;
       const stock = item.Release || 0;
       
-      // Count Under/Over stock
-      if (forecast > stock) {
-        underCount++;
-      } else if (stock > forecast) {
-        overCount++;
-      }
-      
-      // Calculate coverage percentage for each product
       if (forecast > 0) {
         const coveragePercentage = (stock / forecast) * 100;
+        
+        // Count Under/Over stock based on new criteria
+        if (coveragePercentage < 100) {
+          underCount++;
+        } else if (coveragePercentage >= 300) {
+          overCount++;
+        }
+        // Note: Products with 100-299% coverage are considered "normal" and not counted in under/over
+        
         totalCoveragePercentage += coveragePercentage;
         validProductsCount++;
       }
     });
     
-    // Calculate average coverage percentage
+    // Calculate average coverage percentage across all products
     const averageCoverage = validProductsCount > 0 ? totalCoveragePercentage / validProductsCount : 0;
     
     return {
@@ -1698,17 +2004,91 @@ function SummaryDashboard() {
           {/* Grid Layout */}
           <div className="summary-grid">
             {/* Sales Section */}
-            <KPICard title="SALES" className="sales-card">
+            <KPICard 
+              title="" 
+              className="sales-card"
+              headerComponent={
+                <div className="data-status-container" style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  width: '100%',
+                  gap: '15px'
+                }}>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px'
+                  }}>
+                    {refreshing && (
+                      <div className="loading-spinner" style={{
+                        width: '16px',
+                        height: '16px',
+                        border: '2px solid rgba(255, 255, 255, 0.3)',
+                        borderTop: '2px solid white',
+                        borderRadius: '50%',
+                        animation: 'spin 1s linear infinite'
+                      }} />
+                    )}
+                    <span style={{ 
+                      fontSize: '1rem',
+                      fontWeight: 'bold',
+                      color: 'white',
+                      letterSpacing: '1px'
+                    }}>
+                      Data Updated: {formatLastUpdateTime(lastFetchTime)}
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleManualRefresh}
+                    disabled={refreshing}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.2)',
+                      border: '1px solid rgba(255, 255, 255, 0.3)',
+                      color: 'white',
+                      cursor: refreshing ? 'not-allowed' : 'pointer',
+                      fontSize: '12px',
+                      fontWeight: 'bold',
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      opacity: refreshing ? 0.5 : 1,
+                      transition: 'all 0.2s',
+                      letterSpacing: '0.5px'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!refreshing) {
+                        e.target.style.background = 'rgba(255, 255, 255, 0.3)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!refreshing) {
+                        e.target.style.background = 'rgba(255, 255, 255, 0.2)';
+                      }
+                    }}
+                    title="Refresh data"
+                  >
+                    {refreshing ? 'Refreshing...' : 'Refresh'}
+                  </button>
+                </div>
+              }
+            >
               <div className="sales-content">
                 <div className="sales-left">
                   <CircularProgress 
                     percentage={data.sales?.achievement || 0} 
                     color="#1f2937"
                     size={100}
+                    onClick={handleSalesClick}
+                    title="Click to view forecast details"
                   />
                 </div>
                 <div className="sales-middle">
-                  <div className="sales-daily">
+                  <div 
+                    className="sales-daily clickable" 
+                    onClick={handleSalesClick}
+                    title="Click to view forecast details"
+                    style={{ cursor: 'pointer' }}
+                  >
                     <div className="sales-label">Daily sales value</div>
                     <div className="sales-value">{formatNumber(data.sales?.dailySales || 0)}</div>
                     <div className="sales-achievement">Ach {(data.sales?.achievement || 0).toFixed(1)}% 📈</div>
@@ -2108,6 +2488,13 @@ function SummaryDashboard() {
           isOpen={inventoryBBBKModalOpen}
           onClose={() => setInventoryBBBKModalOpen(false)}
           bbbkData={bbbkRawData}
+        />
+        
+        {/* PCT Details Modal */}
+        <PCTDetailsModal 
+          isOpen={pctModalOpen}
+          onClose={() => setPctModalOpen(false)}
+          pctData={pctRawData}
         />
       </main>
     </div>

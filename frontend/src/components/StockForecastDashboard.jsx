@@ -16,6 +16,30 @@ function formatNumber(num) {
   return Number(num).toLocaleString();
 }
 
+// Helper to format currency with Rp prefix and short notation
+function formatCurrency(num) {
+  if (num === null || num === undefined || num === 0) return 'Rp 0';
+  
+  const absNum = Math.abs(num);
+  if (absNum >= 1e12) {
+    return `Rp ${(num / 1e12).toFixed(1)} T`;
+  } else if (absNum >= 1e9) {
+    return `Rp ${(num / 1e9).toFixed(1)} B`;
+  } else if (absNum >= 1e6) {
+    return `Rp ${(num / 1e6).toFixed(1)} M`;
+  } else if (absNum >= 1e3) {
+    return `Rp ${(num / 1e3).toFixed(1)} K`;
+  } else {
+    return `Rp ${formatNumber(num)}`;
+  }
+}
+
+// Helper to format units with unit suffix
+function formatUnits(num) {
+  if (num === null || num === undefined) return '0 unit';
+  return `${formatNumber(num)} unit`;
+}
+
 // Helper to convert period (202502) to readable month
 function formatPeriod(periode) {
   if (!periode || periode.length !== 6) return periode;
@@ -367,22 +391,21 @@ function StockForecastDashboard() {
   const [error, setError] = useState(null);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [chartModalOpen, setChartModalOpen] = useState(false);
-  const [selectedChartType, setSelectedChartType] = useState('monthly');
+  const [selectedChartType, setSelectedChartType] = useState('monthlyValue');
   const [smallChartModalOpen, setSmallChartModalOpen] = useState(false);
   const [selectedSmallChart, setSelectedSmallChart] = useState('topSales');
 
   // Chart options for main chart modal
   const chartOptions = [
-    { id: 'monthly', title: 'Monthly Overview', desc: 'Monthly data for all products or selected product' },
-    { id: 'quarterly', title: 'Quarterly Overview', desc: 'Quarterly aggregated data' },
-    { id: 'comparison', title: 'Product Comparison', desc: 'Compare multiple products side by side' }
+    { id: 'monthly', title: 'Monthly Overview', desc: 'Monthly unit data for all products or selected product' },
+    { id: 'monthlyValue', title: 'Monthly Value', desc: 'Monthly value data (Rp) for all products or selected product' }
   ];
 
   // Chart options for small chart modal
   const smallChartOptions = [
-    { id: 'topSales', title: 'Top Sales', desc: 'Top 10 products with highest sales' },
-    { id: 'slowMoving', title: 'Slow Moving Products', desc: 'Top 10 products with lowest sales' },
-    { id: 'lowStock', title: 'Low Stock', desc: 'Top 10 products with lowest stock' }
+    { id: 'topSales', title: 'Top Sales Value', desc: 'Top 10 products with highest sales value' },
+    { id: 'slowMoving', title: 'Slow Moving Products', desc: 'Top 10 products with lowest sales value' },
+    { id: 'lowStock', title: 'Low Stock Value', desc: 'Top 10 products with lowest stock value' }
   ];
 
   // Fetch data on component mount
@@ -412,9 +435,9 @@ function StockForecastDashboard() {
     if (!data || data.length === 0) {
       return {
         totalProducts: 0,
-        totalForecast: 0,
-        totalStock: 0,
-        totalSales: 0,
+        totalForecastValue: 0,
+        totalStockValue: 0,
+        totalSalesValue: 0,
         totalProduksi: 0,
         forecastAccuracy: 0
       };
@@ -439,12 +462,18 @@ function StockForecastDashboard() {
           totalSales: 0,
           totalProduksi: 0,
           latestStock: 0,
-          latestPeriod: ''
+          latestPeriod: '',
+          hna: item.HNA || 0 // Store HNA price
         };
       }
       productMap[key].totalForecast += Number(item.Forecast) || 0;
       productMap[key].totalSales += Number(item.Sales) || 0;
       productMap[key].totalProduksi += Number(item.Produksi) || 0;
+      
+      // Update HNA if newer data has it
+      if (item.HNA) {
+        productMap[key].hna = item.HNA;
+      }
       
       // For stock, track the latest period up to current month with actual stock data
       const itemPeriod = item.Periode;
@@ -472,19 +501,21 @@ function StockForecastDashboard() {
 
     const products = Object.values(productMap);
     const totalProducts = products.length;
-    const totalForecast = products.reduce((sum, p) => sum + p.totalForecast, 0);
-    const totalStock = products.reduce((sum, p) => sum + p.latestStock, 0); // Use latest stock instead of cumulative
-    const totalSales = products.reduce((sum, p) => sum + p.totalSales, 0);
-    const totalProduksi = products.reduce((sum, p) => sum + p.totalProduksi, 0);
     
-    // Calculate forecast accuracy (simplified)
-    const forecastAccuracy = totalForecast > 0 ? Math.round((totalSales / totalForecast) * 100) : 0;
+    // Calculate values using HNA prices
+    const totalForecastValue = products.reduce((sum, p) => sum + (p.totalForecast * p.hna), 0);
+    const totalStockValue = products.reduce((sum, p) => sum + (p.latestStock * p.hna), 0); // Use latest stock instead of cumulative
+    const totalSalesValue = products.reduce((sum, p) => sum + (p.totalSales * p.hna), 0);
+    const totalProduksi = products.reduce((sum, p) => sum + p.totalProduksi, 0); // Keep as units
+    
+    // Calculate forecast accuracy (simplified) - using values instead of units
+    const forecastAccuracy = totalForecastValue > 0 ? Math.round((totalSalesValue / totalForecastValue) * 100) : 0;
 
     return {
       totalProducts,
-      totalForecast,
-      totalStock,
-      totalSales,
+      totalForecastValue,
+      totalStockValue,
+      totalSalesValue,
       totalProduksi,
       forecastAccuracy
     };
@@ -511,22 +542,33 @@ function StockForecastDashboard() {
           Product_ID: item.Product_ID,
           Product_NM: item.Product_NM,
           totalSales: 0,
+          totalSalesValue: 0,
           totalStock: 0,
+          totalStockValue: 0,
           latestStock: 0,
-          latestPeriod: ''
+          latestStockValue: 0,
+          latestPeriod: '',
+          hna: item.HNA || 0
         };
       }
-      productMap[key].totalSales += Number(item.Sales) || 0;
+      
+      const hna = item.HNA || 0;
+      const sales = Number(item.Sales) || 0;
+      const stockValue = Number(item.Release) || 0;
+      
+      productMap[key].totalSales += sales;
+      productMap[key].totalSalesValue += sales * hna;
+      productMap[key].hna = hna; // Update HNA if available
       
       // For latest stock, use the same logic as other functions
       const itemPeriod = item.Periode;
-      const stockValue = Number(item.Release) || 0;
       
       // Only consider periods up to current month and with actual stock data
       if (itemPeriod <= currentPeriod && stockValue > 0) {
         if (!productMap[key].latestPeriod || itemPeriod > productMap[key].latestPeriod) {
           productMap[key].latestPeriod = itemPeriod;
           productMap[key].latestStock = stockValue;
+          productMap[key].latestStockValue = stockValue * hna;
         }
       }
       
@@ -535,6 +577,7 @@ function StockForecastDashboard() {
         if (!productMap[key].latestPeriod || itemPeriod > productMap[key].latestPeriod) {
           productMap[key].latestPeriod = itemPeriod;
           productMap[key].latestStock = stockValue;
+          productMap[key].latestStockValue = stockValue * hna;
         }
       }
       
@@ -552,28 +595,28 @@ function StockForecastDashboard() {
     switch (selectedSmallChart) {
       case 'topSales':
         sortedProducts = products
-          .sort((a, b) => b.totalSales - a.totalSales)
+          .sort((a, b) => b.totalSalesValue - a.totalSalesValue)
           .slice(0, 10);
-        chartTitle = 'Sales';
-        dataKey = 'totalSales';
+        chartTitle = 'Sales Value';
+        dataKey = 'totalSalesValue';
         colors = ['#4f8cff', '#3b82f6', '#2563eb', '#1d4ed8', '#1e40af', '#1e3a8a', '#1e3a8a', '#312e81', '#312e81', '#312e81'];
         break;
       case 'slowMoving':
         sortedProducts = products
-          .filter(p => p.totalSales > 0)
-          .sort((a, b) => a.totalSales - b.totalSales)
+          .filter(p => p.totalSalesValue > 0)
+          .sort((a, b) => a.totalSalesValue - b.totalSalesValue)
           .slice(0, 10);
-        chartTitle = 'Sales (Slow Moving)';
-        dataKey = 'totalSales';
+        chartTitle = 'Sales Value (Slow Moving)';
+        dataKey = 'totalSalesValue';
         colors = ['#ef4444', '#dc2626', '#b91c1c', '#991b1b', '#7f1d1d', '#7f1d1d', '#7f1d1d', '#7f1d1d', '#7f1d1d', '#7f1d1d'];
         break;
       case 'lowStock':
         sortedProducts = products
-          .filter(p => p.latestStock > 0)
-          .sort((a, b) => a.latestStock - b.latestStock)
+          .filter(p => p.latestStockValue > 0)
+          .sort((a, b) => a.latestStockValue - b.latestStockValue)
           .slice(0, 10);
-        chartTitle = 'Stock (Low Stock)';
-        dataKey = 'latestStock';
+        chartTitle = 'Stock Value (Low Stock)';
+        dataKey = 'latestStockValue';
         colors = ['#f59e0b', '#d97706', '#b45309', '#92400e', '#78350f', '#78350f', '#78350f', '#78350f', '#78350f', '#78350f'];
         break;
       default:
@@ -595,8 +638,20 @@ function StockForecastDashboard() {
         backgroundColor: colors.slice(0, values.length),
         borderColor: colors.slice(0, values.length),
         borderWidth: 1,
-        // Store product names for tooltips
-        productNames: sortedProducts.map(product => product.Product_NM || 'Unknown Product')
+        // Store additional data for tooltips
+        productNames: sortedProducts.map(product => product.Product_NM || 'Unknown Product'),
+        productUnits: sortedProducts.map(product => {
+          switch (selectedSmallChart) {
+            case 'topSales':
+            case 'slowMoving':
+              return product.totalSales;
+            case 'lowStock':
+              return product.latestStock;
+            default:
+              return 0;
+          }
+        }),
+        productHNA: sortedProducts.map(product => product.hna || 0)
       }]
     };
   };
@@ -629,7 +684,28 @@ function StockForecastDashboard() {
             return dataset.productNames ? dataset.productNames[dataIndex] : context[0].label;
           },
           label: function(context) {
-            return `${context.dataset.label}: ${formatNumber(context.parsed.y)}`;
+            const datasetIndex = context.datasetIndex;
+            const dataIndex = context.dataIndex;
+            const dataset = getSmallChartData().datasets[datasetIndex];
+            
+            if (dataset.productHNA && dataset.productUnits) {
+              const hna = dataset.productHNA[dataIndex];
+              const units = dataset.productUnits[dataIndex];
+              const totalValue = context.parsed.y;
+              
+              return [
+                `${formatCurrency(hna)}, ${formatNumber(units)} unit`,
+                `Total: ${formatCurrency(totalValue)}`
+              ];
+            } else {
+              // Fallback to original format
+              const datasetLabel = context.dataset.label;
+              if (datasetLabel.includes('Value')) {
+                return `${datasetLabel}: ${formatCurrency(context.parsed.y)}`;
+              } else {
+                return `${datasetLabel}: ${formatNumber(context.parsed.y)}`;
+              }
+            }
           }
         }
       }
@@ -642,7 +718,13 @@ function StockForecastDashboard() {
         },
         ticks: {
           callback: function(value) {
-            return formatNumber(value);
+            // Check if current chart is showing values (currency) or units
+            const chartTitle = getSmallChartTitle();
+            if (chartTitle.includes('Sales') || chartTitle.includes('Stock')) {
+              return formatCurrency(value);
+            } else {
+              return formatNumber(value);
+            }
           },
           font: {
             size: 10
@@ -677,13 +759,26 @@ function StockForecastDashboard() {
     // Create monthly aggregates
     const monthlyData = periods.map(period => {
       const periodData = filteredData.filter(item => item.Periode === period);
-      return {
-        period,
-        forecast: periodData.reduce((sum, item) => sum + (Number(item.Forecast) || 0), 0),
-        stock: periodData.reduce((sum, item) => sum + (Number(item.Release) || 0), 0),
-        sales: periodData.reduce((sum, item) => sum + (Number(item.Sales) || 0), 0),
-        produksi: periodData.reduce((sum, item) => sum + (Number(item.Produksi) || 0), 0)
-      };
+      
+      if (selectedChartType === 'monthlyValue') {
+        // Calculate values using HNA prices
+        return {
+          period,
+          forecast: periodData.reduce((sum, item) => sum + ((Number(item.Forecast) || 0) * (item.HNA || 0)), 0),
+          stock: periodData.reduce((sum, item) => sum + ((Number(item.Release) || 0) * (item.HNA || 0)), 0),
+          sales: periodData.reduce((sum, item) => sum + ((Number(item.Sales) || 0) * (item.HNA || 0)), 0),
+          produksi: periodData.reduce((sum, item) => sum + ((Number(item.Produksi) || 0) * (item.HNA || 0)), 0)
+        };
+      } else {
+        // Calculate units (original logic)
+        return {
+          period,
+          forecast: periodData.reduce((sum, item) => sum + (Number(item.Forecast) || 0), 0),
+          stock: periodData.reduce((sum, item) => sum + (Number(item.Release) || 0), 0),
+          sales: periodData.reduce((sum, item) => sum + (Number(item.Sales) || 0), 0),
+          produksi: periodData.reduce((sum, item) => sum + (Number(item.Produksi) || 0), 0)
+        };
+      }
     });
 
     // Generate all months from Jan to Dec 2025
@@ -755,7 +850,7 @@ function StockForecastDashboard() {
         }
       ]
     };
-  }, [data, selectedProduct]);
+  }, [data, selectedProduct, selectedChartType]);
 
   // Process data for product table
   const tableData = useMemo(() => {
@@ -855,7 +950,11 @@ function StockForecastDashboard() {
         borderWidth: 1,
         callbacks: {
           label: function(context) {
-            return `${context.dataset.label}: ${formatNumber(context.parsed.y)}`;
+            if (selectedChartType === 'monthlyValue') {
+              return `${context.dataset.label}: ${formatCurrency(context.parsed.y)}`;
+            } else {
+              return `${context.dataset.label}: ${formatNumber(context.parsed.y)}`;
+            }
           }
         }
       }
@@ -868,7 +967,11 @@ function StockForecastDashboard() {
         },
         ticks: {
           callback: function(value) {
-            return formatNumber(value);
+            if (selectedChartType === 'monthlyValue') {
+              return formatCurrency(value);
+            } else {
+              return formatNumber(value);
+            }
           }
         }
       },
@@ -935,31 +1038,31 @@ function StockForecastDashboard() {
           {/* Info Cards Row */}
           <div className="modular-info-cards-row">
             <InfoCard
-              title="Total Sales"
-              value={formatNumber(stats.totalSales)}
+              title="Total Sales Value"
+              value={formatCurrency(stats.totalSalesValue)}
               icon="💰"
-              change={`Cumulative Sales`}
+              change={`Cumulative Sales Value`}
               changeType="positive"
             />
             <InfoCard
               title="Total Produksi"
-              value={formatNumber(stats.totalProduksi)}
+              value={formatUnits(stats.totalProduksi)}
               icon="🏭"
               change={`Production Output`}
               changeType="positive"
             />
             <InfoCard
-              title="Current Stock"
-              value={formatNumber(stats.totalStock)}
+              title="Current Stock Value"
+              value={formatCurrency(stats.totalStockValue)}
               icon="📦"
-              change={`Latest Month Stock Data`}
+              change={`Latest Month Stock Value`}
               changeType="neutral"
             />
             <InfoCard
               title="Forecast Accuracy"
               value={`${stats.forecastAccuracy}%`}
               icon="🎯"
-              change={`Sales vs Forecast`}
+              change={`Sales vs Forecast Value`}
               changeType={stats.forecastAccuracy >= 80 ? "positive" : stats.forecastAccuracy >= 60 ? "neutral" : "negative"}
             />
           </div>
@@ -991,14 +1094,14 @@ function StockForecastDashboard() {
                       title="Click to change chart type"
                     >
                       {selectedProduct 
-                        ? `Monthly Data for ${selectedProduct.Product_ID} - ${selectedProduct.Product_NM}`
-                        : 'Monthly Overview - All Products'
+                        ? `${selectedChartType === 'monthlyValue' ? 'Monthly Value' : 'Monthly Overview'} - ${selectedProduct.Product_NM}`
+                        : `${selectedChartType === 'monthlyValue' ? 'Monthly Value' : 'Monthly Overview'} - All Products`
                       } <span style={{ marginLeft: 8, fontSize: 16 }}>▼</span>
                     </h3>
                     <span className="chart-subtitle">
                       {selectedProduct 
-                        ? 'Product-specific forecast, stock, and sales trends'
-                        : 'Aggregated monthly data across all products'
+                        ? `Product-specific ${selectedChartType === 'monthlyValue' ? 'value' : 'unit'} trends`
+                        : `Aggregated monthly ${selectedChartType === 'monthlyValue' ? 'value' : 'unit'} data across all products`
                       }
                     </span>
                   </div>

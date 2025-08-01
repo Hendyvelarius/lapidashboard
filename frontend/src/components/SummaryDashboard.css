@@ -79,15 +79,25 @@
   height: 100%;
 }
 
-.summary-kpi-title {
+.summary-kpi-header {
   background: #1f2937;
   color: white;
   padding: 0.75rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.summary-kpi-title {
   font-weight: bold;
   font-size: 1rem;
-  text-align: center;
   letter-spacing: 1px;
-  flex-shrink: 0;
+}
+
+.summary-kpi-header-component {
+  display: flex;
+  align-items: center;
 }
 
 .summary-kpi-content {
@@ -97,6 +107,12 @@
   flex-direction: column;
   justify-content: center;
   min-height: 0;
+}
+
+/* Loading Spinner Animation */
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 /* Sales Card Specific */

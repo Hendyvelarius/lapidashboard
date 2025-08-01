@@ -50,7 +50,7 @@ function Sidebar() {
     <aside className="sidebar sidebar-dark sidebar-fixed">
       {/* Logo Section */}
       <div className="sidebar-logo">
-        <img src="/LAPILOGO_White.png" alt="LAPI Logo" className="logo-image" />
+        <img src="./LAPILOGO_White.png" alt="LAPI Logo" className="logo-image" />
       </div>
 
       {/* Main Menu Section */}
