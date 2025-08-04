@@ -291,6 +291,164 @@ const InventoryOJDetailsModal = ({ isOpen, onClose, forecastData }) => {
   );
 };
 
+// Sales Target Details Modal Component
+const SalesTargetDetailsModal = ({ isOpen, onClose, forecastData }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  if (!isOpen || !forecastData) return null;
+
+  // Get current period for filtering
+  const currentDate = new Date();
+  const currentPeriod = currentDate.getFullYear() * 100 + (currentDate.getMonth() + 1);
+  
+  // Filter forecast data by current period
+  const currentPeriodData = forecastData.filter(item => 
+    parseInt(item.Periode) === currentPeriod
+  );
+
+  // Split products by target achievement
+  const allMetTargetProducts = currentPeriodData.filter(item => {
+    const sales = item.Sales || 0;
+    const forecast = item.Forecast || 0;
+    return sales >= forecast;
+  });
+
+  const allNotMetTargetProducts = currentPeriodData.filter(item => {
+    const sales = item.Sales || 0;
+    const forecast = item.Forecast || 0;
+    return sales < forecast;
+  });
+
+  // Filter based on search term
+  const filterProducts = (products) => {
+    if (!searchTerm.trim()) return products;
+    
+    return products.filter(product => {
+      const productId = (product.Product_ID || '').toString().toLowerCase();
+      const productName = (product.Product_NM || '').toString().toLowerCase();
+      const searchLower = searchTerm.toLowerCase();
+      
+      return productId.includes(searchLower) || productName.includes(searchLower);
+    });
+  };
+
+  const metTargetProducts = filterProducts(allMetTargetProducts);
+  const notMetTargetProducts = filterProducts(allNotMetTargetProducts);
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content of-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '1000px', width: '90vw' }}>
+        <div className="modal-header">
+          <h2>Detail Sales Target Achievement</h2>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <div className="modal-body">
+          <div className="modal-summary" style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            marginBottom: '20px',
+            padding: '15px',
+            backgroundColor: '#f8f9fa',
+            borderRadius: '8px',
+            fontSize: '14px'
+          }}>
+            <div>
+              <strong>Total Products:</strong> {currentPeriodData.length}
+            </div>
+            <div style={{ color: '#10b981' }}>
+              <strong>Met Target:</strong> {allMetTargetProducts.length}
+            </div>
+            <div style={{ color: '#ef4444' }}>
+              <strong>Target Not Met:</strong> {allNotMetTargetProducts.length}
+            </div>
+            <div>
+              <strong>Achievement Rate:</strong> {currentPeriodData.length > 0 ? Math.round((allMetTargetProducts.length / currentPeriodData.length) * 100) : 0}%
+            </div>
+          </div>
+          
+          <div className="search-container" style={{ marginBottom: '20px' }}>
+            <input
+              type="text"
+              placeholder="Search by product ID or product name..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px 15px',
+                border: '1px solid #d1d5db',
+                borderRadius: '8px',
+                fontSize: '14px',
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+          
+          {searchTerm.trim() && (
+            <div style={{ marginBottom: '15px', fontSize: '14px', color: '#6b7280' }}>
+              Found {metTargetProducts.length + notMetTargetProducts.length} results for "{searchTerm}"
+              {metTargetProducts.length + notMetTargetProducts.length !== allMetTargetProducts.length + allNotMetTargetProducts.length && 
+                ` (filtered from ${allMetTargetProducts.length + allNotMetTargetProducts.length} total)`}
+            </div>
+          )}
+          
+          <div className="of-details-container">
+            {/* Met Target Products */}
+            <div className="of-details-section">
+              <h3 className="of-section-title" style={{ color: '#10b981' }}>
+                ✅ Met Target ({metTargetProducts.length})
+              </h3>
+              <div className="of-batch-list">
+                {metTargetProducts.length > 0 ? (
+                  metTargetProducts.map((product, index) => (
+                    <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #10b981', marginBottom: '8px' }}>
+                      <div className="batch-code">ID: {product.Product_ID}</div>
+                      <div className="product-info">
+                        <span className="product-name" style={{ fontSize: '12px' }}>{product.Product_NM || 'N/A'}</span>
+                        <span className="product-id" style={{ fontSize: '11px' }}>
+                          Sales: {formatNumber(product.Sales || 0)} | Forecast: {formatNumber(product.Forecast || 0)} 
+                          | Achievement: {product.Forecast > 0 ? Math.round(((product.Sales || 0) / product.Forecast) * 100) : 0}%
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-data">Tidak ada produk yang mencapai target</div>
+                )}
+              </div>
+            </div>
+
+            {/* Target Not Met Products */}
+            <div className="of-details-section">
+              <h3 className="of-section-title" style={{ color: '#ef4444' }}>
+                ❌ Target Not Met ({notMetTargetProducts.length})
+              </h3>
+              <div className="of-batch-list">
+                {notMetTargetProducts.length > 0 ? (
+                  notMetTargetProducts.map((product, index) => (
+                    <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #ef4444', marginBottom: '8px' }}>
+                      <div className="batch-code">ID: {product.Product_ID}</div>
+                      <div className="product-info">
+                        <span className="product-name" style={{ fontSize: '12px' }}>{product.Product_NM || 'N/A'}</span>
+                        <span className="product-id" style={{ fontSize: '11px' }}>
+                          Sales: {formatNumber(product.Sales || 0)} | Forecast: {formatNumber(product.Forecast || 0)} 
+                          | Achievement: {product.Forecast > 0 ? Math.round(((product.Sales || 0) / product.Forecast) * 100) : 0}%
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-data">Semua produk mencapai target</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Coverage Details Modal Component
 const CoverageDetailsModal = ({ isOpen, onClose, forecastData }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -1140,7 +1298,8 @@ function SummaryDashboard() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastFetchTime, setLastFetchTime] = useState(null);
-  const [salesChartType, setSalesChartType] = useState('Weekly'); // 'Weekly' or 'Daily'
+  const [salesChartType, setSalesChartType] = useState('Yearly'); // 'Weekly', 'Daily', or 'Yearly'
+  const [salesDropdownOpen, setSalesDropdownOpen] = useState(false);
   const [ofModalOpen, setOfModalOpen] = useState(false);
   const [selectedOfStage, setSelectedOfStage] = useState(null);
   const [ofRawData, setOfRawData] = useState([]);
@@ -1154,6 +1313,7 @@ function SummaryDashboard() {
   const [coverageModalOpen, setCoverageModalOpen] = useState(false);
   const [pctModalOpen, setPctModalOpen] = useState(false);
   const [pctRawData, setPctRawData] = useState([]);
+  const [salesTargetModalOpen, setSalesTargetModalOpen] = useState(false);
   const [data, setData] = useState({
     sales: null,
     inventory: null,
@@ -1381,6 +1541,10 @@ function SummaryDashboard() {
     setPctModalOpen(true);
   };
 
+  const handleSalesTargetClick = () => {
+    setSalesTargetModalOpen(true);
+  };
+
   const handleSalesClick = () => {
     navigate("/stock-forecast");
   };
@@ -1400,6 +1564,20 @@ function SummaryDashboard() {
 
     return () => clearInterval(intervalId);
   }, []);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (salesDropdownOpen && !event.target.closest('.sales-chart-dropdown-container')) {
+        setSalesDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [salesDropdownOpen]);
 
   // Data processing functions
   const processSalesData = (stockData, dailySalesData) => {
@@ -1439,6 +1617,16 @@ function SummaryDashboard() {
 
     // Calculate achievement percentage (cumulative monthly sales vs monthly forecast)
     const achievement = monthlyForecast > 0 ? (cumulativeMonthlySales / monthlyForecast) * 100 : 0;
+
+    // Calculate sales target achievement for current period
+    const currentPeriodData = stockData.filter(item => parseInt(item.Periode) === currentPeriod);
+    const totalProducts = currentPeriodData.length;
+    const metTargetProducts = currentPeriodData.filter(item => {
+      const sales = item.Sales || 0;
+      const forecast = item.Forecast || 0;
+      return sales >= forecast;
+    });
+    const targetAchievementPercentage = totalProducts > 0 ? (metTargetProducts.length / totalProducts) * 100 : 0;
 
     // Calculate weekly cumulative sales value data for chart
     const weeklyData = {};
@@ -1496,13 +1684,56 @@ function SummaryDashboard() {
       dailyWeekLabels.push(dayLabel);
     }
     
+    // Calculate yearly sales and forecast data for chart
+    const yearlyData = {};
+    const yearlyForecastData = {};
+    
+    // Process forecast data for yearly chart
+    stockData.forEach(item => {
+      const periode = parseInt(item.Periode);
+      const year = Math.floor(periode / 100);
+      const month = periode % 100;
+      
+      // Only include current year data (2025)
+      if (year === currentYear) {
+        const salesValue = (item.Sales || 0) * (item.HNA || 0);
+        const forecastValue = (item.Forecast || 0) * (item.HNA || 0);
+        
+        if (!yearlyData[month]) {
+          yearlyData[month] = 0;
+        }
+        if (!yearlyForecastData[month]) {
+          yearlyForecastData[month] = 0;
+        }
+        
+        yearlyData[month] += salesValue;
+        yearlyForecastData[month] += forecastValue;
+      }
+    });
+    
+    // Convert to arrays for chart (January to current month)
+    const monthlyLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const yearlySalesData = [];
+    const yearlyForecastArray = [];
+    
+    for (let month = 1; month <= currentMonth; month++) {
+      yearlySalesData.push(yearlyData[month] || 0);
+      yearlyForecastArray.push(yearlyForecastData[month] || 0);
+    }
+    
     return {
       dailySales: todaysSales,
       achievement: achievement,
+      targetAchievementPercentage: targetAchievementPercentage,
+      metTargetCount: metTargetProducts.length,
+      totalProductCount: totalProducts,
       weeklyData: cumulativeWeeklyData,
       dailyWeekData: dailyWeekData,
       dailyWeekLabels: dailyWeekLabels,
-      monthlyForecast: monthlyForecast
+      monthlyForecast: monthlyForecast,
+      yearlySalesData: yearlySalesData,
+      yearlyForecastData: yearlyForecastArray,
+      yearlyLabels: monthlyLabels.slice(0, currentMonth)
     };
   };
 
@@ -1922,6 +2153,32 @@ function SummaryDashboard() {
           }
         ]
       };
+    } else if (salesChartType === 'Yearly') {
+      return {
+        labels: data.sales?.yearlyLabels || [],
+        datasets: [
+          {
+            label: 'Monthly Sales Value',
+            data: data.sales?.yearlySalesData || [],
+            type: 'bar',
+            backgroundColor: 'rgba(59, 130, 246, 0.6)',
+            borderColor: '#3b82f6',
+            borderWidth: 1
+          },
+          {
+            label: 'Monthly Forecast Value',
+            data: data.sales?.yearlyForecastData || [],
+            type: 'line',
+            borderColor: '#ef4444',
+            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+            fill: false,
+            tension: 0,
+            borderDash: [5, 5],
+            pointBackgroundColor: '#ef4444',
+            pointBorderColor: '#ef4444'
+          }
+        ]
+      };
     } else {
       return {
         labels: ['W1', 'W2', 'W3', 'W4', 'W5'],
@@ -1953,6 +2210,10 @@ function SummaryDashboard() {
   const salesLineOptions = {
     responsive: true,
     maintainAspectRatio: false,
+    onClick: (event, elements) => {
+      // Navigate to stock forecast when chart is clicked
+      navigate("/stock-forecast");
+    },
     plugins: {
       legend: { position: 'top', labels: { font: { size: 10 } } },
       tooltip: { 
@@ -1963,6 +2224,8 @@ function SummaryDashboard() {
             const value = formatNumber(context.parsed.y);
             
             if (salesChartType === 'Daily') {
+              return `${datasetLabel}: ${value}`;
+            } else if (salesChartType === 'Yearly') {
               return `${datasetLabel}: ${value}`;
             } else if (datasetLabel === 'Cumulative Sales Value') {
               // Calculate weekly sales value (difference from previous week)
@@ -2075,12 +2338,21 @@ function SummaryDashboard() {
               <div className="sales-content">
                 <div className="sales-left">
                   <CircularProgress 
-                    percentage={data.sales?.achievement || 0} 
-                    color="#1f2937"
+                    percentage={Math.round(data.sales?.targetAchievementPercentage || 0)} 
+                    color="#10b981"
                     size={100}
-                    onClick={handleSalesClick}
-                    title="Click to view forecast details"
+                    onClick={handleSalesTargetClick}
+                    title="Click to view sales target achievement details"
                   />
+                  <div style={{
+                    textAlign: 'center',
+                    marginTop: '2px',
+                    fontSize: '12px',
+                    color: '#6b7280',
+                    fontWeight: '500'
+                  }}>
+                    Product Forecast
+                  </div>
                 </div>
                 <div className="sales-middle">
                   <div 
@@ -2095,12 +2367,82 @@ function SummaryDashboard() {
                   </div>
                 </div>
                 <div className="sales-right">
-                  <div 
-                    className="sales-chart-title clickable" 
-                    onClick={() => setSalesChartType(salesChartType === 'Weekly' ? 'Daily' : 'Weekly')}
-                    title="Click to toggle between Weekly and Daily view"
-                  >
-                    {salesChartType} Sales 🔄
+                  <div className="sales-chart-dropdown-container" style={{ position: 'relative', marginBottom: '10px' }}>
+                    <div 
+                      className="sales-chart-dropdown-trigger clickable" 
+                      onClick={() => setSalesDropdownOpen(!salesDropdownOpen)}
+                      style={{
+                        padding: '8px 16px',
+                        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                        border: '1px solid rgba(0, 0, 0, 0.1)',
+                        borderRadius: '8px',
+                        color: '#1f2937',
+                        fontSize: '14px',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        minWidth: '140px',
+                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
+                      }}
+                    >
+                      <span>{salesChartType} Sales</span>
+                      <span style={{ marginLeft: '8px', fontSize: '12px' }}>
+                        {salesDropdownOpen ? '▲' : '▼'}
+                      </span>
+                    </div>
+                    
+                    {salesDropdownOpen && (
+                      <div 
+                        className="sales-chart-dropdown-menu"
+                        style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          right: 0,
+                          backgroundColor: 'white',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '8px',
+                          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                          zIndex: 1000,
+                          marginTop: '4px'
+                        }}
+                      >
+                        {['Daily', 'Weekly', 'Yearly'].map((option) => (
+                          <div
+                            key={option}
+                            className="dropdown-option"
+                            onClick={() => {
+                              setSalesChartType(option);
+                              setSalesDropdownOpen(false);
+                            }}
+                            style={{
+                              padding: '10px 16px',
+                              fontSize: '14px',
+                              color: salesChartType === option ? '#3b82f6' : '#374151',
+                              backgroundColor: salesChartType === option ? '#eff6ff' : 'white',
+                              cursor: 'pointer',
+                              borderBottom: option !== 'Yearly' ? '1px solid #e5e7eb' : 'none',
+                              fontWeight: salesChartType === option ? 'bold' : 'normal',
+                              borderRadius: option === 'Daily' ? '8px 8px 0 0' : option === 'Yearly' ? '0 0 8px 8px' : '0'
+                            }}
+                            onMouseEnter={(e) => {
+                              if (salesChartType !== option) {
+                                e.target.style.backgroundColor = '#f9fafb';
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (salesChartType !== option) {
+                                e.target.style.backgroundColor = 'white';
+                              }
+                            }}
+                          >
+                            {option} Sales
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="sales-chart">
                     <Line data={salesLineData} options={salesLineOptions} />
@@ -2155,16 +2497,6 @@ function SummaryDashboard() {
                   </div>
                   <div className="of1-item">
                     <CircularProgress 
-                      percentage={data.orderFulfillment?.dokumen || 0} 
-                      color="#06b6d4"
-                      size={80}
-                      title={getOfStageTooltip('Dokumen')}
-                      onClick={() => handleOfStageClick('Dokumen')}
-                    />
-                    <div className="of1-label">Dokumen</div>
-                  </div>
-                  <div className="of1-item">
-                    <CircularProgress 
                       percentage={data.orderFulfillment?.rilisQc || 0} 
                       color="#f97316"
                       size={80}
@@ -2172,6 +2504,16 @@ function SummaryDashboard() {
                       onClick={() => handleOfStageClick('Rilis QC')}
                     />
                     <div className="of1-label">Rilis QC</div>
+                  </div>
+                  <div className="of1-item">
+                    <CircularProgress 
+                      percentage={data.orderFulfillment?.dokumen || 0} 
+                      color="#06b6d4"
+                      size={80}
+                      title={getOfStageTooltip('Dokumen')}
+                      onClick={() => handleOfStageClick('Dokumen')}
+                    />
+                    <div className="of1-label">Dokumen</div>
                   </div>
                   <div className="of1-item">
                     <CircularProgress 
@@ -2480,6 +2822,13 @@ function SummaryDashboard() {
         <CoverageDetailsModal 
           isOpen={coverageModalOpen}
           onClose={() => setCoverageModalOpen(false)}
+          forecastData={forecastRawData}
+        />
+        
+        {/* Sales Target Details Modal */}
+        <SalesTargetDetailsModal 
+          isOpen={salesTargetModalOpen}
+          onClose={() => setSalesTargetModalOpen(false)}
           forecastData={forecastRawData}
         />
         

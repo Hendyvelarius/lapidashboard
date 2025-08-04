@@ -227,7 +227,8 @@ export default function PCTReportPage({ title, apiEndpoint, tableColumns, dataMa
         averagePCT: 0,
         slowestCategory: { name: '-', avgPCT: 0 },
         fastestCategory: { name: '-', avgPCT: 0 },
-        slowestProduct: { name: '-', pct: 0 }
+        slowestProduct: { name: '-', pct: 0 },
+        fastestProduct: { name: '-', pct: 0 }
       };
     }
 
@@ -279,17 +280,27 @@ export default function PCTReportPage({ title, apiEndpoint, tableColumns, dataMa
       fastestCategory.avgPCT = 0;
     }
 
-    // 4. Find slowest product
+    // 4. Find slowest and fastest products
     const slowestProduct = data.reduce((max, item) => 
       (item.rataRataPCT || 0) > (max.pct || 0) ? 
         { name: capitalizeProductName(item.namaProduk || '-'), pct: item.rataRataPCT || 0 } : max, 
       { name: '-', pct: 0 });
 
+    const fastestProduct = data.reduce((min, item) => 
+      (item.rataRataPCT || 0) < (min.pct || Infinity) && (item.rataRataPCT || 0) > 0 ? 
+        { name: capitalizeProductName(item.namaProduk || '-'), pct: item.rataRataPCT || 0 } : min, 
+      { name: '-', pct: Infinity });
+    
+    if (fastestProduct.pct === Infinity) {
+      fastestProduct.pct = 0;
+    }
+
     return {
       averagePCT,
       slowestCategory,
       fastestCategory,
-      slowestProduct
+      slowestProduct,
+      fastestProduct
     };
   };
 
@@ -567,7 +578,7 @@ export default function PCTReportPage({ title, apiEndpoint, tableColumns, dataMa
       } else {
         // For yearly data, categorize by PCT performance
         const pct = item.rataRataPCT || item.pct || 0;
-        if (pct <= 30) recent++; // Good performance
+        if (pct <= 38) recent++; // Good performance
         else older++; // Needs improvement
       }
     });
@@ -639,83 +650,6 @@ export default function PCTReportPage({ title, apiEndpoint, tableColumns, dataMa
     };
   };
 
-  const getPCTTimeline = () => {
-    if (!data || data.length === 0) {
-      return {
-        labels: ['No Data'],
-        datasets: [{
-          label: 'PCT Timeline',
-          data: [0],
-          backgroundColor: '#e5e7eb',
-          borderColor: '#d1d5db',
-          borderWidth: 1,
-        }]
-      };
-    }
-
-    const isMonthly = title.toLowerCase().includes('monthly');
-    
-    if (isMonthly) {
-      // For monthly: Group by batch date
-      const dateGroups = {};
-      data.forEach(item => {
-        if (item.batchDate) {
-          const date = new Date(item.batchDate).toLocaleDateString('id-ID');
-          if (!dateGroups[date]) {
-            dateGroups[date] = { total: 0, count: 0 };
-          }
-          dateGroups[date].total += item.pct || 0;
-          dateGroups[date].count += 1;
-        }
-      });
-
-      const sortedDates = Object.keys(dateGroups).sort((a, b) => new Date(a) - new Date(b));
-      const averages = sortedDates.map(date => 
-        Math.round(dateGroups[date].total / dateGroups[date].count)
-      );
-
-      return {
-        labels: sortedDates,
-        datasets: [{
-          label: 'Average PCT by Date',
-          data: averages,
-          backgroundColor: '#3b82f680',
-          borderColor: '#3b82f6',
-          borderWidth: 2,
-          tension: 0.4,
-        }]
-      };
-    } else {
-      // For yearly: Group by category trend
-      const categoryStats = {};
-      data.forEach(item => {
-        const category = item.kategori || 'Unknown';
-        if (!categoryStats[category]) {
-          categoryStats[category] = { total: 0, count: 0 };
-        }
-        categoryStats[category].total += item.rataRataPCT || 0;
-        categoryStats[category].count += 1;
-      });
-
-      const labels = Object.keys(categoryStats);
-      const averages = labels.map(cat => 
-        Math.round(categoryStats[cat].total / categoryStats[cat].count)
-      );
-
-      return {
-        labels,
-        datasets: [{
-          label: 'Category Performance Trend',
-          data: averages,
-          backgroundColor: '#10b98180',
-          borderColor: '#10b981',
-          borderWidth: 2,
-          tension: 0.4,
-        }]
-      };
-    }
-  };
-
   const getTop10ProductsByPCT = () => {
     if (!data || data.length === 0) {
       return {
@@ -730,7 +664,7 @@ export default function PCTReportPage({ title, apiEndpoint, tableColumns, dataMa
       };
     }
 
-    // Sort by PCT and take top 10
+    // Sort by PCT and take top 10 (longest)
     const sortedData = [...data]
       .sort((a, b) => (b.rataRataPCT || b.pct || 0) - (a.rataRataPCT || a.pct || 0))
       .slice(0, 10);
@@ -760,6 +694,50 @@ export default function PCTReportPage({ title, apiEndpoint, tableColumns, dataMa
     };
   };
 
+  const getTop10FastestProductsByPCT = () => {
+    if (!data || data.length === 0) {
+      return {
+        labels: ['No Data'],
+        datasets: [{
+          label: 'PCT (Days)',
+          data: [0],
+          backgroundColor: ['#e5e7eb'],
+          borderColor: ['#d1d5db'],
+          borderWidth: 1,
+        }]
+      };
+    }
+
+    // Sort by PCT and take bottom 10 (fastest/shortest)
+    const sortedData = [...data]
+      .sort((a, b) => (a.rataRataPCT || a.pct || 0) - (b.rataRataPCT || b.pct || 0))
+      .slice(0, 10);
+
+    const labels = sortedData.map(item => {
+      const name = item.namaProduk || 'Unknown';
+      return name.length > 15 ? name.substring(0, 15) + '...' : name;
+    });
+    
+    const pctValues = sortedData.map(item => item.rataRataPCT || item.pct || 0);
+
+    const colors = pctValues.map(pct => {
+      if (pct <= 15) return '#10b981'; // Green for very fast
+      if (pct <= 30) return '#22d3ee'; // Cyan for fast
+      return '#f59e0b'; // Amber for moderate
+    });
+
+    return {
+      labels,
+      datasets: [{
+        label: 'PCT (Days)',
+        data: pctValues,
+        backgroundColor: colors.map(color => color + '80'),
+        borderColor: colors,
+        borderWidth: 2,
+      }]
+    };
+  };
+
   // Chart selection options
   const smallChartOptions = [
     { id: 'productByCategory', title: 'Distribusi Produk per Kategori', desc: 'Total produk dalam setiap kategori' },
@@ -771,8 +749,8 @@ export default function PCTReportPage({ title, apiEndpoint, tableColumns, dataMa
   const largeChartOptions = [
     { id: 'avgPCTByCategory', title: 'Rata-rata PCT per Kategori', desc: 'Perbandingan waktu siklus produksi rata-rata per kategori' },
     { id: 'avgPCTByDepartment', title: 'Rata-rata PCT per Departemen', desc: 'Perbandingan waktu siklus produksi rata-rata per departemen' },
-    { id: 'pctTimeline', title: 'Timeline PCT', desc: 'Tren PCT dari waktu ke waktu' },
-    { id: 'top10Products', title: '10 Produk PCT Terlama', desc: 'Produk dengan waktu siklus terpanjang' }
+    { id: 'top10ProductsSlowest', title: '10 Produk PCT Terlama', desc: 'Produk dengan waktu siklus terpanjang' },
+    { id: 'top10ProductsFastest', title: '10 Produk PCT Tercepat', desc: 'Produk dengan waktu siklus tercepat' }
   ];
 
   // Get chart data based on selection
@@ -788,8 +766,8 @@ export default function PCTReportPage({ title, apiEndpoint, tableColumns, dataMa
   const getLargeChartData = () => {
     switch (selectedLargeChart) {
       case 'avgPCTByDepartment': return getAveragePCTByDepartment();
-      case 'pctTimeline': return getPCTTimeline();
-      case 'top10Products': return getTop10ProductsByPCT();
+      case 'top10ProductsSlowest': return getTop10ProductsByPCT();
+      case 'top10ProductsFastest': return getTop10FastestProductsByPCT();
       default: return getAveragePCTByCategory();
     }
   };
@@ -824,9 +802,6 @@ export default function PCTReportPage({ title, apiEndpoint, tableColumns, dataMa
   };
 
   const renderLargeChart = () => {
-    if (selectedLargeChart === 'pctTimeline') {
-      return <Line data={getLargeChartData()} options={lineChartOptions} />;
-    }
     return <Bar data={getLargeChartData()} options={barChartOptions} />;
   };
 
@@ -1051,7 +1026,7 @@ export default function PCTReportPage({ title, apiEndpoint, tableColumns, dataMa
           </div>
 
           {/* Info Cards Row - Real PCT data */}
-          <div className="modular-info-cards-row">
+          <div className="modular-info-cards-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px' }}>
             <InfoCard
               title="Rata-rata PCT Keseluruhan"
               value={`${pctStats.averagePCT} Hari`}
@@ -1061,24 +1036,31 @@ export default function PCTReportPage({ title, apiEndpoint, tableColumns, dataMa
             />
             <InfoCard
               title="Kategori PCT Terlama"
-              value={pctStats.slowestCategory.name}
+              value={`${pctStats.slowestCategory.avgPCT} Hari`}
               icon="🐌"
-              change={`${pctStats.slowestCategory.avgPCT} Hari`}
+              change={pctStats.slowestCategory.name}
               changeType="negative"
             />
             <InfoCard
               title="Kategori PCT Tercepat"
-              value={pctStats.fastestCategory.name}
+              value={`${pctStats.fastestCategory.avgPCT} Hari`}
               icon="🚀"
-              change={`${pctStats.fastestCategory.avgPCT} Hari`}
+              change={pctStats.fastestCategory.name}
               changeType="positive"
             />
             <InfoCard
               title="Produk Dengan PCT Terlama"
-              value={pctStats.slowestProduct.name}
+              value={`${pctStats.slowestProduct.pct} Hari`}
               icon="📦"
-              change={`${pctStats.slowestProduct.pct} Hari`}
+              change={pctStats.slowestProduct.name}
               changeType="negative"
+            />
+            <InfoCard
+              title="Produk Dengan PCT Tercepat"
+              value={`${pctStats.fastestProduct.pct} Hari`}
+              icon="⚡"
+              change={pctStats.fastestProduct.name}
+              changeType="positive"
             />
           </div>
 
