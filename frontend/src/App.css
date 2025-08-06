@@ -239,6 +239,22 @@ body, html, #root {
   /* Ensure smooth scrolling for long sidebar content */
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+  transition: width 0.3s ease, min-width 0.3s ease;
+}
+
+/* Minimized sidebar styles */
+.sidebar-fixed.sidebar-minimized {
+  width: 70px;
+  min-width: 70px;
+}
+
+/* Hide scrollbar when minimized */
+.sidebar-fixed.sidebar-minimized {
+  overflow-y: hidden;
+}
+
+.sidebar-fixed.sidebar-minimized:hover {
+  overflow-y: auto;
 }
 
 /* Custom scrollbar for webkit browsers */
@@ -302,12 +318,91 @@ body, html, #root {
 .sidebar-logo {
   padding: 2rem 1.5rem 1.5rem 1.5rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  transition: padding 0.3s ease;
+}
+
+.sidebar-minimized .sidebar-logo {
+  padding: 1rem 0.5rem;
+  text-align: center;
 }
 
 .logo-image {
   width: 240px;
   height: auto;
   max-width: 100%;
+  transition: opacity 0.3s ease;
+}
+
+.sidebar-minimized .logo-image {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.logo-mini {
+  width: 40px;
+  height: 40px;
+  background: linear-gradient(135deg, #4f8cff 60%, #38e6c5 100%);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: #fff;
+  margin: 0 auto;
+}
+
+/* Sidebar Toggle Button */
+.sidebar-toggle {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  transform: translateY(-50%);
+  z-index: 1002;
+  padding: 0 0.5rem;
+  transition: padding 0.3s ease;
+}
+
+.sidebar-minimized .sidebar-toggle {
+  padding: 0 0.25rem;
+}
+
+.sidebar-toggle-btn {
+  width: 100%;
+  height: 40px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  font-size: 18px;
+  backdrop-filter: blur(10px);
+}
+
+.sidebar-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.4);
+  transform: scale(1.02);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.sidebar-toggle-btn svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 2.5;
+  flex-shrink: 0;
+}
+
+.sidebar-minimized .sidebar-toggle-btn span {
+  display: none;
 }
 
 .logo-placeholder {
@@ -343,6 +438,11 @@ body, html, #root {
   flex-direction: column;
   gap: 0.25rem;
   padding: 0 1rem;
+  transition: padding 0.3s ease;
+}
+
+.sidebar-minimized .sidebar-nav {
+  padding: 0 0.5rem;
 }
 
 .sidebar-btn {
@@ -360,6 +460,17 @@ body, html, #root {
   transition: all 0.2s ease;
   text-align: left;
   width: 100%;
+  position: relative;
+}
+
+.sidebar-minimized .sidebar-btn {
+  padding: 0.75rem 0.5rem;
+  justify-content: center;
+  min-height: 44px;
+}
+
+.sidebar-minimized .sidebar-btn span {
+  display: none;
 }
 
 .sidebar-btn:hover:not(:disabled) {
@@ -373,6 +484,10 @@ body, html, #root {
   font-weight: 600;
 }
 
+.sidebar-minimized .sidebar-btn.active {
+  box-shadow: 0 0 0 2px rgba(79, 140, 255, 0.3);
+}
+
 .sidebar-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -380,6 +495,7 @@ body, html, #root {
 
 .sidebar-btn span {
   flex: 1;
+  transition: opacity 0.3s ease;
 }
 
 /* User Section at Bottom */
@@ -388,6 +504,11 @@ body, html, #root {
   padding: 1rem;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   position: relative;
+  transition: padding 0.3s ease;
+}
+
+.sidebar-minimized .sidebar-user-section {
+  padding: 0.5rem;
 }
 
 .sidebar-user-info {
@@ -398,7 +519,12 @@ body, html, #root {
   background: rgba(255, 255, 255, 0.05);
   border-radius: 8px;
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition: all 0.2s ease;
+}
+
+.sidebar-minimized .sidebar-user-info {
+  padding: 0.5rem;
+  justify-content: center;
 }
 
 .sidebar-user-info:hover {
@@ -523,6 +649,18 @@ body, html, #root {
   padding: 1.5rem;
   overflow-x: auto;
   overflow-y: auto;
+  transition: margin-left 0.3s ease;
+}
+
+/* Adjust content area when sidebar is minimized */
+.sidebar-minimized ~ * .content-area,
+body:has(.sidebar-minimized) .content-area {
+  margin-left: 70px;
+}
+
+/* Global class for minimized sidebar state */
+body.sidebar-minimized .content-area {
+  margin-left: 70px;
 }
 
 @media (max-width: 1400px) {

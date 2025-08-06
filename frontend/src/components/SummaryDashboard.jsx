@@ -292,7 +292,7 @@ const InventoryOJDetailsModal = ({ isOpen, onClose, forecastData }) => {
 };
 
 // Sales Target Details Modal Component
-const SalesTargetDetailsModal = ({ isOpen, onClose, forecastData }) => {
+const SalesTargetDetailsModal = ({ isOpen, onClose, forecastData, modalTitle, productGroupFilter }) => {
   const [searchTerm, setSearchTerm] = useState('');
   
   if (!isOpen || !forecastData) return null;
@@ -301,10 +301,17 @@ const SalesTargetDetailsModal = ({ isOpen, onClose, forecastData }) => {
   const currentDate = new Date();
   const currentPeriod = currentDate.getFullYear() * 100 + (currentDate.getMonth() + 1);
   
-  // Filter forecast data by current period
-  const currentPeriodData = forecastData.filter(item => 
+  // Filter forecast data by current period and product group if specified
+  let currentPeriodData = forecastData.filter(item => 
     parseInt(item.Periode) === currentPeriod
   );
+
+  // Apply product group filter if specified
+  if (productGroupFilter) {
+    currentPeriodData = currentPeriodData.filter(item => 
+      item.Product_Group === productGroupFilter
+    );
+  }
 
   // Split products by target achievement
   const allMetTargetProducts = currentPeriodData.filter(item => {
@@ -339,7 +346,7 @@ const SalesTargetDetailsModal = ({ isOpen, onClose, forecastData }) => {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content of-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '1000px', width: '90vw' }}>
         <div className="modal-header">
-          <h2>Detail Sales Target Achievement</h2>
+          <h2>{modalTitle || 'Detail Sales Target Achievement'}</h2>
           <button className="modal-close" onClick={onClose}>&times;</button>
         </div>
         <div className="modal-body">
@@ -1314,6 +1321,10 @@ function SummaryDashboard() {
   const [pctModalOpen, setPctModalOpen] = useState(false);
   const [pctRawData, setPctRawData] = useState([]);
   const [salesTargetModalOpen, setSalesTargetModalOpen] = useState(false);
+  const [salesTargetModalConfig, setSalesTargetModalConfig] = useState({
+    title: 'Detail Sales Target Achievement',
+    productGroupFilter: null
+  });
   const [data, setData] = useState({
     sales: null,
     inventory: null,
@@ -1542,6 +1553,26 @@ function SummaryDashboard() {
   };
 
   const handleSalesTargetClick = () => {
+    setSalesTargetModalConfig({
+      title: 'Detail Sales Target Achievement',
+      productGroupFilter: null
+    });
+    setSalesTargetModalOpen(true);
+  };
+
+  const handleFokusProductsClick = () => {
+    setSalesTargetModalConfig({
+      title: 'Detail Sales Target Achievement - Fokus Products',
+      productGroupFilter: '1. PRODUK FOKUS'
+    });
+    setSalesTargetModalOpen(true);
+  };
+
+  const handleNonFokusProductsClick = () => {
+    setSalesTargetModalConfig({
+      title: 'Detail Sales Target Achievement - Non Fokus Products',
+      productGroupFilter: '2. PRODUK NON FOKUS'
+    });
     setSalesTargetModalOpen(true);
   };
 
@@ -1578,6 +1609,13 @@ function SummaryDashboard() {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [salesDropdownOpen]);
+
+  // Helper function to get color based on percentage
+  const getPercentageColor = (percentage) => {
+    if (percentage < 50) return '#ef4444';      // Red
+    if (percentage >= 50 && percentage <= 79) return '#f59e0b';  // Yellow
+    return '#10b981';                           // Green
+  };
 
   // Data processing functions
   const processSalesData = (stockData, dailySalesData) => {
@@ -1721,12 +1759,41 @@ function SummaryDashboard() {
       yearlyForecastArray.push(yearlyForecastData[month] || 0);
     }
     
+    // Calculate Fokus and Non Fokus achievement percentages
+    const fokusProducts = currentPeriodData.filter(item => 
+      item.Product_Group === "1. PRODUK FOKUS"
+    );
+    const nonFokusProducts = currentPeriodData.filter(item => 
+      item.Product_Group === "2. PRODUK NON FOKUS"
+    );
+
+    const fokusMetTarget = fokusProducts.filter(item => {
+      const sales = item.Sales || 0;
+      const forecast = item.Forecast || 0;
+      return sales >= forecast;
+    });
+
+    const nonFokusMetTarget = nonFokusProducts.filter(item => {
+      const sales = item.Sales || 0;
+      const forecast = item.Forecast || 0;
+      return sales >= forecast;
+    });
+
+    const fokusAchievementPercentage = fokusProducts.length > 0 ? 
+      (fokusMetTarget.length / fokusProducts.length) * 100 : 0;
+    const nonFokusAchievementPercentage = nonFokusProducts.length > 0 ? 
+      (nonFokusMetTarget.length / nonFokusProducts.length) * 100 : 0;
+    
     return {
       dailySales: todaysSales,
       achievement: achievement,
       targetAchievementPercentage: targetAchievementPercentage,
       metTargetCount: metTargetProducts.length,
       totalProductCount: totalProducts,
+      fokusAchievementPercentage: fokusAchievementPercentage,
+      nonFokusAchievementPercentage: nonFokusAchievementPercentage,
+      fokusProductCount: fokusProducts.length,
+      nonFokusProductCount: nonFokusProducts.length,
       weeklyData: cumulativeWeeklyData,
       dailyWeekData: dailyWeekData,
       dailyWeekLabels: dailyWeekLabels,
@@ -2268,7 +2335,7 @@ function SummaryDashboard() {
           <div className="summary-grid">
             {/* Sales Section */}
             <KPICard 
-              title="" 
+              title="SELLING IN" 
               className="sales-card"
               headerComponent={
                 <div className="data-status-container" style={{
@@ -2276,17 +2343,17 @@ function SummaryDashboard() {
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   width: '100%',
-                  gap: '15px'
+                  gap: '10px'
                 }}>
                   <div style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '10px'
+                    gap: '8px'
                   }}>
                     {refreshing && (
                       <div className="loading-spinner" style={{
-                        width: '16px',
-                        height: '16px',
+                        width: '14px',
+                        height: '14px',
                         border: '2px solid rgba(255, 255, 255, 0.3)',
                         borderTop: '2px solid white',
                         borderRadius: '50%',
@@ -2294,10 +2361,10 @@ function SummaryDashboard() {
                       }} />
                     )}
                     <span style={{ 
-                      fontSize: '1rem',
+                      fontSize: '0.85rem',
                       fontWeight: 'bold',
                       color: 'white',
-                      letterSpacing: '1px'
+                      letterSpacing: '0.5px'
                     }}>
                       Data Updated: {formatLastUpdateTime(lastFetchTime)}
                     </span>
@@ -2310,13 +2377,13 @@ function SummaryDashboard() {
                       border: '1px solid rgba(255, 255, 255, 0.3)',
                       color: 'white',
                       cursor: refreshing ? 'not-allowed' : 'pointer',
-                      fontSize: '12px',
+                      fontSize: '10px',
                       fontWeight: 'bold',
-                      padding: '6px 12px',
-                      borderRadius: '6px',
+                      padding: '4px 8px',
+                      borderRadius: '4px',
                       opacity: refreshing ? 0.5 : 1,
                       transition: 'all 0.2s',
-                      letterSpacing: '0.5px'
+                      letterSpacing: '0.3px'
                     }}
                     onMouseEnter={(e) => {
                       if (!refreshing) {
@@ -2336,116 +2403,138 @@ function SummaryDashboard() {
               }
             >
               <div className="sales-content">
-                <div className="sales-left">
-                  <CircularProgress 
-                    percentage={Math.round(data.sales?.targetAchievementPercentage || 0)} 
-                    color="#10b981"
-                    size={100}
-                    onClick={handleSalesTargetClick}
-                    title="Click to view sales target achievement details"
-                  />
-                  <div style={{
-                    textAlign: 'center',
-                    marginTop: '2px',
-                    fontSize: '12px',
-                    color: '#6b7280',
-                    fontWeight: '500'
-                  }}>
-                    Product Forecast
+                {/* 4x2 grid layout: first 2x2 for circles, last 2x2 for chart */}
+                <div className="sales-grid-4x2">
+                  {/* Achievement Circle */}
+                  <div className="sales-circle-item">
+                    <CircularProgress 
+                      percentage={Math.round(data.sales?.achievement || 0)} 
+                      color={getPercentageColor(Math.round(data.sales?.achievement || 0))}
+                      size={70}
+                      onClick={handleSalesTargetClick}
+                      title="Click to view sales achievement details"
+                    />
+                    <div className="sales-circle-label">Achievement</div>
                   </div>
-                </div>
-                <div className="sales-middle">
-                  <div 
-                    className="sales-daily clickable" 
-                    onClick={handleSalesClick}
-                    title="Click to view forecast details"
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <div className="sales-label">Daily sales value</div>
-                    <div className="sales-value">{formatNumber(data.sales?.dailySales || 0)}</div>
-                    <div className="sales-achievement">Ach {(data.sales?.achievement || 0).toFixed(1)}% 📈</div>
+
+                  {/* Fokus Products Circle */}
+                  <div className="sales-circle-item">
+                    <CircularProgress 
+                      percentage={Math.round(data.sales?.fokusAchievementPercentage || 0)} 
+                      color={getPercentageColor(Math.round(data.sales?.fokusAchievementPercentage || 0))}
+                      size={70}
+                      onClick={handleFokusProductsClick}
+                      title="Click to view fokus products achievement details"
+                    />
+                    <div className="sales-circle-label">Fokus</div>
                   </div>
-                </div>
-                <div className="sales-right">
-                  <div className="sales-chart-dropdown-container" style={{ position: 'relative', marginBottom: '10px' }}>
-                    <div 
-                      className="sales-chart-dropdown-trigger clickable" 
-                      onClick={() => setSalesDropdownOpen(!salesDropdownOpen)}
-                      style={{
-                        padding: '8px 16px',
-                        backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                        border: '1px solid rgba(0, 0, 0, 0.1)',
-                        borderRadius: '8px',
-                        color: '#1f2937',
-                        fontSize: '14px',
-                        fontWeight: 'bold',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        minWidth: '140px',
-                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
-                      }}
-                    >
-                      <span>{salesChartType} Sales</span>
-                      <span style={{ marginLeft: '8px', fontSize: '12px' }}>
-                        {salesDropdownOpen ? '▲' : '▼'}
-                      </span>
-                    </div>
-                    
-                    {salesDropdownOpen && (
+
+                  {/* Chart section spanning 2x2 */}
+                  <div className="sales-chart-section">
+                    <div className="sales-chart-controls">
                       <div 
-                        className="sales-chart-dropdown-menu"
+                        className="sales-chart-dropdown-trigger clickable" 
+                        onClick={() => setSalesDropdownOpen(!salesDropdownOpen)}
                         style={{
-                          position: 'absolute',
-                          top: '100%',
-                          left: 0,
-                          right: 0,
-                          backgroundColor: 'white',
-                          border: '1px solid #d1d5db',
-                          borderRadius: '8px',
-                          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-                          zIndex: 1000,
-                          marginTop: '4px'
+                          padding: '6px 12px',
+                          backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                          border: '1px solid rgba(0, 0, 0, 0.1)',
+                          borderRadius: '6px',
+                          color: '#1f2937',
+                          fontSize: '12px',
+                          fontWeight: 'bold',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          minWidth: '120px',
+                          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
                         }}
                       >
-                        {['Daily', 'Weekly', 'Yearly'].map((option) => (
-                          <div
-                            key={option}
-                            className="dropdown-option"
-                            onClick={() => {
-                              setSalesChartType(option);
-                              setSalesDropdownOpen(false);
-                            }}
-                            style={{
-                              padding: '10px 16px',
-                              fontSize: '14px',
-                              color: salesChartType === option ? '#3b82f6' : '#374151',
-                              backgroundColor: salesChartType === option ? '#eff6ff' : 'white',
-                              cursor: 'pointer',
-                              borderBottom: option !== 'Yearly' ? '1px solid #e5e7eb' : 'none',
-                              fontWeight: salesChartType === option ? 'bold' : 'normal',
-                              borderRadius: option === 'Daily' ? '8px 8px 0 0' : option === 'Yearly' ? '0 0 8px 8px' : '0'
-                            }}
-                            onMouseEnter={(e) => {
-                              if (salesChartType !== option) {
-                                e.target.style.backgroundColor = '#f9fafb';
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              if (salesChartType !== option) {
-                                e.target.style.backgroundColor = 'white';
-                              }
-                            }}
-                          >
-                            {option} Sales
-                          </div>
-                        ))}
+                        <span>{salesChartType} Sales</span>
+                        <span style={{ marginLeft: '6px', fontSize: '10px' }}>
+                          {salesDropdownOpen ? '▲' : '▼'}
+                        </span>
                       </div>
-                    )}
+                      
+                      {salesDropdownOpen && (
+                        <div 
+                          className="sales-chart-dropdown-menu"
+                          style={{
+                            position: 'absolute',
+                            top: '100%',
+                            left: 0,
+                            right: 0,
+                            backgroundColor: 'white',
+                            border: '1px solid #d1d5db',
+                            borderRadius: '6px',
+                            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                            zIndex: 1000,
+                            marginTop: '2px'
+                          }}
+                        >
+                          {['Daily', 'Weekly', 'Yearly'].map((option) => (
+                            <div
+                              key={option}
+                              className="dropdown-option"
+                              onClick={() => {
+                                setSalesChartType(option);
+                                setSalesDropdownOpen(false);
+                              }}
+                              style={{
+                                padding: '8px 12px',
+                                fontSize: '12px',
+                                color: salesChartType === option ? '#3b82f6' : '#374151',
+                                backgroundColor: salesChartType === option ? '#eff6ff' : 'white',
+                                cursor: 'pointer',
+                                borderBottom: option !== 'Yearly' ? '1px solid #e5e7eb' : 'none',
+                                fontWeight: salesChartType === option ? 'bold' : 'normal',
+                                borderRadius: option === 'Daily' ? '6px 6px 0 0' : option === 'Yearly' ? '0 0 6px 6px' : '0'
+                              }}
+                              onMouseEnter={(e) => {
+                                if (salesChartType !== option) {
+                                  e.target.style.backgroundColor = '#f9fafb';
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                if (salesChartType !== option) {
+                                  e.target.style.backgroundColor = 'white';
+                                }
+                              }}
+                            >
+                              {option} Sales
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="sales-chart">
+                      <Line data={salesLineData} options={salesLineOptions} />
+                    </div>
                   </div>
-                  <div className="sales-chart">
-                    <Line data={salesLineData} options={salesLineOptions} />
+
+                  {/* Daily Sales Value */}
+                  <div 
+                    className="sales-daily-value-item clickable" 
+                    onClick={handleSalesClick}
+                    title="Click to view forecast details"
+                  >
+                    <div className="sales-daily-content">
+                      <div className="sales-circle-label">Daily Sales</div>
+                      <div className="sales-value-extra-large">{formatNumber(data.sales?.dailySales || 0)}</div>
+                    </div>
+                  </div>
+
+                  {/* Non Fokus Products Circle */}
+                  <div className="sales-circle-item">
+                    <CircularProgress 
+                      percentage={Math.round(data.sales?.nonFokusAchievementPercentage || 0)} 
+                      color={getPercentageColor(Math.round(data.sales?.nonFokusAchievementPercentage || 0))}
+                      size={70}
+                      onClick={handleNonFokusProductsClick}
+                      title="Click to view non fokus products achievement details"
+                    />
+                    <div className="sales-circle-label">Non Fokus</div>
                   </div>
                 </div>
               </div>
@@ -2830,6 +2919,8 @@ function SummaryDashboard() {
           isOpen={salesTargetModalOpen}
           onClose={() => setSalesTargetModalOpen(false)}
           forecastData={forecastRawData}
+          modalTitle={salesTargetModalConfig.title}
+          productGroupFilter={salesTargetModalConfig.productGroupFilter}
         />
         
         {/* Inventory BB-BK Details Modal */}

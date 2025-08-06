@@ -14,18 +14,16 @@ const ProtectedRoute = ({ children }) => {
     return <UnauthorizedPage />;
   }
 
-  // Debug: Log user object to see available attributes
-  console.log('🔍 User object attributes:', user);
-
   /*   
-    Inisial_Name: "GWN"
+  CONTOH DATA USER:
+    Inisial_Name: "ABC"
     Jabatan: "IT Application Development & Implementation Supervisor"
     Job_LevelID: "5"
-    Nama: "Gunawan"
-    Pk_ID: "0000000997"
+    Nama: "Budi Santoso"
+    Pk_ID: "0000000134"
     emp_DeptID: "NT"
     emp_JobLevelID: "SPV"
-    log_NIK: "GWN"
+    log_NIK: "ABC"
   */
 
   // Department-based authorization check

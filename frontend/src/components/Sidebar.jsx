@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { 
   LayoutDashboard, 
   FileText, 
@@ -8,7 +8,9 @@ import {
   User,
   LogOut,
   MessageCircle,
-  BarChart
+  BarChart,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react'
 
 import { Link, useLocation } from 'react-router';
@@ -17,6 +19,7 @@ import { clearAuthData } from '../utils/auth';
 
 function Sidebar() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [sidebarMinimized, setSidebarMinimized] = useState(false);
   const { user, setIsAuthenticated, isLoading, isDecrypting } = useAuth();
   
   // Extract user information with fallbacks
@@ -45,48 +48,116 @@ function Sidebar() {
     window.location.reload(); // Refresh to trigger auth check
   };
 
+  // Toggle sidebar minimize
+  const toggleSidebar = () => {
+    setSidebarMinimized(!sidebarMinimized);
+    setUserMenuOpen(false); // Close user menu when toggling
+  };
+
+  // Effect to manage body class for layout adjustments
+  useEffect(() => {
+    if (sidebarMinimized) {
+      document.body.classList.add('sidebar-minimized');
+    } else {
+      document.body.classList.remove('sidebar-minimized');
+    }
+
+    // Cleanup on unmount
+    return () => {
+      document.body.classList.remove('sidebar-minimized');
+    };
+  }, [sidebarMinimized]);
+
   const location = useLocation();
   return (
-    <aside className="sidebar sidebar-dark sidebar-fixed">
+    <aside className={`sidebar sidebar-dark sidebar-fixed ${sidebarMinimized ? 'sidebar-minimized' : ''}`}>
+      {/* Toggle Button */}
+      <div className="sidebar-toggle">
+        <button 
+          className="sidebar-toggle-btn"
+          onClick={toggleSidebar}
+          title={sidebarMinimized ? 'Expand sidebar' : 'Minimize sidebar'}
+        >
+          {sidebarMinimized ? (
+            <>
+              <ChevronRight size={20} strokeWidth={2.5} />
+            </>
+          ) : (
+            <>
+              <ChevronLeft size={20} strokeWidth={2.5} />
+              <span style={{ marginLeft: '8px', fontSize: '14px', fontWeight: 'bold' }}>MINIMIZE</span>
+            </>
+          )}
+        </button>
+      </div>
+
       {/* Logo Section */}
       <div className="sidebar-logo">
-        <img src="./LAPILOGO_White.png" alt="LAPI Logo" className="logo-image" />
+        {sidebarMinimized ? (
+          <div className="logo-mini">L</div>
+        ) : (
+          <img src="/LAPILOGO_White.png" alt="LAPI Logo" className="logo-image" />
+        )}
       </div>
 
       {/* Main Menu Section */}
       <div className="sidebar-section">
-        <div className="sidebar-section-title">MENU UTAMA</div>
+        {!sidebarMinimized && <div className="sidebar-section-title">MENU UTAMA</div>}
         <nav className="sidebar-nav">
-          <Link to="/" className={`sidebar-btn${location.pathname === '/' ? ' active' : ''}`}> 
+          <Link 
+            to="/" 
+            className={`sidebar-btn${location.pathname === '/' ? ' active' : ''}`}
+            title={sidebarMinimized ? 'Dashboard' : ''}
+          > 
             <LayoutDashboard size={20} />
-            <span>Dashboard</span>
+            {!sidebarMinimized && <span>Dashboard</span>}
           </Link>
-          <Link to="/summary" className={`sidebar-btn${location.pathname === '/summary' ? ' active' : ''}`}> 
+          <Link 
+            to="/summary" 
+            className={`sidebar-btn${location.pathname === '/summary' ? ' active' : ''}`}
+            title={sidebarMinimized ? 'Summary' : ''}
+          > 
             <BarChart size={20} />
-            <span>Summary</span>
+            {!sidebarMinimized && <span>Summary</span>}
           </Link>
-          <Link to="/reports" className={`sidebar-btn${location.pathname === '/reports' ? ' active' : ''}`}> 
+          <Link 
+            to="/reports" 
+            className={`sidebar-btn${location.pathname === '/reports' ? ' active' : ''}`}
+            title={sidebarMinimized ? 'Reports' : ''}
+          > 
             <FileText size={20} />
-            <span>Reports</span>
+            {!sidebarMinimized && <span>Reports</span>}
           </Link>
-          <Link to="/ai" className={`sidebar-btn${location.pathname === '/ai' ? ' active' : ''}`}> 
+          <Link 
+            to="/ai" 
+            className={`sidebar-btn${location.pathname === '/ai' ? ' active' : ''}`}
+            title={sidebarMinimized ? 'AI Assistant' : ''}
+          > 
             <MessageCircle size={20} />
-            <span>AI Assistant</span>
+            {!sidebarMinimized && <span>AI Assistant</span>}
           </Link>
         </nav>
       </div>
 
       {/* Settings Section */}
       <div className="sidebar-section">
-        <div className="sidebar-section-title">PENGATURAN</div>
+        {!sidebarMinimized && <div className="sidebar-section-title">PENGATURAN</div>}
         <nav className="sidebar-nav">
-          <button className="sidebar-btn" disabled>
+          <button 
+            className="sidebar-btn" 
+            disabled
+            title={sidebarMinimized ? 'Settings' : ''}
+          >
             <Settings size={20} />
-            <span>Settings</span>
+            {!sidebarMinimized && <span>Settings</span>}
           </button>
-          <button className="sidebar-btn" disabled>
+          <button 
+            className="sidebar-btn" 
+            disabled
+            title={sidebarMinimized ? 'Help' : ''}
+          >
             <HelpCircle size={20} />
-            <span>Help</span>
+            {!sidebarMinimized && <span>Help</span>}
           </button>
         </nav>
       </div>
@@ -95,28 +166,32 @@ function Sidebar() {
       <div className="sidebar-user-section">
         <div 
           className="sidebar-user-info"
-          onClick={() => setUserMenuOpen(!userMenuOpen)}
+          onClick={() => !sidebarMinimized && setUserMenuOpen(!userMenuOpen)}
           title={isLoading || isDecrypting ? 'Loading user info...' : `${userName} - ${userRole}`}
         >
           <div className="user-avatar">
             {isLoading || isDecrypting ? '⋯' : getUserInitials(userName)}
           </div>
-          <div className="user-details">
-            <div className="user-name">
-              {isLoading || isDecrypting ? 'Loading...' : userName}
-            </div>
-            <div className="user-role" title={userRole}>
-              {isLoading || isDecrypting ? 'Please wait...' : truncateRole(userRole)}
-            </div>
-          </div>
-          <ChevronDown 
-            size={16} 
-            className={`user-chevron ${userMenuOpen ? 'open' : ''}`}
-          />
+          {!sidebarMinimized && (
+            <>
+              <div className="user-details">
+                <div className="user-name">
+                  {isLoading || isDecrypting ? 'Loading...' : userName}
+                </div>
+                <div className="user-role" title={userRole}>
+                  {isLoading || isDecrypting ? 'Please wait...' : truncateRole(userRole)}
+                </div>
+              </div>
+              <ChevronDown 
+                size={16} 
+                className={`user-chevron ${userMenuOpen ? 'open' : ''}`}
+              />
+            </>
+          )}
         </div>
         
         {/* User Dropdown Menu */}
-        {userMenuOpen && (
+        {userMenuOpen && !sidebarMinimized && (
           <div className="user-dropdown">
             <button className="user-menu-item" onClick={() => {}}>
               <User size={16} />
