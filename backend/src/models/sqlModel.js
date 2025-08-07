@@ -343,4 +343,10 @@ async function getLostSales() {
   return result.recordset;
 }
 
-module.exports = { WorkInProgress, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary};
+async function getOTA() {
+  const db = await connect();
+  const result = await db.request().query(`exec sp_Dashboard_OTA`);
+  return result.recordset;
+}
+
+module.exports = { WorkInProgress, getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary};

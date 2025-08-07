@@ -41,6 +41,7 @@ router.get('/forecast', SqlController.getForecast);
 router.get('/bbbk', SqlController.getbbbk);
 router.get('/dailySales', SqlController.getDailySales);
 router.get('/lostSales', SqlController.getLostSales);
+router.get('/ota', SqlController.getOTA);
 
 // OpenAI chat endpoint
 router.use('/ai', openaiRoutes);

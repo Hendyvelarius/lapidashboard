@@ -572,7 +572,7 @@ const CoverageDetailsModal = ({ isOpen, onClose, forecastData }) => {
             {/* SKU Under */}
             <div className="of-details-section">
               <h3 className="of-section-title" style={{ color: '#ef4444' }}>
-                📉 SKU Under (&lt;100%) ({underProducts.length})
+                📉 SKU Under (&lt;130%) ({underProducts.length})
               </h3>
               <div className="of-batch-list" style={{ maxHeight: '350px', overflowY: 'auto' }}>
                 {underProducts.length > 0 ? (
@@ -596,7 +596,7 @@ const CoverageDetailsModal = ({ isOpen, onClose, forecastData }) => {
             {/* SKU Normal */}
             <div className="of-details-section">
               <h3 className="of-section-title" style={{ color: '#10b981' }}>
-                📊 SKU Normal (100-299%) ({normalProducts.length})
+                📊 SKU Normal (130-299%) ({normalProducts.length})
               </h3>
               <div className="of-batch-list" style={{ maxHeight: '350px', overflowY: 'auto' }}>
                 {normalProducts.length > 0 ? (
@@ -637,6 +637,276 @@ const CoverageDetailsModal = ({ isOpen, onClose, forecastData }) => {
                   ))
                 ) : (
                   <div className="no-data">Tidak ada produk SKU Over</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Inventory Bahan Baku Details Modal Component
+const InventoryBahanBakuDetailsModal = ({ isOpen, onClose, bbData }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  if (!isOpen || !bbData) return null;
+
+  const currentDate = new Date();
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = currentDate.getMonth() + 1;
+  
+  // Calculate date thresholds
+  const sixMonthsAgo = new Date(currentYear, currentMonth - 7, 1);
+  const threeMonthsAgo = new Date(currentYear, currentMonth - 4, 1);
+  const sixMonthsAgoYYYYMM = sixMonthsAgo.getFullYear() * 100 + (sixMonthsAgo.getMonth() + 1);
+  const threeMonthsAgoYYYYMM = threeMonthsAgo.getFullYear() * 100 + (threeMonthsAgo.getMonth() + 1);
+  
+  // Calculate Dead Stock (null last_transaction_period or older than 6 months)
+  const allDeadStockItems = bbData.filter(item => 
+    item.last_transaction_period === null || 
+    item.last_transaction_period === '' ||
+    (item.last_transaction_period && parseInt(item.last_transaction_period) < sixMonthsAgoYYYYMM)
+  );
+  
+  // Calculate Slow Moving (3-6 months old)
+  const allSlowMovingItems = bbData.filter(item => {
+    if (!item.last_transaction_period || item.last_transaction_period === null) {
+      return false; // Already counted as dead stock
+    }
+    const transactionPeriod = parseInt(item.last_transaction_period);
+    return transactionPeriod >= sixMonthsAgoYYYYMM && transactionPeriod <= threeMonthsAgoYYYYMM;
+  });
+
+  // Filter based on search term
+  const filterItems = (items) => {
+    if (!searchTerm.trim()) return items;
+    
+    return items.filter(item => {
+      const itemCode = (item.item_code || '').toString().toLowerCase();
+      const itemName = (item.item_name || '').toLowerCase();
+      const search = searchTerm.toLowerCase();
+      
+      return itemCode.includes(search) || itemName.includes(search);
+    });
+  };
+
+  const slowMovingItems = filterItems(allSlowMovingItems);
+  const deadStockItems = filterItems(allDeadStockItems);
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content of-modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Detail Inventory Bahan Baku</h2>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <div className="modal-body">
+          {/* Search Bar */}
+          <div className="search-container" style={{ marginBottom: '20px' }}>
+            <input
+              type="text"
+              placeholder="Search by item code or item name..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px 15px',
+                border: '1px solid #d1d5db',
+                borderRadius: '8px',
+                fontSize: '14px',
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+          
+          {/* Search Results Summary */}
+          {searchTerm.trim() && (
+            <div style={{ marginBottom: '15px', fontSize: '14px', color: '#6b7280' }}>
+              Found {slowMovingItems.length + deadStockItems.length} results for "{searchTerm}"
+              {slowMovingItems.length + deadStockItems.length !== allSlowMovingItems.length + allDeadStockItems.length && 
+                ` (filtered from ${allSlowMovingItems.length + allDeadStockItems.length} total)`}
+            </div>
+          )}
+          
+          <div className="of-details-container">
+            {/* Slow Moving Items */}
+            <div className="of-details-section">
+              <h3 className="of-section-title completed">
+                🐌 Slow Moving ({slowMovingItems.length})
+              </h3>
+              <div className="of-batch-list">
+                {slowMovingItems.length > 0 ? (
+                  slowMovingItems.map((item, index) => (
+                    <div key={index} className="of-batch-item completed">
+                      <div className="batch-code">Code: {item.item_code}</div>
+                      <div className="product-info">
+                        <span className="product-name">{item.item_name || 'N/A'}</span>
+                        <span className="product-id">Last Transaction: {item.last_transaction_period || 'N/A'}</span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-data">Tidak ada item slow moving</div>
+                )}
+              </div>
+            </div>
+
+            {/* Dead Stock Items */}
+            <div className="of-details-section">
+              <h3 className="of-section-title pending">
+                💀 Dead Stock ({deadStockItems.length})
+              </h3>
+              <div className="of-batch-list">
+                {deadStockItems.length > 0 ? (
+                  deadStockItems.map((item, index) => (
+                    <div key={index} className="of-batch-item pending">
+                      <div className="batch-code">Code: {item.item_code}</div>
+                      <div className="product-info">
+                        <span className="product-name">{item.item_name || 'N/A'}</span>
+                        <span className="product-id">Last Transaction: {item.last_transaction_period || 'None'}</span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-data">Tidak ada item dead stock</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Inventory Bahan Kemas Details Modal Component
+const InventoryBahanKemasDetailsModal = ({ isOpen, onClose, bkData }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  if (!isOpen || !bkData) return null;
+
+  const currentDate = new Date();
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = currentDate.getMonth() + 1;
+  
+  // Calculate date thresholds
+  const sixMonthsAgo = new Date(currentYear, currentMonth - 7, 1);
+  const threeMonthsAgo = new Date(currentYear, currentMonth - 4, 1);
+  const sixMonthsAgoYYYYMM = sixMonthsAgo.getFullYear() * 100 + (sixMonthsAgo.getMonth() + 1);
+  const threeMonthsAgoYYYYMM = threeMonthsAgo.getFullYear() * 100 + (threeMonthsAgo.getMonth() + 1);
+  
+  // Calculate Dead Stock (null last_transaction_period or older than 6 months)
+  const allDeadStockItems = bkData.filter(item => 
+    item.last_transaction_period === null || 
+    item.last_transaction_period === '' ||
+    (item.last_transaction_period && parseInt(item.last_transaction_period) < sixMonthsAgoYYYYMM)
+  );
+  
+  // Calculate Slow Moving (3-6 months old)
+  const allSlowMovingItems = bkData.filter(item => {
+    if (!item.last_transaction_period || item.last_transaction_period === null) {
+      return false; // Already counted as dead stock
+    }
+    const transactionPeriod = parseInt(item.last_transaction_period);
+    return transactionPeriod >= sixMonthsAgoYYYYMM && transactionPeriod <= threeMonthsAgoYYYYMM;
+  });
+
+  // Filter based on search term
+  const filterItems = (items) => {
+    if (!searchTerm.trim()) return items;
+    
+    return items.filter(item => {
+      const itemCode = (item.item_code || '').toString().toLowerCase();
+      const itemName = (item.item_name || '').toLowerCase();
+      const search = searchTerm.toLowerCase();
+      
+      return itemCode.includes(search) || itemName.includes(search);
+    });
+  };
+
+  const slowMovingItems = filterItems(allSlowMovingItems);
+  const deadStockItems = filterItems(allDeadStockItems);
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content of-modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Detail Inventory Bahan Kemas</h2>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <div className="modal-body">
+          {/* Search Bar */}
+          <div className="search-container" style={{ marginBottom: '20px' }}>
+            <input
+              type="text"
+              placeholder="Search by item code or item name..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px 15px',
+                border: '1px solid #d1d5db',
+                borderRadius: '8px',
+                fontSize: '14px',
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+          
+          {/* Search Results Summary */}
+          {searchTerm.trim() && (
+            <div style={{ marginBottom: '15px', fontSize: '14px', color: '#6b7280' }}>
+              Found {slowMovingItems.length + deadStockItems.length} results for "{searchTerm}"
+              {slowMovingItems.length + deadStockItems.length !== allSlowMovingItems.length + allDeadStockItems.length && 
+                ` (filtered from ${allSlowMovingItems.length + allDeadStockItems.length} total)`}
+            </div>
+          )}
+          
+          <div className="of-details-container">
+            {/* Slow Moving Items */}
+            <div className="of-details-section">
+              <h3 className="of-section-title completed">
+                🐌 Slow Moving ({slowMovingItems.length})
+              </h3>
+              <div className="of-batch-list">
+                {slowMovingItems.length > 0 ? (
+                  slowMovingItems.map((item, index) => (
+                    <div key={index} className="of-batch-item completed">
+                      <div className="batch-code">Code: {item.item_code}</div>
+                      <div className="product-info">
+                        <span className="product-name">{item.item_name || 'N/A'}</span>
+                        <span className="product-id">Last Transaction: {item.last_transaction_period || 'N/A'}</span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-data">Tidak ada item slow moving</div>
+                )}
+              </div>
+            </div>
+
+            {/* Dead Stock Items */}
+            <div className="of-details-section">
+              <h3 className="of-section-title pending">
+                💀 Dead Stock ({deadStockItems.length})
+              </h3>
+              <div className="of-batch-list">
+                {deadStockItems.length > 0 ? (
+                  deadStockItems.map((item, index) => (
+                    <div key={index} className="of-batch-item pending">
+                      <div className="batch-code">Code: {item.item_code}</div>
+                      <div className="product-info">
+                        <span className="product-name">{item.item_name || 'N/A'}</span>
+                        <span className="product-id">Last Transaction: {item.last_transaction_period || 'None'}</span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-data">Tidak ada item dead stock</div>
                 )}
               </div>
             </div>
@@ -783,19 +1053,26 @@ const PCTDetailsModal = ({ isOpen, onClose, pctData }) => {
   if (!isOpen || !pctData) return null;
 
   // Split products by PCT performance (under 38 days = on time, 38+ days = past deadline)
-  const allOnTimeProducts = pctData.filter(item => (item.PCTAverage || 0) < 38);
-  const allPastDeadlineProducts = pctData.filter(item => (item.PCTAverage || 0) >= 38);
+  // Sort both lists with longest PCT times first (descending order)
+  const allOnTimeProducts = pctData
+    .filter(item => (item.PCTAverage || 0) < 38)
+    .sort((a, b) => (b.PCTAverage || 0) - (a.PCTAverage || 0));
+  const allPastDeadlineProducts = pctData
+    .filter(item => (item.PCTAverage || 0) >= 38)
+    .sort((a, b) => (b.PCTAverage || 0) - (a.PCTAverage || 0));
 
-  // Filter based on search term
+  // Filter based on search term while maintaining sort order (longest PCT first)
   const filterProducts = (products) => {
     if (!searchTerm.trim()) return products;
     const lower = searchTerm.toLowerCase();
-    return products.filter(product =>
-      (product.Product_ID || '').toLowerCase().includes(lower) ||
-      (product.Product_Name || '').toLowerCase().includes(lower) ||
-      (product.Kategori || '').toLowerCase().includes(lower) ||
-      (product.Dept || '').toLowerCase().includes(lower)
-    );
+    return products
+      .filter(product =>
+        (product.Product_ID || '').toLowerCase().includes(lower) ||
+        (product.Product_Name || '').toLowerCase().includes(lower) ||
+        (product.Kategori || '').toLowerCase().includes(lower) ||
+        (product.Dept || '').toLowerCase().includes(lower)
+      )
+      .sort((a, b) => (b.PCTAverage || 0) - (a.PCTAverage || 0));
   };
 
   const onTimeProducts = filterProducts(allOnTimeProducts);
@@ -914,6 +1191,241 @@ const PCTDetailsModal = ({ isOpen, onClose, pctData }) => {
               </div>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// OTA Details Modal Component
+const OTADetailsModal = ({ isOpen, onClose, otaData, modalConfig }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  if (!isOpen || !otaData || !modalConfig) return null;
+
+  // Debug logs
+  console.log('🚚 OTA Modal - Total OTA Data:', otaData.length);
+  console.log('🚚 OTA Modal - Modal Config:', modalConfig);
+  console.log('🚚 OTA Modal - Sample Data:', otaData.slice(0, 3));
+
+  // Filter and process data based on modal type
+  let filteredData = [];
+  let title = modalConfig.title;
+  
+  if (modalConfig.type === 'BB' || modalConfig.type === 'BK') {
+    // For BB/BK clicks: show three lists (Early/OnTime/Late) for specific item_type
+    // Check both possible field names for robustness
+    filteredData = otaData.filter(item => 
+      item.item_type === modalConfig.type || item.Item_Type === modalConfig.type
+    );
+  } else if (modalConfig.type === 'OnDelivery') {
+    // For OnDelivery click: show items with Status 'On Delivery'
+    filteredData = otaData.filter(item => 
+      item.Status === 'On Delivery'
+    );
+  } else if (modalConfig.type === 'OnTime') {
+    // For OnTime click: show items with Status 'On Time'
+    filteredData = otaData.filter(item => item.Status === 'On Time');
+  }
+
+  // Split data by status for three-list display (for BB/BK) or show filtered list
+  const earlyItems = filteredData.filter(item => item.Status === 'Early');
+  const onTimeItems = filteredData.filter(item => item.Status === 'On Time');
+  const lateItems = filteredData.filter(item => item.Status === 'Late');
+
+  // Filter based on search term
+  const filterItems = (items) => {
+    if (!searchTerm.trim()) return items;
+    const lower = searchTerm.toLowerCase();
+    return items.filter(item =>
+      (item.Item_Name || '').toLowerCase().includes(lower) ||
+      (item.PO_No || '').toLowerCase().includes(lower) ||
+      (item.TTBA_QTY || '').toString().toLowerCase().includes(lower)
+    );
+  };
+
+  const filteredEarlyItems = filterItems(earlyItems);
+  const filteredOnTimeItems = filterItems(onTimeItems);
+  const filteredLateItems = filterItems(lateItems);
+
+  // For OnDelivery and OnTime modals, combine the relevant filtered items
+  let combinedItems = [];
+  if (modalConfig.type === 'OnDelivery') {
+    combinedItems = filteredData; // For OnDelivery, show all items with 'On Delivery' status
+  } else if (modalConfig.type === 'OnTime') {
+    combinedItems = filteredOnTimeItems;
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content of-modal" onClick={e => e.stopPropagation()} style={{ 
+        maxWidth: (modalConfig.type === 'BB' || modalConfig.type === 'BK') ? '1200px' : '800px', 
+        width: '90vw' 
+      }}>
+        <div className="modal-header">
+          <h2>{title}</h2>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <div className="modal-body" style={{ padding: '20px' }}>
+          <div className="modal-summary" style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            marginBottom: '20px',
+            padding: '15px',
+            backgroundColor: '#f8f9fa',
+            borderRadius: '8px',
+            fontSize: '14px'
+          }}>
+            <div>
+              <strong>Total Items:</strong> {filteredData.length}
+            </div>
+            {(modalConfig.type === 'BB' || modalConfig.type === 'BK') && (
+              <>
+                <div style={{ color: '#10b981' }}>
+                  <strong>Early:</strong> {earlyItems.length}
+                </div>
+                <div style={{ color: '#3b82f6' }}>
+                  <strong>On Time:</strong> {onTimeItems.length}
+                </div>
+                <div style={{ color: '#ef4444' }}>
+                  <strong>Late:</strong> {lateItems.length}
+                </div>
+              </>
+            )}
+          </div>
+          
+          <div className="search-container" style={{ marginBottom: '20px' }}>
+            <input
+              type="text"
+              placeholder="Search by item name, PO number, or quantity..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px 15px',
+                border: '1px solid #d1d5db',
+                borderRadius: '8px',
+                fontSize: '14px',
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+          
+          {searchTerm.trim() && (
+            <div style={{ marginBottom: '15px', fontSize: '14px', color: '#6b7280' }}>
+              Found {
+                modalConfig.type === 'OnDelivery' ? combinedItems.length :
+                modalConfig.type === 'OnTime' ? combinedItems.length :
+                filteredEarlyItems.length + filteredOnTimeItems.length + filteredLateItems.length
+              } results for "{searchTerm}"
+            </div>
+          )}
+          
+          {/* For BB/BK: Show three lists in grid layout like Coverage modal */}
+          {(modalConfig.type === 'BB' || modalConfig.type === 'BK') && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', minHeight: '400px' }}>
+              {/* Early Items */}
+              <div className="of-details-section">
+                <h3 className="of-section-title" style={{ color: '#10b981' }}>
+                  🚀 Early Delivery ({filteredEarlyItems.length})
+                </h3>
+                <div className="of-batch-list" style={{ maxHeight: '350px', overflowY: 'auto' }}>
+                  {filteredEarlyItems.length > 0 ? (
+                    filteredEarlyItems.map((item, index) => (
+                      <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #10b981', marginBottom: '8px' }}>
+                        <div className="batch-code">PO: {item.PO_No}</div>
+                        <div className="product-info">
+                          <span className="product-name" style={{ fontSize: '12px' }}>{item.Item_Name || 'N/A'}</span>
+                          <span className="product-id" style={{ fontSize: '11px' }}>
+                            Qty: {item.TTBA_QTY} | Needed: {item.PO_NeededDate || 'N/A'} | TTBA: {item.TTBA_Date || 'N/A'}
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="no-data">No early deliveries</div>
+                  )}
+                </div>
+              </div>
+
+              {/* On Time Items */}
+              <div className="of-details-section">
+                <h3 className="of-section-title" style={{ color: '#3b82f6' }}>
+                  ✅ On Time Delivery ({filteredOnTimeItems.length})
+                </h3>
+                <div className="of-batch-list" style={{ maxHeight: '350px', overflowY: 'auto' }}>
+                  {filteredOnTimeItems.length > 0 ? (
+                    filteredOnTimeItems.map((item, index) => (
+                      <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #3b82f6', marginBottom: '8px' }}>
+                        <div className="batch-code">PO: {item.PO_No}</div>
+                        <div className="product-info">
+                          <span className="product-name" style={{ fontSize: '12px' }}>{item.Item_Name || 'N/A'}</span>
+                          <span className="product-id" style={{ fontSize: '11px' }}>
+                            Qty: {item.TTBA_QTY} | Needed: {item.PO_NeededDate || 'N/A'} | TTBA: {item.TTBA_Date || 'N/A'}
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="no-data">No on-time deliveries</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Late Items */}
+              <div className="of-details-section">
+                <h3 className="of-section-title" style={{ color: '#ef4444' }}>
+                  ⏰ Late Delivery ({filteredLateItems.length})
+                </h3>
+                <div className="of-batch-list" style={{ maxHeight: '350px', overflowY: 'auto' }}>
+                  {filteredLateItems.length > 0 ? (
+                    filteredLateItems.map((item, index) => (
+                      <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #ef4444', marginBottom: '8px' }}>
+                        <div className="batch-code">PO: {item.PO_No}</div>
+                        <div className="product-info">
+                          <span className="product-name" style={{ fontSize: '12px' }}>{item.Item_Name || 'N/A'}</span>
+                          <span className="product-id" style={{ fontSize: '11px' }}>
+                            Qty: {item.TTBA_QTY} | Needed: {item.PO_NeededDate || 'N/A'} | TTBA: {item.TTBA_Date || 'N/A'}
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="no-data">No late deliveries</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* For OnDelivery/OnTime: Show single filtered list */}
+          {(modalConfig.type === 'OnDelivery' || modalConfig.type === 'OnTime') && (
+            <div className="of-details-container-full">
+              <div className="of-details-section">
+                <h3 className="of-section-title completed">
+                  {modalConfig.type === 'OnDelivery' ? '📦 On Delivery Items' : '✅ On Time Items'} ({combinedItems.length})
+                </h3>
+                <div className="of-batch-list">
+                  {combinedItems.length > 0 ? (
+                    combinedItems.map((item, index) => (
+                      <div key={index} className={`of-batch-item ${item.Status === 'Late' ? 'pending' : 'completed'}`}>
+                        <div className="batch-code">PO: {item.PO_No}</div>
+                        <div className="product-info">
+                          <span className="product-name">{item.Item_Name || 'N/A'}</span>
+                          <span className="product-id">
+                            Qty: {item.TTBA_QTY} | Needed: {item.PO_NeededDate || 'N/A'} | TTBA: {item.TTBA_Date || 'N/A'} | Status: {item.Status}
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="no-data">No items found</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1316,10 +1828,19 @@ function SummaryDashboard() {
   const [lostSalesRawData, setLostSalesRawData] = useState([]);
   const [inventoryOJModalOpen, setInventoryOJModalOpen] = useState(false);
   const [inventoryBBBKModalOpen, setInventoryBBBKModalOpen] = useState(false);
+  const [inventoryBBModalOpen, setInventoryBBModalOpen] = useState(false);
+  const [inventoryBKModalOpen, setInventoryBKModalOpen] = useState(false);
   const [bbbkRawData, setBbbkRawData] = useState([]);
+  const [wipRawData, setWipRawData] = useState([]);
   const [coverageModalOpen, setCoverageModalOpen] = useState(false);
   const [pctModalOpen, setPctModalOpen] = useState(false);
   const [pctRawData, setPctRawData] = useState([]);
+  const [otaRawData, setOtaRawData] = useState([]);
+  const [otaModalOpen, setOtaModalOpen] = useState(false);
+  const [otaModalConfig, setOtaModalConfig] = useState({
+    title: 'Detail OTA',
+    type: null
+  });
   const [salesTargetModalOpen, setSalesTargetModalOpen] = useState(false);
   const [salesTargetModalConfig, setSalesTargetModalConfig] = useState({
     title: 'Detail Sales Target Achievement',
@@ -1395,7 +1916,9 @@ function SummaryDashboard() {
           setForecastRawData(cachedData.rawData.forecastData || []);
           setLostSalesRawData(cachedData.rawData.lostSalesData || []);
           setBbbkRawData(cachedData.rawData.bbbkData || []);
+          setWipRawData(cachedData.rawData.wipData || []);
           setPctRawData(cachedData.rawData.pctData || []);
+          setOtaRawData(cachedData.rawData.otaData || []);
           setLastFetchTime(cachedData.timestamp);
           setLoading(false);
           return;
@@ -1409,14 +1932,15 @@ function SummaryDashboard() {
         setLoading(true);
       }
       
-      const [wipRes, ofRes, pctRes, forecastRes, bbbkRes, dailySalesRes, lostSalesRes] = await Promise.all([
+      const [wipRes, ofRes, pctRes, forecastRes, bbbkRes, dailySalesRes, lostSalesRes, otaRes] = await Promise.all([
         fetch(apiUrl('/api/wip')),
         fetch(apiUrl('/api/ofsummary')),
         fetch(apiUrl('/api/pctAverage')),
         fetch(apiUrl('/api/forecast')),
         fetch(apiUrl('/api/bbbk')),
         fetch(apiUrl('/api/dailySales')),
-        fetch(apiUrl('/api/lostSales'))
+        fetch(apiUrl('/api/lostSales')),
+        fetch(apiUrl('/api/ota'))
       ]);
 
       const wipData = await wipRes.json();
@@ -1426,9 +1950,7 @@ function SummaryDashboard() {
       const bbbkData = await bbbkRes.json();
       const dailySalesData = await dailySalesRes.json();
       const lostSalesData = await lostSalesRes.json();
-      
-      console.log('📊 Lost Sales Data:', lostSalesData);
-      console.log('📈 Forecast Data Sample:', forecastData?.slice(0, 3));
+      const otaData = await otaRes.json();
       
       // Store raw data
       const rawData = {
@@ -1436,14 +1958,18 @@ function SummaryDashboard() {
         forecastData: forecastData || [],
         lostSalesData: lostSalesData || [],
         bbbkData: bbbkData || [],
-        pctData: pctData?.data || pctData || []
+        wipData: wipData?.data || wipData || [],
+        pctData: pctData?.data || pctData || [],
+        otaData: otaData || []
       };
 
       setOfRawData(rawData.ofData);
       setForecastRawData(rawData.forecastData);
       setLostSalesRawData(rawData.lostSalesData);
       setBbbkRawData(rawData.bbbkData);
+      setWipRawData(rawData.wipData);
       setPctRawData(rawData.pctData);
+      setOtaRawData(rawData.otaData);
       
       // Process and set data
       const processedData = {
@@ -1455,8 +1981,11 @@ function SummaryDashboard() {
         orderFulfillment: processOrderFulfillmentData(ofData || []),
         materialAvailability: processMaterialAvailabilityData(forecastData || []),
         inventoryOJ: processInventoryOJData(forecastData || []),
+        inventoryBB: processInventoryBBData(bbbkData || []),
+        inventoryBK: processInventoryBKData(bbbkData || []),
         inventoryBBBK: processInventoryBBBKData(bbbkData || []),
-        pct: processPCTData(pctData || [])
+        pct: processPCTData(pctData || []),
+        ota: processOTAData(otaData || [])
       };
 
       setData(processedData);
@@ -1486,8 +2015,11 @@ function SummaryDashboard() {
         },
         materialAvailability: processMaterialAvailabilityData([]),
         inventoryOJ: processInventoryOJData([]),
+        inventoryBB: processInventoryBBData([]),
+        inventoryBK: processInventoryBKData([]),
         inventoryBBBK: processInventoryBBBKData([]),
-        pct: { average: 5.2, longest: 12.8, percentage: 40.6 }
+        pct: { average: 5.2, longest: 12.8, percentage: 40.6 },
+        ota: processOTAData([])
       });
     } finally {
       setLoading(false);
@@ -1544,12 +2076,52 @@ function SummaryDashboard() {
     setInventoryBBBKModalOpen(true);
   };
 
+  const handleInventoryBBClick = () => {
+    setInventoryBBModalOpen(true);
+  };
+
+  const handleInventoryBKClick = () => {
+    setInventoryBKModalOpen(true);
+  };
+
   const handleCoverageClick = () => {
     setCoverageModalOpen(true);
   };
 
   const handlePCTClick = () => {
     setPctModalOpen(true);
+  };
+
+  const handleOTABahanBakuClick = () => {
+    setOtaModalConfig({
+      title: 'Detail OTA - Bahan Baku',
+      type: 'BB'
+    });
+    setOtaModalOpen(true);
+  };
+
+  const handleOTABahanKemasClick = () => {
+    setOtaModalConfig({
+      title: 'Detail OTA - Bahan Kemas',
+      type: 'BK'
+    });
+    setOtaModalOpen(true);
+  };
+
+  const handleOTAOnDeliveryClick = () => {
+    setOtaModalConfig({
+      title: 'Detail OTA - On Delivery',
+      type: 'OnDelivery'
+    });
+    setOtaModalOpen(true);
+  };
+
+  const handleOTAOnTimeClick = () => {
+    setOtaModalConfig({
+      title: 'Detail OTA - On Time Performance',
+      type: 'OnTime'
+    });
+    setOtaModalOpen(true);
   };
 
   const handleSalesTargetClick = () => {
@@ -1599,7 +2171,9 @@ function SummaryDashboard() {
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (salesDropdownOpen && !event.target.closest('.sales-chart-dropdown-container')) {
+      if (salesDropdownOpen && 
+          !event.target.closest('.sales-chart-dropdown-trigger') && 
+          !event.target.closest('.sales-chart-dropdown-menu')) {
         setSalesDropdownOpen(false);
       }
     };
@@ -1895,12 +2469,12 @@ function SummaryDashboard() {
         const coveragePercentage = (stock / forecast) * 100;
         
         // Count Under/Over stock based on new criteria
-        if (coveragePercentage < 100) {
+        if (coveragePercentage < 130) {
           underCount++;
         } else if (coveragePercentage >= 300) {
           overCount++;
         }
-        // Note: Products with 100-299% coverage are considered "normal" and not counted in under/over
+        // Note: Products with 130-299% coverage are considered "normal" and not counted in under/over
         
         totalCoveragePercentage += coveragePercentage;
         validProductsCount++;
@@ -2083,6 +2657,104 @@ function SummaryDashboard() {
     return result;
   };
 
+  const processInventoryBBData = (bbbkData) => {
+    // Filter only BB items
+    const bbData = bbbkData.filter(item => item.item_type === 'BB');
+    
+    if (!bbData || bbData.length === 0) {
+      return {
+        slowMoving: 0,
+        deadStock: 0,
+        return: 0
+      };
+    }
+
+    const totalItems = bbData.length;
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth() + 1;
+    
+    // Calculate date thresholds
+    const sixMonthsAgo = new Date(currentYear, currentMonth - 7, 1);
+    const threeMonthsAgo = new Date(currentYear, currentMonth - 4, 1);
+    const sixMonthsAgoYYYYMM = sixMonthsAgo.getFullYear() * 100 + (sixMonthsAgo.getMonth() + 1);
+    const threeMonthsAgoYYYYMM = threeMonthsAgo.getFullYear() * 100 + (threeMonthsAgo.getMonth() + 1);
+    
+    // Calculate Dead Stock (null last_transaction_period or older than 6 months)
+    const deadStockItems = bbData.filter(item => 
+      item.last_transaction_period === null || 
+      item.last_transaction_period === '' ||
+      (item.last_transaction_period && parseInt(item.last_transaction_period) < sixMonthsAgoYYYYMM)
+    );
+    
+    // Calculate Slow Moving (3-6 months old)
+    const slowMovingItems = bbData.filter(item => {
+      if (!item.last_transaction_period || item.last_transaction_period === null) {
+        return false; // Already counted as dead stock
+      }
+      const transactionPeriod = parseInt(item.last_transaction_period);
+      return transactionPeriod >= sixMonthsAgoYYYYMM && transactionPeriod <= threeMonthsAgoYYYYMM;
+    });
+    
+    // Calculate Return Percentage (assume 5% for now)
+    const returnPercentage = 5;
+    
+    return {
+      slowMoving: Math.round((slowMovingItems.length / totalItems) * 100),
+      deadStock: Math.round((deadStockItems.length / totalItems) * 100),
+      return: returnPercentage
+    };
+  };
+
+  const processInventoryBKData = (bbbkData) => {
+    // Filter only BK items
+    const bkData = bbbkData.filter(item => item.item_type === 'BK');
+    
+    if (!bkData || bkData.length === 0) {
+      return {
+        slowMoving: 0,
+        deadStock: 0,
+        return: 0
+      };
+    }
+
+    const totalItems = bkData.length;
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth() + 1;
+    
+    // Calculate date thresholds
+    const sixMonthsAgo = new Date(currentYear, currentMonth - 7, 1);
+    const threeMonthsAgo = new Date(currentYear, currentMonth - 4, 1);
+    const sixMonthsAgoYYYYMM = sixMonthsAgo.getFullYear() * 100 + (sixMonthsAgo.getMonth() + 1);
+    const threeMonthsAgoYYYYMM = threeMonthsAgo.getFullYear() * 100 + (threeMonthsAgo.getMonth() + 1);
+    
+    // Calculate Dead Stock (null last_transaction_period or older than 6 months)
+    const deadStockItems = bkData.filter(item => 
+      item.last_transaction_period === null || 
+      item.last_transaction_period === '' ||
+      (item.last_transaction_period && parseInt(item.last_transaction_period) < sixMonthsAgoYYYYMM)
+    );
+    
+    // Calculate Slow Moving (3-6 months old)
+    const slowMovingItems = bkData.filter(item => {
+      if (!item.last_transaction_period || item.last_transaction_period === null) {
+        return false; // Already counted as dead stock
+      }
+      const transactionPeriod = parseInt(item.last_transaction_period);
+      return transactionPeriod >= sixMonthsAgoYYYYMM && transactionPeriod <= threeMonthsAgoYYYYMM;
+    });
+    
+    // Calculate Return Percentage (assume 5% for now)
+    const returnPercentage = 5;
+    
+    return {
+      slowMoving: Math.round((slowMovingItems.length / totalItems) * 100),
+      deadStock: Math.round((deadStockItems.length / totalItems) * 100),
+      return: returnPercentage
+    };
+  };
+
   const processInventoryBBBKData = (bbbkData) => {
     if (!bbbkData || bbbkData.length === 0) {
       return {
@@ -2185,6 +2857,49 @@ function SummaryDashboard() {
       average: Math.round(averagePCT * 10) / 10, // Round to 1 decimal place
       longest: Math.round(longestPCT * 10) / 10, // Round to 1 decimal place
       percentage: Math.round(percentage)
+    };
+  };
+
+  const processOTAData = (otaData) => {
+    if (!otaData || otaData.length === 0) {
+      return {
+        bahanBakuPercentage: 0,
+        bahanKemasPercentage: 0,
+        onDeliveryCount: 0,
+        onTimePercentage: 0
+      };
+    }
+
+    // Split data by item_type
+    const bahanBakuData = otaData.filter(item => item.item_type === "BB");
+    const bahanKemasData = otaData.filter(item => item.item_type === "BK");
+
+    // Calculate Bahan Baku percentage (On Time vs Early + Late)
+    const bbOnTime = bahanBakuData.filter(item => item.Status === "On Time").length;
+    const bbEarlyLate = bahanBakuData.filter(item => item.Status === "Early" || item.Status === "Late").length;
+    const bbTotal = bbOnTime + bbEarlyLate;
+    const bahanBakuPercentage = bbTotal > 0 ? (bbOnTime / bbTotal) * 100 : 0;
+
+    // Calculate Bahan Kemas percentage (On Time vs Early + Late)
+    const bkOnTime = bahanKemasData.filter(item => item.Status === "On Time").length;
+    const bkEarlyLate = bahanKemasData.filter(item => item.Status === "Early" || item.Status === "Late").length;
+    const bkTotal = bkOnTime + bkEarlyLate;
+    const bahanKemasPercentage = bkTotal > 0 ? (bkOnTime / bkTotal) * 100 : 0;
+
+    // Count On Delivery items
+    const onDeliveryCount = otaData.filter(item => item.Status === "On Delivery").length;
+
+    // Calculate overall On Time percentage
+    const totalOnTime = otaData.filter(item => item.Status === "On Time").length;
+    const totalEarlyLate = otaData.filter(item => item.Status === "Early" || item.Status === "Late").length;
+    const totalComparable = totalOnTime + totalEarlyLate;
+    const onTimePercentage = totalComparable > 0 ? (totalOnTime / totalComparable) * 100 : 0;
+
+    return {
+      bahanBakuPercentage: Math.round(bahanBakuPercentage),
+      bahanKemasPercentage: Math.round(bahanKemasPercentage),
+      onDeliveryCount: onDeliveryCount,
+      onTimePercentage: Math.round(onTimePercentage)
     };
   };
 
@@ -2431,10 +3146,14 @@ function SummaryDashboard() {
 
                   {/* Chart section spanning 2x2 */}
                   <div className="sales-chart-section">
-                    <div className="sales-chart-controls">
+                    <div className="sales-chart-controls" style={{ position: 'relative' }}>
                       <div 
                         className="sales-chart-dropdown-trigger clickable" 
-                        onClick={() => setSalesDropdownOpen(!salesDropdownOpen)}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setSalesDropdownOpen(!salesDropdownOpen);
+                        }}
                         style={{
                           padding: '6px 12px',
                           backgroundColor: 'rgba(255, 255, 255, 0.9)',
@@ -2477,7 +3196,9 @@ function SummaryDashboard() {
                             <div
                               key={option}
                               className="dropdown-option"
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
                                 setSalesChartType(option);
                                 setSalesDropdownOpen(false);
                               }}
@@ -2509,7 +3230,11 @@ function SummaryDashboard() {
                       )}
                     </div>
                     <div className="sales-chart">
-                      <Line data={salesLineData} options={salesLineOptions} />
+                      <Line 
+                        key={salesChartType} 
+                        data={salesLineData} 
+                        options={salesLineOptions} 
+                      />
                     </div>
                   </div>
 
@@ -2643,21 +3368,38 @@ function SummaryDashboard() {
             {/* OTA */}
             <KPICard title="OTA" className="ota-card">
               <div className="ota-content">
-                <div className="material-info-card">
-                  <CircularProgress 
-                    percentage={data.materialAvailability?.bahanBaku || 0} 
-                    color="#10b981"
-                    size={60}
-                  />
-                  <div className="material-info-label">Bahan Baku</div>
-                </div>
-                <div className="material-info-card">
-                  <CircularProgress 
-                    percentage={data.materialAvailability?.bahanKemas || 0} 
-                    color="#f59e0b"
-                    size={60}
-                  />
-                  <div className="material-info-label">Bahan Kemas</div>
+                <div className="ota-grid">
+                  {/* First row: Bahan Baku and Bahan Kemas percentages */}
+                  <div className="ota-circle-item">
+                    <CircularProgress 
+                      percentage={data.ota?.bahanBakuPercentage || 0} 
+                      color="#10b981"
+                      size={60}
+                      onClick={handleOTABahanBakuClick}
+                      title="Click to view Bahan Baku OTA details"
+                    />
+                    <div className="ota-label">Bahan Baku</div>
+                  </div>
+                  <div className="ota-circle-item">
+                    <CircularProgress 
+                      percentage={data.ota?.bahanKemasPercentage || 0} 
+                      color="#f59e0b"
+                      size={60}
+                      onClick={handleOTABahanKemasClick}
+                      title="Click to view Bahan Kemas OTA details"
+                    />
+                    <div className="ota-label">Bahan Kemas</div>
+                  </div>
+                  
+                  {/* Second row: On Delivery count and On Time percentage */}
+                  <div className="ota-info-card" onClick={handleOTAOnDeliveryClick} title="Click to view On Delivery details">
+                    <div className="ota-info-value">{data.ota?.onDeliveryCount || 0}</div>
+                    <div className="ota-info-label">On Delivery</div>
+                  </div>
+                  <div className="ota-info-card" onClick={handleOTAOnTimeClick} title="Click to view On Time performance details">
+                    <div className="ota-info-value">{data.ota?.onTimePercentage || 0}%</div>
+                    <div className="ota-info-label">On Time</div>
+                  </div>
                 </div>
               </div>
             </KPICard>
@@ -2720,34 +3462,30 @@ function SummaryDashboard() {
               </div>
             </KPICard>
 
-            {/* WH Occupancy */}
-            <KPICard title="WH OCCUPANCY" className="wh-occupancy-card">
-              <div className="wh-occupancy-content">
-                <div className="wh-occupancy-top">
-                  <div className="wh-item">
-                    <CircularProgress 
-                      percentage={data.whOccupancy?.oj || 0} 
-                      color="#f59e0b"
-                      size={60}
-                    />
-                    <div className="wh-label">OJ</div>
-                  </div>
-                  <div className="wh-item">
-                    <CircularProgress 
-                      percentage={data.whOccupancy?.bb || 0} 
-                      color="#10b981"
-                      size={60}
-                    />
-                    <div className="wh-label">BB</div>
-                  </div>
-                  <div className="wh-item">
-                    <CircularProgress 
-                      percentage={data.whOccupancy?.bk || 0} 
-                      color="#6b7280"
-                      size={60}
-                    />
-                    <div className="wh-label">BK</div>
-                  </div>
+            {/* WIP */}
+            <KPICard title="WIP" className="wip-card">
+              <div style={{ 
+                height: '100%', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                flexDirection: 'column',
+                gap: '10px'
+              }}>
+                <div style={{
+                  fontSize: '24px',
+                  fontWeight: 'bold',
+                  color: '#6b7280',
+                  textAlign: 'center'
+                }}>
+                  Coming Soon
+                </div>
+                <div style={{
+                  fontSize: '14px',
+                  color: '#9ca3af',
+                  textAlign: 'center'
+                }}>
+                  WIP tracking feature is under development
                 </div>
               </div>
             </KPICard>
@@ -2804,8 +3542,8 @@ function SummaryDashboard() {
               </div>
             </KPICard>
 
-            {/* Inventory OJ */}
-            <KPICard title="INVENTORY OJ" className="inventory-oj-card">
+            {/* Inventory Obat Jadi */}
+            <KPICard title="INVENTORY OBAT JADI" className="inventory-oj-card">
               <div className="inventory-oj-content">
                 <div className="inventory-grid">
                   <div className="inventory-item">
@@ -2840,33 +3578,69 @@ function SummaryDashboard() {
               </div>
             </KPICard>
 
-            {/* Inventory BB-BK */}
-            <KPICard title="INVENTORY BB-BK" className="inventory-bb-bk-card">
-              <div className="inventory-bb-bk-content">
+            {/* Inventory Bahan Baku */}
+            <KPICard title="INVENTORY BAHAN BAKU" className="inventory-bb-card">
+              <div className="inventory-bb-content">
                 <div className="inventory-grid">
                   <div className="inventory-item">
                     <CircularProgress 
-                      percentage={data.inventoryBBBK?.slowMoving || 0} 
+                      percentage={data.inventoryBB?.slowMoving || 0} 
                       color="#f59e0b"
                       size={60}
-                      onClick={handleInventoryBBBKClick}
+                      onClick={handleInventoryBBClick}
                       title="Click to view slow moving items"
                     />
                     <div className="inventory-label">Slow Moving</div>
                   </div>
                   <div className="inventory-item">
                     <CircularProgress 
-                      percentage={data.inventoryBBBK?.deadStock || 0} 
+                      percentage={data.inventoryBB?.deadStock || 0} 
                       color="#ef4444"
                       size={60}
-                      onClick={handleInventoryBBBKClick}
+                      onClick={handleInventoryBBClick}
                       title="Click to view dead stock items"
                     />
                     <div className="inventory-label">Dead Stock</div>
                   </div>
                   <div className="inventory-item">
                     <CircularProgress 
-                      percentage={data.inventoryBBBK?.return || 0} 
+                      percentage={data.inventoryBB?.return || 0} 
+                      color="#8b5cf6"
+                      size={60}
+                    />
+                    <div className="inventory-label">Return</div>
+                  </div>
+                </div>
+              </div>
+            </KPICard>
+
+            {/* Inventory Bahan Kemas */}
+            <KPICard title="INVENTORY BAHAN KEMAS" className="inventory-bk-card">
+              <div className="inventory-bk-content">
+                <div className="inventory-grid">
+                  <div className="inventory-item">
+                    <CircularProgress 
+                      percentage={data.inventoryBK?.slowMoving || 0} 
+                      color="#f59e0b"
+                      size={60}
+                      onClick={handleInventoryBKClick}
+                      title="Click to view slow moving items"
+                    />
+                    <div className="inventory-label">Slow Moving</div>
+                  </div>
+                  <div className="inventory-item">
+                    <CircularProgress 
+                      percentage={data.inventoryBK?.deadStock || 0} 
+                      color="#ef4444"
+                      size={60}
+                      onClick={handleInventoryBKClick}
+                      title="Click to view dead stock items"
+                    />
+                    <div className="inventory-label">Dead Stock</div>
+                  </div>
+                  <div className="inventory-item">
+                    <CircularProgress 
+                      percentage={data.inventoryBK?.return || 0} 
                       color="#8b5cf6"
                       size={60}
                     />
@@ -2923,6 +3697,20 @@ function SummaryDashboard() {
           productGroupFilter={salesTargetModalConfig.productGroupFilter}
         />
         
+        {/* Inventory Bahan Baku Details Modal */}
+        <InventoryBahanBakuDetailsModal 
+          isOpen={inventoryBBModalOpen}
+          onClose={() => setInventoryBBModalOpen(false)}
+          bbData={bbbkRawData.filter(item => item.item_type === 'BB')}
+        />
+        
+        {/* Inventory Bahan Kemas Details Modal */}
+        <InventoryBahanKemasDetailsModal 
+          isOpen={inventoryBKModalOpen}
+          onClose={() => setInventoryBKModalOpen(false)}
+          bkData={bbbkRawData.filter(item => item.item_type === 'BK')}
+        />
+        
         {/* Inventory BB-BK Details Modal */}
         <InventoryBBBKDetailsModal 
           isOpen={inventoryBBBKModalOpen}
@@ -2935,6 +3723,14 @@ function SummaryDashboard() {
           isOpen={pctModalOpen}
           onClose={() => setPctModalOpen(false)}
           pctData={pctRawData}
+        />
+        
+        {/* OTA Details Modal */}
+        <OTADetailsModal 
+          isOpen={otaModalOpen}
+          onClose={() => setOtaModalOpen(false)}
+          otaData={otaRawData}
+          modalConfig={otaModalConfig}
         />
       </main>
     </div>

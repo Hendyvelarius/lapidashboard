@@ -353,56 +353,30 @@ body, html, #root {
   margin: 0 auto;
 }
 
-/* Sidebar Toggle Button */
-.sidebar-toggle {
-  position: absolute;
-  top: 50%;
-  left: 0;
-  right: 0;
-  transform: translateY(-50%);
-  z-index: 1002;
-  padding: 0 0.5rem;
-  transition: padding 0.3s ease;
-}
-
-.sidebar-minimized .sidebar-toggle {
-  padding: 0 0.25rem;
-}
-
-.sidebar-toggle-btn {
-  width: 100%;
-  height: 40px;
+/* Sidebar Toggle Button - Now integrated with navigation */
+.sidebar-btn.sidebar-toggle-btn {
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 6px;
-  color: #fff;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
+  margin-top: 8px;
+  margin-bottom: 4px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  font-size: 18px;
   backdrop-filter: blur(10px);
+  font-weight: bold;
+  font-size: 14px;
+  letter-spacing: 0.5px;
 }
 
-.sidebar-toggle-btn:hover {
+.sidebar-btn.sidebar-toggle-btn:hover {
   background: rgba(255, 255, 255, 0.2);
-  color: #fff;
   border-color: rgba(255, 255, 255, 0.4);
   transform: scale(1.02);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
-.sidebar-toggle-btn svg {
-  width: 20px;
-  height: 20px;
+.sidebar-btn.sidebar-toggle-btn svg {
   stroke-width: 2.5;
   flex-shrink: 0;
-}
-
-.sidebar-minimized .sidebar-toggle-btn span {
-  display: none;
 }
 
 .logo-placeholder {

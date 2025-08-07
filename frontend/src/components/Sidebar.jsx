@@ -71,26 +71,6 @@ function Sidebar() {
   const location = useLocation();
   return (
     <aside className={`sidebar sidebar-dark sidebar-fixed ${sidebarMinimized ? 'sidebar-minimized' : ''}`}>
-      {/* Toggle Button */}
-      <div className="sidebar-toggle">
-        <button 
-          className="sidebar-toggle-btn"
-          onClick={toggleSidebar}
-          title={sidebarMinimized ? 'Expand sidebar' : 'Minimize sidebar'}
-        >
-          {sidebarMinimized ? (
-            <>
-              <ChevronRight size={20} strokeWidth={2.5} />
-            </>
-          ) : (
-            <>
-              <ChevronLeft size={20} strokeWidth={2.5} />
-              <span style={{ marginLeft: '8px', fontSize: '14px', fontWeight: 'bold' }}>MINIMIZE</span>
-            </>
-          )}
-        </button>
-      </div>
-
       {/* Logo Section */}
       <div className="sidebar-logo">
         {sidebarMinimized ? (
@@ -136,6 +116,25 @@ function Sidebar() {
             <MessageCircle size={20} />
             {!sidebarMinimized && <span>AI Assistant</span>}
           </Link>
+          
+          {/* Toggle Button - Styled as navigation item but with distinct appearance */}
+          <button 
+            className="sidebar-btn sidebar-toggle-btn"
+            onClick={toggleSidebar}
+            title={sidebarMinimized ? 'Expand sidebar' : 'Minimize sidebar'}
+          >
+            {sidebarMinimized ? (
+              <>
+                <ChevronRight size={20} strokeWidth={2.5} />
+                {!sidebarMinimized && <span>EXPAND</span>}
+              </>
+            ) : (
+              <>
+                <ChevronLeft size={20} strokeWidth={2.5} />
+                <span>Hide</span>
+              </>
+            )}
+          </button>
         </nav>
       </div>
 
