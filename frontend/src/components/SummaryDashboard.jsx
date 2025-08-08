@@ -478,33 +478,41 @@ const CoverageDetailsModal = ({ isOpen, onClose, forecastData }) => {
     return forecast > 0 ? Math.round((stock / forecast) * 100) : 0;
   };
 
-  // Categorize products based on coverage percentage
-  const allUnderProducts = currentPeriodData.filter(item => {
-    const coverage = getCoverage(item);
-    return coverage < 100;
-  });
+  // Categorize products based on coverage percentage and sort by coverage descending
+  const allUnderProducts = currentPeriodData
+    .filter(item => {
+      const coverage = getCoverage(item);
+      return coverage < 100;
+    })
+    .sort((a, b) => getCoverage(b) - getCoverage(a));
 
-  const allNormalProducts = currentPeriodData.filter(item => {
-    const coverage = getCoverage(item);
-    return coverage >= 100 && coverage <= 299;
-  });
+  const allNormalProducts = currentPeriodData
+    .filter(item => {
+      const coverage = getCoverage(item);
+      return coverage >= 100 && coverage <= 299;
+    })
+    .sort((a, b) => getCoverage(b) - getCoverage(a));
 
-  const allOverProducts = currentPeriodData.filter(item => {
-    const coverage = getCoverage(item);
-    return coverage >= 300;
-  });
+  const allOverProducts = currentPeriodData
+    .filter(item => {
+      const coverage = getCoverage(item);
+      return coverage >= 300;
+    })
+    .sort((a, b) => getCoverage(b) - getCoverage(a));
 
-  // Filter based on search term
+  // Filter based on search term and maintain sorting by coverage
   const filterProducts = (products) => {
     if (!searchTerm.trim()) return products;
     
-    return products.filter(product => {
-      const productId = (product.Product_ID || '').toString().toLowerCase();
-      const productName = (product.Product_NM || '').toString().toLowerCase();
-      const searchLower = searchTerm.toLowerCase();
-      
-      return productId.includes(searchLower) || productName.includes(searchLower);
-    });
+    return products
+      .filter(product => {
+        const productId = (product.Product_ID || '').toString().toLowerCase();
+        const productName = (product.Product_NM || '').toString().toLowerCase();
+        const searchLower = searchTerm.toLowerCase();
+        
+        return productId.includes(searchLower) || productName.includes(searchLower);
+      })
+      .sort((a, b) => getCoverage(b) - getCoverage(a));
   };
 
   const underProducts = filterProducts(allUnderProducts);
@@ -1438,25 +1446,28 @@ const LostSalesDetailsModal = ({ isOpen, onClose, lostSalesData }) => {
   
   if (!isOpen || !lostSalesData) return null;
 
-  // Split by Product_Group
-  const allFokusProducts = lostSalesData.filter(item => 
-    item.Product_Group === "1. PRODUK FOKUS"
-  );
-  const allNonFokusProducts = lostSalesData.filter(item => 
-    item.Product_Group === "2. PRODUK NON FOKUS"
-  );
+  // Split by Product_Group and sort by potential (TotalPending) in descending order
+  const allFokusProducts = lostSalesData
+    .filter(item => item.Product_Group === "1. PRODUK FOKUS")
+    .sort((a, b) => (b.TotalPending || 0) - (a.TotalPending || 0));
+  
+  const allNonFokusProducts = lostSalesData
+    .filter(item => item.Product_Group === "2. PRODUK NON FOKUS")
+    .sort((a, b) => (b.TotalPending || 0) - (a.TotalPending || 0));
 
-  // Filter based on search term
+  // Filter based on search term and maintain sorting by potential
   const filterProducts = (products) => {
     if (!searchTerm.trim()) return products;
     
-    return products.filter(product => {
-      const productId = (product.MSO_ProductID || '').toString().toLowerCase();
-      const productName = (product.Product_Name || '').toLowerCase();
-      const search = searchTerm.toLowerCase();
-      
-      return productId.includes(search) || productName.includes(search);
-    });
+    return products
+      .filter(product => {
+        const productId = (product.MSO_ProductID || '').toString().toLowerCase();
+        const productName = (product.Product_Name || '').toLowerCase();
+        const search = searchTerm.toLowerCase();
+        
+        return productId.includes(search) || productName.includes(search);
+      })
+      .sort((a, b) => (b.TotalPending || 0) - (a.TotalPending || 0));
   };
 
   const fokusProducts = filterProducts(allFokusProducts);
