@@ -216,4 +216,14 @@ async function getOTA(req, res) {
   }
 }
 
-module.exports = { getLostSales, getOTA, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getOrderFulfillment, getStockReport, getofsummary };
+async function getMaterial(req, res) {
+  try {
+    const data = await SqlModel.getMaterial();
+    res.json( data );
+  } catch (err) {
+    console.error('Error in fetching Material:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+module.exports = { getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getOrderFulfillment, getStockReport, getofsummary };

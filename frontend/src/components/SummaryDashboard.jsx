@@ -1823,6 +1823,159 @@ const OFDetailsModal = ({ isOpen, onClose, stageName, ofRawData }) => {
   );
 };
 
+// Material Availability Details Modal Component
+const MaterialAvailabilityDetailsModal = ({ isOpen, onClose, materialData, modalConfig }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  if (!isOpen || !materialData || !modalConfig) return null;
+
+  // Filter by Item_Type based on modal configuration
+  const filteredMaterials = materialData.filter(item => 
+    modalConfig.type === 'ALL' || item.Item_Type === modalConfig.type
+  );
+
+  // Split by fulfillment status and sort by needed quantity descending
+  const allFulfilledItems = filteredMaterials
+    .filter(item => (item.last_stock || 0) >= (item.needed || 0))
+    .sort((a, b) => (b.needed || 0) - (a.needed || 0));
+  
+  const allNotFulfilledItems = filteredMaterials
+    .filter(item => (item.last_stock || 0) < (item.needed || 0))
+    .sort((a, b) => (b.needed || 0) - (a.needed || 0));
+
+  // Filter based on search term and maintain sorting
+  const filterItems = (items) => {
+    if (!searchTerm.trim()) return items;
+    
+    return items
+      .filter(item => {
+        const itemId = (item.PPI_ItemID || '').toString().toLowerCase();
+        const itemName = (item.Item_Name || '').toLowerCase();
+        const search = searchTerm.toLowerCase();
+        
+        return itemId.includes(search) || itemName.includes(search);
+      })
+      .sort((a, b) => (b.needed || 0) - (a.needed || 0));
+  };
+
+  const fulfilledItems = filterItems(allFulfilledItems);
+  const notFulfilledItems = filterItems(allNotFulfilledItems);
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content of-modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>{modalConfig.title}</h2>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <div className="modal-body">
+          <div className="modal-summary" style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            marginBottom: '20px',
+            padding: '15px',
+            backgroundColor: '#f8f9fa',
+            borderRadius: '8px',
+            fontSize: '14px'
+          }}>
+            <div>
+              <strong>Total Items:</strong> {filteredMaterials.length}
+            </div>
+            <div style={{ color: '#10b981' }}>
+              <strong>Fulfilled:</strong> {allFulfilledItems.length}
+            </div>
+            <div style={{ color: '#ef4444' }}>
+              <strong>Not Fulfilled:</strong> {allNotFulfilledItems.length}
+            </div>
+            <div>
+              <strong>Fulfillment Rate:</strong> {filteredMaterials.length > 0 ? Math.round((allFulfilledItems.length / filteredMaterials.length) * 100) : 0}%
+            </div>
+          </div>
+          
+          <div className="search-container" style={{ marginBottom: '20px' }}>
+            <input
+              type="text"
+              placeholder="Search by item ID or item name..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px 15px',
+                border: '1px solid #d1d5db',
+                borderRadius: '8px',
+                fontSize: '14px',
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+          
+          {searchTerm.trim() && (
+            <div style={{ marginBottom: '15px', fontSize: '14px', color: '#6b7280' }}>
+              Found {fulfilledItems.length + notFulfilledItems.length} results for "{searchTerm}"
+              {fulfilledItems.length + notFulfilledItems.length !== allFulfilledItems.length + allNotFulfilledItems.length && 
+                ` (filtered from ${allFulfilledItems.length + allNotFulfilledItems.length} total)`}
+            </div>
+          )}
+          
+          <div className="of-details-container">
+            {/* Fulfilled Items */}
+            <div className="of-details-section">
+              <h3 className="of-section-title" style={{ color: '#10b981' }}>
+                ✅ Fulfilled ({fulfilledItems.length})
+              </h3>
+              <div className="of-batch-list">
+                {fulfilledItems.length > 0 ? (
+                  fulfilledItems.map((item, index) => (
+                    <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #10b981' }}>
+                      <div className="batch-code">ID: {item.PPI_ItemID}</div>
+                      <div className="product-info">
+                        <span className="product-name">{item.Item_Name || 'N/A'}</span>
+                        <span className="product-id">
+                          Stock: {formatNumber(item.last_stock || 0)} {item.Item_Unit} | 
+                          Needed: {formatNumber(item.needed || 0)} {item.Item_Unit} | 
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-data">No fulfilled materials</div>
+                )}
+              </div>
+            </div>
+
+            {/* Not Fulfilled Items */}
+            <div className="of-details-section">
+              <h3 className="of-section-title" style={{ color: '#ef4444' }}>
+                ❌ Not Fulfilled ({notFulfilledItems.length})
+              </h3>
+              <div className="of-batch-list">
+                {notFulfilledItems.length > 0 ? (
+                  notFulfilledItems.map((item, index) => (
+                    <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #ef4444' }}>
+                      <div className="batch-code">ID: {item.PPI_ItemID}</div>
+                      <div className="product-info">
+                        <span className="product-name">{item.Item_Name || 'N/A'}</span>
+                        <span className="product-id">
+                          Stock: {formatNumber(item.last_stock || 0)} {item.Item_Unit} | 
+                          Needed: {formatNumber(item.needed || 0)} {item.Item_Unit} | 
+                          Shortage: {formatNumber((item.needed || 0) - (item.last_stock || 0))} {item.Item_Unit} | 
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-data">All materials are fulfilled</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 function SummaryDashboard() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -1856,6 +2009,12 @@ function SummaryDashboard() {
   const [salesTargetModalConfig, setSalesTargetModalConfig] = useState({
     title: 'Detail Sales Target Achievement',
     productGroupFilter: null
+  });
+  const [materialRawData, setMaterialRawData] = useState([]);
+  const [materialModalOpen, setMaterialModalOpen] = useState(false);
+  const [materialModalConfig, setMaterialModalConfig] = useState({
+    title: 'Detail Material Availability',
+    type: null // 'BB' or 'BK'
   });
   const [data, setData] = useState({
     sales: null,
@@ -1930,6 +2089,7 @@ function SummaryDashboard() {
           setWipRawData(cachedData.rawData.wipData || []);
           setPctRawData(cachedData.rawData.pctData || []);
           setOtaRawData(cachedData.rawData.otaData || []);
+          setMaterialRawData(cachedData.rawData.materialData || []);
           setLastFetchTime(cachedData.timestamp);
           setLoading(false);
           return;
@@ -1943,7 +2103,7 @@ function SummaryDashboard() {
         setLoading(true);
       }
       
-      const [wipRes, ofRes, pctRes, forecastRes, bbbkRes, dailySalesRes, lostSalesRes, otaRes] = await Promise.all([
+      const [wipRes, ofRes, pctRes, forecastRes, bbbkRes, dailySalesRes, lostSalesRes, otaRes, materialRes] = await Promise.all([
         fetch(apiUrl('/api/wip')),
         fetch(apiUrl('/api/ofsummary')),
         fetch(apiUrl('/api/pctAverage')),
@@ -1951,7 +2111,8 @@ function SummaryDashboard() {
         fetch(apiUrl('/api/bbbk')),
         fetch(apiUrl('/api/dailySales')),
         fetch(apiUrl('/api/lostSales')),
-        fetch(apiUrl('/api/ota'))
+        fetch(apiUrl('/api/ota')),
+        fetch(apiUrl('/api/material'))
       ]);
 
       const wipData = await wipRes.json();
@@ -1962,6 +2123,7 @@ function SummaryDashboard() {
       const dailySalesData = await dailySalesRes.json();
       const lostSalesData = await lostSalesRes.json();
       const otaData = await otaRes.json();
+      const materialData = await materialRes.json();
       
       // Store raw data
       const rawData = {
@@ -1971,7 +2133,8 @@ function SummaryDashboard() {
         bbbkData: bbbkData || [],
         wipData: wipData?.data || wipData || [],
         pctData: pctData?.data || pctData || [],
-        otaData: otaData || []
+        otaData: otaData || [],
+        materialData: materialData || []
       };
 
       setOfRawData(rawData.ofData);
@@ -1981,6 +2144,7 @@ function SummaryDashboard() {
       setWipRawData(rawData.wipData);
       setPctRawData(rawData.pctData);
       setOtaRawData(rawData.otaData);
+      setMaterialRawData(rawData.materialData);
       
       // Process and set data
       const processedData = {
@@ -1990,7 +2154,7 @@ function SummaryDashboard() {
         coverage: processCoverageData(forecastData || []),
         whOccupancy: processWHOccupancyData(wipData.data || []),
         orderFulfillment: processOrderFulfillmentData(ofData || []),
-        materialAvailability: processMaterialAvailabilityData(forecastData || []),
+        materialAvailability: processMaterialAvailabilityData(materialData || []),
         inventoryOJ: processInventoryOJData(forecastData || []),
         inventoryBB: processInventoryBBData(bbbkData || []),
         inventoryBK: processInventoryBKData(bbbkData || []),
@@ -2133,6 +2297,22 @@ function SummaryDashboard() {
       type: 'OnTime'
     });
     setOtaModalOpen(true);
+  };
+
+  const handleMaterialBahanBakuClick = () => {
+    setMaterialModalConfig({
+      title: 'Detail Material Availability - Bahan Baku',
+      type: 'BB'
+    });
+    setMaterialModalOpen(true);
+  };
+
+  const handleMaterialBahanKemasClick = () => {
+    setMaterialModalConfig({
+      title: 'Detail Material Availability - Bahan Kemas',
+      type: 'BK'
+    });
+    setMaterialModalOpen(true);
   };
 
   const handleSalesTargetClick = () => {
@@ -2552,12 +2732,34 @@ function SummaryDashboard() {
     return result;
   };
 
-  const processMaterialAvailabilityData = (stockData) => {
-    // Mock material availability
+  const processMaterialAvailabilityData = (materialData) => {
+    if (!materialData || materialData.length === 0) {
+      return {
+        bahanBaku: 0,
+        bahanKemas: 0
+      };
+    }
+
+    // Filter by Item_Type
+    const bahanBakuItems = materialData.filter(item => item.Item_Type === 'BB');
+    const bahanKemasItems = materialData.filter(item => item.Item_Type === 'BK');
+
+    // Calculate fulfilled percentages
+    const calculateFulfilledPercentage = (items) => {
+      if (items.length === 0) return 0;
+      
+      const fulfilledItems = items.filter(item => {
+        const lastStock = item.last_stock || 0;
+        const needed = item.needed || 0;
+        return lastStock >= needed;
+      });
+      
+      return Math.round((fulfilledItems.length / items.length) * 100);
+    };
+
     return {
-      bahanBaku: 78,
-      bahanKemas: 85,
-      ota: 67
+      bahanBaku: calculateFulfilledPercentage(bahanBakuItems),
+      bahanKemas: calculateFulfilledPercentage(bahanKemasItems)
     };
   };
 
@@ -3362,6 +3564,8 @@ function SummaryDashboard() {
                     percentage={data.materialAvailability?.bahanBaku || 0} 
                     color="#10b981"
                     size={60}
+                    onClick={handleMaterialBahanBakuClick}
+                    title="Click to view Bahan Baku details"
                   />
                   <div className="material-info-label">Bahan Baku</div>
                 </div>
@@ -3370,6 +3574,8 @@ function SummaryDashboard() {
                     percentage={data.materialAvailability?.bahanKemas || 0} 
                     color="#f59e0b"
                     size={60}
+                    onClick={handleMaterialBahanKemasClick}
+                    title="Click to view Bahan Kemas details"
                   />
                   <div className="material-info-label">Bahan Kemas</div>
                 </div>
@@ -3742,6 +3948,14 @@ function SummaryDashboard() {
           onClose={() => setOtaModalOpen(false)}
           otaData={otaRawData}
           modalConfig={otaModalConfig}
+        />
+        
+        {/* Material Availability Details Modal */}
+        <MaterialAvailabilityDetailsModal 
+          isOpen={materialModalOpen}
+          onClose={() => setMaterialModalOpen(false)}
+          materialData={materialRawData}
+          modalConfig={materialModalConfig}
         />
       </main>
     </div>

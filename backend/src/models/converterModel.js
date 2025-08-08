@@ -42,7 +42,10 @@ function WipConverter(rawData) {
     kelompok: item["Pengelompokan"],
     leadTime: item["leadTime"],
     dept: item["Dept"],
-    groupPNCategory: item["Group_PNCategoryName"]
+    groupPNCategory: item["Group_PNCategoryName"],
+    price: item["Product_SalesHNA"],
+    standard: item["StdOutput"],
+    actual: item["BPHP"]
   }));
 }
 
