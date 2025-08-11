@@ -45,7 +45,8 @@ function WipConverter(rawData) {
     groupPNCategory: item["Group_PNCategoryName"],
     price: item["Product_SalesHNA"],
     standard: item["StdOutput"],
-    actual: item["BPHP"]
+    actual: item["BPHP"],
+    status: item["Status"]
   }));
 }
 

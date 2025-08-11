@@ -655,6 +655,313 @@ const CoverageDetailsModal = ({ isOpen, onClose, forecastData }) => {
   );
 };
 
+// WIP Details Modal Component
+const WIPDetailsModal = ({ isOpen, onClose, wipData }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  if (!isOpen || !wipData) return null;
+
+  // Group batches by status
+  const groupByStatus = (data) => {
+    const groups = {};
+    data.forEach(item => {
+      const status = item.status || 'Unknown';
+      if (!groups[status]) {
+        groups[status] = [];
+      }
+      groups[status].push(item);
+    });
+    return groups;
+  };
+
+  const allGroupedData = groupByStatus(wipData);
+
+  // Filter based on search term
+  const filterBatches = (batches) => {
+    if (!searchTerm.trim()) return batches;
+    
+    return batches.filter(batch => {
+      const batchNo = (batch.batch || '').toString().toLowerCase();
+      const productName = (batch.name || '').toString().toLowerCase();
+      const code = (batch.id || '').toString().toLowerCase();
+      const searchLower = searchTerm.toLowerCase();
+      
+      return batchNo.includes(searchLower) || 
+             productName.includes(searchLower) || 
+             code.includes(searchLower);
+    });
+  };
+
+  // Get filtered groups
+  const filteredGroups = {};
+  Object.keys(allGroupedData).forEach(status => {
+    filteredGroups[status] = filterBatches(allGroupedData[status]);
+  });
+
+  // Get status colors
+  const getStatusColor = (status) => {
+    switch (status.toLowerCase()) {
+      case 'proses': return '#10b981'; // Green
+      case 'kemas': return '#f59e0b'; // Orange
+      case 'karantina': return '#ef4444'; // Red
+      default: return '#6b7280'; // Gray
+    }
+  };
+
+  // Calculate total batches
+  const totalBatches = wipData.length;
+  const totalFilteredBatches = Object.values(filteredGroups).reduce((sum, batches) => sum + batches.length, 0);
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content of-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '1200px', width: '90vw' }}>
+        <div className="modal-header">
+          <h2>Detail WIP Batches</h2>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <div className="modal-body">
+          <div className="modal-summary" style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            marginBottom: '20px',
+            padding: '15px',
+            backgroundColor: '#f8f9fa',
+            borderRadius: '8px',
+            fontSize: '14px'
+          }}>
+            <div>
+              <strong>Total Batches:</strong> {totalBatches}
+            </div>
+            {Object.keys(allGroupedData).map(status => (
+              <div key={status} style={{ color: getStatusColor(status) }}>
+                <strong>{status}:</strong> {allGroupedData[status].length}
+              </div>
+            ))}
+          </div>
+          
+          <div className="search-container" style={{ marginBottom: '20px' }}>
+            <input
+              type="text"
+              placeholder="Search by batch number, product name, or code..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px 15px',
+                border: '1px solid #d1d5db',
+                borderRadius: '8px',
+                fontSize: '14px',
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+          
+          {searchTerm.trim() && (
+            <div style={{ marginBottom: '15px', fontSize: '14px', color: '#6b7280' }}>
+              Found {totalFilteredBatches} results for "{searchTerm}"
+              {totalFilteredBatches !== totalBatches && ` (filtered from ${totalBatches} total)`}
+            </div>
+          )}
+          
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', minHeight: '400px' }}>
+            {Object.keys(filteredGroups).map(status => (
+              <div key={status} className="of-details-section">
+                <h3 className="of-section-title" style={{ color: getStatusColor(status) }}>
+                  📦 {status} ({filteredGroups[status].length})
+                </h3>
+                <div className="of-batch-list" style={{ maxHeight: '350px', overflowY: 'auto' }}>
+                  {filteredGroups[status].length > 0 ? (
+                    filteredGroups[status].map((batch, index) => {
+                      const units = batch.actual !== null && batch.actual !== undefined ? batch.actual : (batch.standard || 0);
+                      const price = batch.price || 0;
+                      const value = price * units;
+                      
+                      return (
+                        <div key={index} className="of-batch-item" style={{ borderLeft: `4px solid ${getStatusColor(status)}`, marginBottom: '8px' }}>
+                          <div className="batch-code">Batch: {batch.batch || 'N/A'}</div>
+                          <div className="product-info">
+                            <span className="product-name" style={{ fontSize: '12px', fontWeight: '500' }}>
+                              {batch.name || 'Unknown Product'}
+                            </span>
+                            <span className="product-id" style={{ fontSize: '11px', color: '#6b7280' }}>
+                              Code: {batch.id || 'N/A'} | Price: {formatNumber(price)} | Units: {formatNumber(units)} | Value: {formatNumber(value)}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="no-data">Tidak ada batch {status}</div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// WIP Batches Modal Component
+const WIPBatchesModal = ({ isOpen, onClose, wipData }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  if (!isOpen || !wipData) return null;
+
+  // Helper function to format date
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    try {
+      const date = new Date(dateString);
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = String(date.getFullYear()).slice(-2);
+      return `${day}-${month}-${year}`;
+    } catch (error) {
+      return 'N/A';
+    }
+  };
+
+  // Categorize batches based on duration
+  const onTrackBatches = wipData.filter(batch => (batch.duration || 0) <= 38);
+  const lateBatches = wipData.filter(batch => (batch.duration || 0) > 38);
+
+  // Filter based on search term
+  const filterBatches = (batches) => {
+    if (!searchTerm.trim()) return batches;
+    
+    return batches.filter(batch => {
+      const batchId = (batch.id || '').toString().toLowerCase();
+      const productName = (batch.name || '').toString().toLowerCase();
+      const searchLower = searchTerm.toLowerCase();
+      
+      return batchId.includes(searchLower) || productName.includes(searchLower);
+    });
+  };
+
+  const filteredOnTrack = filterBatches(onTrackBatches);
+  const filteredLate = filterBatches(lateBatches);
+  const totalFiltered = filteredOnTrack.length + filteredLate.length;
+  const totalBatches = wipData.length;
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content of-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '1000px', width: '90vw' }}>
+        <div className="modal-header">
+          <h2>Detail WIP Batches - Production Timeline</h2>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <div className="modal-body">
+          <div className="modal-summary" style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            marginBottom: '20px',
+            padding: '15px',
+            backgroundColor: '#f8f9fa',
+            borderRadius: '8px',
+            fontSize: '14px'
+          }}>
+            <div>
+              <strong>Total Batches:</strong> {totalBatches}
+            </div>
+            <div style={{ color: '#10b981' }}>
+              <strong>On Track (≤38 days):</strong> {onTrackBatches.length}
+            </div>
+            <div style={{ color: '#ef4444' }}>
+              <strong>Late (&gt;38 days):</strong> {lateBatches.length}
+            </div>
+          </div>
+          
+          <div className="search-container" style={{ marginBottom: '20px' }}>
+            <input
+              type="text"
+              placeholder="Search by batch ID or product name..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px 15px',
+                border: '1px solid #d1d5db',
+                borderRadius: '8px',
+                fontSize: '14px',
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+          
+          {searchTerm.trim() && (
+            <div style={{ marginBottom: '15px', fontSize: '14px', color: '#6b7280' }}>
+              Found {totalFiltered} results for "{searchTerm}"
+              {totalFiltered !== totalBatches && ` (filtered from ${totalBatches} total)`}
+            </div>
+          )}
+          
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', minHeight: '400px' }}>
+            {/* On Track Batches */}
+            <div className="of-details-section">
+              <h3 className="of-section-title" style={{ color: '#10b981' }}>
+                ✅ On Track (≤38 days) ({filteredOnTrack.length})
+              </h3>
+              <div className="of-batch-list" style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                {filteredOnTrack.length > 0 ? (
+                  filteredOnTrack
+                    .sort((a, b) => (a.duration || 0) - (b.duration || 0)) // Sort by duration ascending
+                    .map((batch, index) => (
+                      <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #10b981', marginBottom: '8px' }}>
+                        <div className="batch-code">Batch: {batch.id || 'N/A'}</div>
+                        <div className="product-info">
+                          <span className="product-name" style={{ fontSize: '12px', fontWeight: '500' }}>
+                            {batch.name || 'Unknown Product'}
+                          </span>
+                          <span className="product-id" style={{ fontSize: '11px', color: '#6b7280' }}>
+                            Start Date: {formatDate(batch.startDate)} | Days in Production: {batch.duration || 0} days
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                ) : (
+                  <div className="no-data">Tidak ada batch On Track</div>
+                )}
+              </div>
+            </div>
+
+            {/* Late Batches */}
+            <div className="of-details-section">
+              <h3 className="of-section-title" style={{ color: '#ef4444' }}>
+                ⚠️ Late (&gt;38 days) ({filteredLate.length})
+              </h3>
+              <div className="of-batch-list" style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                {filteredLate.length > 0 ? (
+                  filteredLate
+                    .sort((a, b) => (b.duration || 0) - (a.duration || 0)) // Sort by duration descending (most late first)
+                    .map((batch, index) => (
+                      <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #ef4444', marginBottom: '8px' }}>
+                        <div className="batch-code">Batch: {batch.id || 'N/A'}</div>
+                        <div className="product-info">
+                          <span className="product-name" style={{ fontSize: '12px', fontWeight: '500' }}>
+                            {batch.name || 'Unknown Product'}
+                          </span>
+                          <span className="product-id" style={{ fontSize: '11px', color: '#6b7280' }}>
+                            Start Date: {formatDate(batch.startDate)} | Days in Production: {batch.duration || 0} days
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                ) : (
+                  <div className="no-data">Tidak ada batch Late</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Inventory Bahan Baku Details Modal Component
 const InventoryBahanBakuDetailsModal = ({ isOpen, onClose, bbData }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -1044,6 +1351,192 @@ const InventoryBBBKDetailsModal = ({ isOpen, onClose, bbbkData }) => {
                   ))
                 ) : (
                   <div className="no-data">Tidak ada item dead stock</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Inventory Return/Reject Details Modal Component
+const InventoryReturnRejectDetailsModal = ({ isOpen, onClose, bbbkData, itemType }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  if (!isOpen || !bbbkData) return null;
+
+  // Filter by item type (BB or BK)
+  const filteredData = bbbkData.filter(item => item.item_type === itemType);
+
+  // Categorize items
+  const allNoReturnRejectItems = filteredData.filter(item => 
+    (!item.totalRetur || item.totalRetur === 0) && 
+    (!item.totalReject || item.totalReject === 0)
+  );
+
+  const allReturnItems = filteredData.filter(item => 
+    item.totalRetur && item.totalRetur > 0
+  );
+
+  const allRejectItems = filteredData.filter(item => 
+    item.totalReject && item.totalReject > 0
+  );
+
+  // Filter based on search term
+  const filterItems = (items) => {
+    if (!searchTerm.trim()) return items;
+    
+    return items.filter(item => {
+      const itemCode = (item.item_code || '').toString().toLowerCase();
+      const itemName = (item.item_name || '').toLowerCase();
+      const search = searchTerm.toLowerCase();
+      
+      return itemCode.includes(search) || itemName.includes(search);
+    });
+  };
+
+  const noReturnRejectItems = filterItems(allNoReturnRejectItems);
+  const returnItems = filterItems(allReturnItems);
+  const rejectItems = filterItems(allRejectItems);
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content of-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '1200px', width: '90vw' }}>
+        <div className="modal-header">
+          <h2>Detail Return/Reject - {itemType === 'BB' ? 'Bahan Baku' : 'Bahan Kemas'}</h2>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <div className="modal-body">
+          <div className="modal-summary" style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            marginBottom: '20px',
+            padding: '15px',
+            backgroundColor: '#f8f9fa',
+            borderRadius: '8px',
+            fontSize: '14px'
+          }}>
+            <div>
+              <strong>Total Items:</strong> {filteredData.length}
+            </div>
+            <div style={{ color: '#10b981' }}>
+              <strong>No Return/Reject:</strong> {allNoReturnRejectItems.length}
+            </div>
+            <div style={{ color: '#f59e0b' }}>
+              <strong>Return Items:</strong> {allReturnItems.length}
+            </div>
+            <div style={{ color: '#ef4444' }}>
+              <strong>Reject Items:</strong> {allRejectItems.length}
+            </div>
+          </div>
+          
+          <div className="search-container" style={{ marginBottom: '20px' }}>
+            <input
+              type="text"
+              placeholder="Search by item code or item name..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px 15px',
+                border: '1px solid #d1d5db',
+                borderRadius: '8px',
+                fontSize: '14px',
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+          
+          {searchTerm.trim() && (
+            <div style={{ marginBottom: '15px', fontSize: '14px', color: '#6b7280' }}>
+              Found {noReturnRejectItems.length + returnItems.length + rejectItems.length} results for "{searchTerm}"
+              {noReturnRejectItems.length + returnItems.length + rejectItems.length !== allNoReturnRejectItems.length + allReturnItems.length + allRejectItems.length && 
+                ` (filtered from ${allNoReturnRejectItems.length + allReturnItems.length + allRejectItems.length} total)`}
+            </div>
+          )}
+          
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', minHeight: '400px' }}>
+            {/* No Return/Reject */}
+            <div className="of-details-section">
+              <h3 className="of-section-title" style={{ color: '#10b981' }}>
+                ✅ No Return/Reject ({noReturnRejectItems.length})
+              </h3>
+              <div className="of-batch-list" style={{ maxHeight: '350px', overflowY: 'auto' }}>
+                {noReturnRejectItems.length > 0 ? (
+                  noReturnRejectItems.map((item, index) => (
+                    <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #10b981', marginBottom: '8px' }}>
+                      <div className="batch-code">{item.item_code}</div>
+                      <div className="product-info">
+                        <span className="product-name" style={{ fontSize: '12px' }}>{item.item_name || 'N/A'}</span>
+                        <span className="product-id" style={{ fontSize: '11px' }}>
+                          Stock: {item.last_stock?.toLocaleString() || 0} | Return: 0 | Reject: 0
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-data">Tidak ada item tanpa return/reject</div>
+                )}
+              </div>
+            </div>
+
+            {/* Return Items */}
+            <div className="of-details-section">
+              <h3 className="of-section-title" style={{ color: '#f59e0b' }}>
+                📤 Return Items ({returnItems.length})
+              </h3>
+              <div className="of-batch-list" style={{ maxHeight: '350px', overflowY: 'auto' }}>
+                {returnItems.length > 0 ? (
+                  returnItems.map((item, index) => (
+                    <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #f59e0b', marginBottom: '8px' }}>
+                      <div className="batch-code">{item.item_code}</div>
+                      <div className="product-info">
+                        <span className="product-name" style={{ fontSize: '12px' }}>{item.item_name || 'N/A'}</span>
+                        <span className="product-id" style={{ fontSize: '11px' }}>
+                          Stock: {item.last_stock?.toLocaleString() || 0} | Return: {item.totalRetur?.toLocaleString() || 0} | Reject: {item.totalReject?.toLocaleString() || 0}
+                        </span>
+                        {item.last_stock > 0 && (
+                          <span className="product-id" style={{ fontSize: '11px', color: '#f59e0b' }}>
+                            Return/Reject %: {(((item.totalRetur || 0) + (item.totalReject || 0)) / item.last_stock * 100).toFixed(2)}%
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-data">Tidak ada item dengan return</div>
+                )}
+              </div>
+            </div>
+
+            {/* Reject Items */}
+            <div className="of-details-section">
+              <h3 className="of-section-title" style={{ color: '#ef4444' }}>
+                ❌ Reject Items ({rejectItems.length})
+              </h3>
+              <div className="of-batch-list" style={{ maxHeight: '350px', overflowY: 'auto' }}>
+                {rejectItems.length > 0 ? (
+                  rejectItems.map((item, index) => (
+                    <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #ef4444', marginBottom: '8px' }}>
+                      <div className="batch-code">{item.item_code}</div>
+                      <div className="product-info">
+                        <span className="product-name" style={{ fontSize: '12px' }}>{item.item_name || 'N/A'}</span>
+                        <span className="product-id" style={{ fontSize: '11px' }}>
+                          Stock: {item.last_stock?.toLocaleString() || 0} | Return: {item.totalRetur?.toLocaleString() || 0} | Reject: {item.totalReject?.toLocaleString() || 0}
+                        </span>
+                        {item.last_stock > 0 && (
+                          <span className="product-id" style={{ fontSize: '11px', color: '#ef4444' }}>
+                            Return/Reject %: {(((item.totalRetur || 0) + (item.totalReject || 0)) / item.last_stock * 100).toFixed(2)}%
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-data">Tidak ada item dengan reject</div>
                 )}
               </div>
             </div>
@@ -1994,8 +2487,12 @@ function SummaryDashboard() {
   const [inventoryBBBKModalOpen, setInventoryBBBKModalOpen] = useState(false);
   const [inventoryBBModalOpen, setInventoryBBModalOpen] = useState(false);
   const [inventoryBKModalOpen, setInventoryBKModalOpen] = useState(false);
+  const [inventoryBBReturnModalOpen, setInventoryBBReturnModalOpen] = useState(false);
+  const [inventoryBKReturnModalOpen, setInventoryBKReturnModalOpen] = useState(false);
   const [bbbkRawData, setBbbkRawData] = useState([]);
   const [wipRawData, setWipRawData] = useState([]);
+  const [wipModalOpen, setWipModalOpen] = useState(false);
+  const [wipBatchesModalOpen, setWipBatchesModalOpen] = useState(false);
   const [coverageModalOpen, setCoverageModalOpen] = useState(false);
   const [pctModalOpen, setPctModalOpen] = useState(false);
   const [pctRawData, setPctRawData] = useState([]);
@@ -2014,7 +2511,7 @@ function SummaryDashboard() {
   const [materialModalOpen, setMaterialModalOpen] = useState(false);
   const [materialModalConfig, setMaterialModalConfig] = useState({
     title: 'Detail Material Availability',
-    type: null // 'BB' or 'BK'
+    type: null
   });
   const [data, setData] = useState({
     sales: null,
@@ -2160,7 +2657,8 @@ function SummaryDashboard() {
         inventoryBK: processInventoryBKData(bbbkData || []),
         inventoryBBBK: processInventoryBBBKData(bbbkData || []),
         pct: processPCTData(pctData || []),
-        ota: processOTAData(otaData || [])
+        ota: processOTAData(otaData || []),
+        wip: processWIPData(wipData?.data || wipData || [])
       };
 
       setData(processedData);
@@ -2194,7 +2692,8 @@ function SummaryDashboard() {
         inventoryBK: processInventoryBKData([]),
         inventoryBBBK: processInventoryBBBKData([]),
         pct: { average: 5.2, longest: 12.8, percentage: 40.6 },
-        ota: processOTAData([])
+        ota: processOTAData([]),
+        wip: processWIPData([])
       });
     } finally {
       setLoading(false);
@@ -2259,8 +2758,24 @@ function SummaryDashboard() {
     setInventoryBKModalOpen(true);
   };
 
+  const handleInventoryBBReturnClick = () => {
+    setInventoryBBReturnModalOpen(true);
+  };
+
+  const handleInventoryBKReturnClick = () => {
+    setInventoryBKReturnModalOpen(true);
+  };
+
   const handleCoverageClick = () => {
     setCoverageModalOpen(true);
+  };
+
+  const handleWIPClick = () => {
+    setWipModalOpen(true);
+  };
+
+  const handleWIPBatchesClick = () => {
+    setWipBatchesModalOpen(true);
   };
 
   const handlePCTClick = () => {
@@ -2389,13 +2904,16 @@ function SummaryDashboard() {
     const currentYear = today.getFullYear();
     const todayDateString = today.toISOString().split('T')[0];
 
-    // Calculate today's total sales value from daily sales data
-    const todaysSales = dailySalesData
-      .filter(item => {
-        const itemDate = new Date(item.SalesDate).toISOString().split('T')[0];
-        return itemDate === todayDateString;
-      })
-      .reduce((sum, item) => sum + (item.TotalPrice || 0), 0);
+    // Calculate MTD (Month-to-Date) total sales value from stock data based on current Periode
+    const currentPeriod = currentYear * 100 + currentMonth;
+    const mtdTotalSales = stockData
+      .filter(item => parseInt(item.Periode) === currentPeriod)
+      .reduce((sum, item) => {
+        const salesUnits = item.Sales || 0;
+        const hnaPrice = item.HNA || 0;
+        const salesValue = salesUnits * hnaPrice;
+        return sum + salesValue;
+      }, 0);
 
     // Calculate cumulative monthly sales value from daily sales data
     const cumulativeMonthlySales = dailySalesData
@@ -2408,7 +2926,6 @@ function SummaryDashboard() {
       .reduce((sum, item) => sum + (item.TotalPrice || 0), 0);
 
     // Calculate monthly forecast value from stock data
-    const currentPeriod = currentYear * 100 + currentMonth;
     const monthlyForecast = stockData
       .filter(item => parseInt(item.Periode) === currentPeriod)
       .reduce((sum, item) => {
@@ -2418,8 +2935,8 @@ function SummaryDashboard() {
         return sum + forecastValue;
       }, 0);
 
-    // Calculate achievement percentage (cumulative monthly sales vs monthly forecast)
-    const achievement = monthlyForecast > 0 ? (cumulativeMonthlySales / monthlyForecast) * 100 : 0;
+    // Calculate achievement percentage (MTD sales vs monthly forecast)
+    const achievement = monthlyForecast > 0 ? (mtdTotalSales / monthlyForecast) * 100 : 0;
 
     // Calculate sales target achievement for current period
     const currentPeriodData = stockData.filter(item => parseInt(item.Periode) === currentPeriod);
@@ -2524,7 +3041,7 @@ function SummaryDashboard() {
       yearlyForecastArray.push(yearlyForecastData[month] || 0);
     }
     
-    // Calculate Fokus and Non Fokus achievement percentages
+    // Calculate Fokus and Non Fokus achievement percentages based on sales value vs forecast value
     const fokusProducts = currentPeriodData.filter(item => 
       item.Product_Group === "1. PRODUK FOKUS"
     );
@@ -2532,25 +3049,40 @@ function SummaryDashboard() {
       item.Product_Group === "2. PRODUK NON FOKUS"
     );
 
-    const fokusMetTarget = fokusProducts.filter(item => {
-      const sales = item.Sales || 0;
-      const forecast = item.Forecast || 0;
-      return sales >= forecast;
-    });
+    // Calculate total sales value and forecast value for Fokus products
+    const fokusTotalSalesValue = fokusProducts.reduce((sum, item) => {
+      const salesUnits = item.Sales || 0;
+      const hnaPrice = item.HNA || 0;
+      return sum + (salesUnits * hnaPrice);
+    }, 0);
 
-    const nonFokusMetTarget = nonFokusProducts.filter(item => {
-      const sales = item.Sales || 0;
-      const forecast = item.Forecast || 0;
-      return sales >= forecast;
-    });
+    const fokusTotalForecastValue = fokusProducts.reduce((sum, item) => {
+      const forecastUnits = item.Forecast || 0;
+      const hnaPrice = item.HNA || 0;
+      return sum + (forecastUnits * hnaPrice);
+    }, 0);
 
-    const fokusAchievementPercentage = fokusProducts.length > 0 ? 
-      (fokusMetTarget.length / fokusProducts.length) * 100 : 0;
-    const nonFokusAchievementPercentage = nonFokusProducts.length > 0 ? 
-      (nonFokusMetTarget.length / nonFokusProducts.length) * 100 : 0;
+    // Calculate total sales value and forecast value for Non Fokus products
+    const nonFokusTotalSalesValue = nonFokusProducts.reduce((sum, item) => {
+      const salesUnits = item.Sales || 0;
+      const hnaPrice = item.HNA || 0;
+      return sum + (salesUnits * hnaPrice);
+    }, 0);
+
+    const nonFokusTotalForecastValue = nonFokusProducts.reduce((sum, item) => {
+      const forecastUnits = item.Forecast || 0;
+      const hnaPrice = item.HNA || 0;
+      return sum + (forecastUnits * hnaPrice);
+    }, 0);
+
+    // Calculate achievement percentages based on sales value vs forecast value
+    const fokusAchievementPercentage = fokusTotalForecastValue > 0 ? 
+      (fokusTotalSalesValue / fokusTotalForecastValue) * 100 : 0;
+    const nonFokusAchievementPercentage = nonFokusTotalForecastValue > 0 ? 
+      (nonFokusTotalSalesValue / nonFokusTotalForecastValue) * 100 : 0;
     
     return {
-      dailySales: todaysSales,
+      mtdSales: mtdTotalSales,
       achievement: achievement,
       targetAchievementPercentage: targetAchievementPercentage,
       metTargetCount: metTargetProducts.length,
@@ -2691,6 +3223,89 @@ function SummaryDashboard() {
       doiOj: 85,
       doiBb: 67,
       doiBk: 92
+    };
+  };
+
+  const processWIPData = (wipData) => {
+    if (!wipData || wipData.length === 0) {
+      return {
+        statusDistribution: [],
+        totalBatches: 0,
+        lateBatches: 0,
+        chartData: {
+          labels: [],
+          datasets: []
+        }
+      };
+    }
+
+    // Group batches by status and calculate values
+    const statusGroups = {};
+    let totalBatches = 0;
+    let lateBatches = 0;
+
+    wipData.forEach(item => {
+      const status = item.status || 'Unknown';
+      const price = item.price || 0;
+      const quantity = item.actual !== null ? item.actual : (item.standard || 0);
+      const value = price * quantity;
+      const duration = item.duration || 0;
+
+      // Count total batches
+      totalBatches++;
+
+      // Count late batches (duration > 38)
+      if (duration > 38) {
+        lateBatches++;
+      }
+
+      // Group by status
+      if (!statusGroups[status]) {
+        statusGroups[status] = {
+          count: 0,
+          totalValue: 0
+        };
+      }
+      statusGroups[status].count++;
+      statusGroups[status].totalValue += value;
+    });
+
+    // Convert to array for chart
+    const statusDistribution = Object.entries(statusGroups).map(([status, data]) => ({
+      status,
+      count: data.count,
+      value: data.totalValue
+    }));
+
+    // Calculate total value for percentages
+    const totalValue = statusDistribution.reduce((sum, item) => sum + item.value, 0);
+
+    // Create chart data
+    const chartData = {
+      labels: statusDistribution.map(item => item.status),
+      datasets: [{
+        data: statusDistribution.map(item => 
+          totalValue > 0 ? ((item.value / totalValue) * 100) : 0
+        ),
+        backgroundColor: [
+          '#10b981', // Green
+          '#f59e0b', // Yellow
+          '#ef4444', // Red
+          '#06b6d4', // Cyan
+          '#8b5cf6', // Purple
+          '#f97316'  // Orange
+        ],
+        borderWidth: 0,
+        cutout: '60%'
+      }]
+    };
+
+    return {
+      statusDistribution,
+      totalBatches,
+      lateBatches,
+      chartData,
+      totalValue
     };
   };
 
@@ -2909,13 +3524,29 @@ function SummaryDashboard() {
       return transactionPeriod >= sixMonthsAgoYYYYMM && transactionPeriod <= threeMonthsAgoYYYYMM;
     });
     
-    // Calculate Return Percentage (assume 5% for now)
-    const returnPercentage = 5;
+    // Calculate Return/Reject Percentage using real data
+    let totalReturnRejectPercentages = 0;
+    let validItemsCount = 0;
+    
+    bbData.forEach(item => {
+      const lastStock = item.last_stock || 0;
+      const totalRetur = item.totalRetur || 0;
+      const totalReject = item.totalReject || 0;
+      const totalReturnReject = totalRetur + totalReject;
+      
+      if (lastStock > 0) {
+        const returnRejectPercentage = (totalReturnReject / lastStock) * 100;
+        totalReturnRejectPercentages += returnRejectPercentage;
+        validItemsCount++;
+      }
+    });
+    
+    const avgReturnRejectPercentage = validItemsCount > 0 ? (totalReturnRejectPercentages / validItemsCount) : 0;
     
     return {
       slowMoving: Math.round((slowMovingItems.length / totalItems) * 100),
       deadStock: Math.round((deadStockItems.length / totalItems) * 100),
-      return: returnPercentage
+      return: Math.round(avgReturnRejectPercentage)
     };
   };
 
@@ -2958,13 +3589,29 @@ function SummaryDashboard() {
       return transactionPeriod >= sixMonthsAgoYYYYMM && transactionPeriod <= threeMonthsAgoYYYYMM;
     });
     
-    // Calculate Return Percentage (assume 5% for now)
-    const returnPercentage = 5;
+    // Calculate Return/Reject Percentage using real data
+    let totalReturnRejectPercentages = 0;
+    let validItemsCount = 0;
+    
+    bkData.forEach(item => {
+      const lastStock = item.last_stock || 0;
+      const totalRetur = item.totalRetur || 0;
+      const totalReject = item.totalReject || 0;
+      const totalReturnReject = totalRetur + totalReject;
+      
+      if (lastStock > 0) {
+        const returnRejectPercentage = (totalReturnReject / lastStock) * 100;
+        totalReturnRejectPercentages += returnRejectPercentage;
+        validItemsCount++;
+      }
+    });
+    
+    const avgReturnRejectPercentage = validItemsCount > 0 ? (totalReturnRejectPercentages / validItemsCount) : 0;
     
     return {
       slowMoving: Math.round((slowMovingItems.length / totalItems) * 100),
       deadStock: Math.round((deadStockItems.length / totalItems) * 100),
-      return: returnPercentage
+      return: Math.round(avgReturnRejectPercentage)
     };
   };
 
@@ -3354,7 +4001,7 @@ function SummaryDashboard() {
                       onClick={handleFokusProductsClick}
                       title="Click to view fokus products achievement details"
                     />
-                    <div className="sales-circle-label">Fokus</div>
+                    <div className="sales-circle-label">Focus</div>
                   </div>
 
                   {/* Chart section spanning 2x2 */}
@@ -3458,8 +4105,8 @@ function SummaryDashboard() {
                     title="Click to view forecast details"
                   >
                     <div className="sales-daily-content">
-                      <div className="sales-circle-label">Daily Sales</div>
-                      <div className="sales-value-extra-large">{formatNumber(data.sales?.dailySales || 0)}</div>
+                      <div className="sales-circle-label">Total Sales MTD</div>
+                      <div className="sales-value-extra-large">{formatNumber(data.sales?.mtdSales || 0)}</div>
                     </div>
                   </div>
 
@@ -3472,7 +4119,7 @@ function SummaryDashboard() {
                       onClick={handleNonFokusProductsClick}
                       title="Click to view non fokus products achievement details"
                     />
-                    <div className="sales-circle-label">Non Fokus</div>
+                    <div className="sales-circle-label">Non Focus</div>
                   </div>
                 </div>
               </div>
@@ -3681,28 +4328,210 @@ function SummaryDashboard() {
 
             {/* WIP */}
             <KPICard title="WIP" className="wip-card">
-              <div style={{ 
+              <div className="wip-content" style={{ 
                 height: '100%', 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'center',
-                flexDirection: 'column',
-                gap: '10px'
+                display: 'grid', 
+                gridTemplateColumns: '1.6fr 1fr 0.9fr',
+                gridTemplateRows: '1fr 1fr',
+                gap: '8px',
               }}>
-                <div style={{
-                  fontSize: '24px',
-                  fontWeight: 'bold',
-                  color: '#6b7280',
-                  textAlign: 'center'
+                {/* Donut Chart with Center Value (2x2) */}
+                <div style={{ 
+                  gridColumn: '1', 
+                  gridRow: '1 / span 2',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  position: 'relative',
+                  maxHeight: '140px'
                 }}>
-                  Coming Soon
+                  {data.wip?.chartData && data.wip?.statusDistribution.length > 0 ? (
+                    <div 
+                      style={{ 
+                        position: 'relative', 
+                        width: '100%', 
+                        height: '100%', 
+                        maxWidth: '130px', 
+                        maxHeight: '130px',
+                        cursor: 'pointer'
+                      }}
+                      onClick={handleWIPClick}
+                      title="Click to view WIP details"
+                    >
+                      <Doughnut 
+                        data={data.wip.chartData}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: true,
+                          aspectRatio: 1,
+                          plugins: {
+                            legend: {
+                              display: false
+                            },
+                            tooltip: {
+                              callbacks: {
+                                label: function(context) {
+                                  const statusData = data.wip?.statusDistribution[context.dataIndex];
+                                  return `${context.label}: ${context.parsed.toFixed(1)}% (${formatNumber(statusData?.value || 0)})`;
+                                }
+                              }
+                            }
+                          },
+                          onClick: handleWIPClick
+                        }}
+                      />
+                      {/* Center Value Display */}
+                      <div style={{
+                        position: 'absolute',
+                        top: '0',
+                        left: '-20px',
+                        right: '0',
+                        bottom: '0',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        pointerEvents: 'none'
+                      }}>
+                        <div style={{
+                          fontSize: '13px',
+                          fontWeight: 'bold',
+                          color: '#1f2937',
+                          textAlign: 'center'
+                        }}>
+                          {formatNumber(data.wip?.totalValue || 0)}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '12px', color: '#9ca3af', textAlign: 'center' }}>
+                      No WIP data
+                    </div>
+                  )}
                 </div>
-                <div style={{
-                  fontSize: '14px',
-                  color: '#9ca3af',
-                  textAlign: 'center'
+
+                {/* Chart Legend (1x2) */}
+                <div style={{ 
+                  gridColumn: '2', 
+                  gridRow: '1 / span 2',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  justifyContent: 'center',
+                  marginLeft: '-50px'
                 }}>
-                  WIP tracking feature is under development
+                  {data.wip?.statusDistribution.slice(0, 3).map((item, index) => (
+                    <div 
+                      key={index} 
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        fontSize: '11px',
+                        color: '#374151',
+                        cursor: 'pointer',
+                        padding: '4px',
+                        borderRadius: '4px',
+                        transition: 'background-color 0.2s'
+                      }}
+                      onClick={handleWIPClick}
+                      title="Click to view WIP details"
+                      onMouseEnter={(e) => e.target.style.backgroundColor = '#f3f4f6'}
+                      onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                    >
+                      <div style={{
+                        width: '10px',
+                        height: '10px',
+                        borderRadius: '50%',
+                        backgroundColor: data.wip?.chartData.datasets[0].backgroundColor[index],
+                        flexShrink: 0
+                      }}></div>
+                      <div style={{ flex: 1, fontWeight: '500' }}>
+                        {item.status} - {item.count} batches ({formatNumber(item.value)})
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* WIP Batches Info Card (1x1) */}
+                <div 
+                  style={{ 
+                    gridColumn: '3', 
+                    gridRow: '1',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: '#f8fafc',
+                    borderRadius: '6px',
+                    padding: '8px',
+                    border: '1px solid #e2e8f0',
+                    minHeight: '50px',
+                    cursor: 'pointer',
+                    transition: 'background-color 0.2s'
+                  }}
+                  onClick={handleWIPBatchesClick}
+                  title="Click to view WIP batches timeline"
+                  onMouseEnter={(e) => e.target.style.backgroundColor = '#e2e8f0'}
+                  onMouseLeave={(e) => e.target.style.backgroundColor = '#f8fafc'}
+                >
+                  <div style={{ 
+                    fontSize: '20px', 
+                    fontWeight: 'bold', 
+                    color: '#1f2937', 
+                    lineHeight: '1',
+                    marginBottom: '3px'
+                  }}>
+                    {data.wip?.totalBatches || 0}
+                  </div>
+                  <div style={{ 
+                    fontSize: '10px', 
+                    color: '#6b7280', 
+                    textAlign: 'center',
+                    fontWeight: '500'
+                  }}>
+                    WIP Batches
+                  </div>
+                </div>
+
+                {/* Late Batches Info Card (1x1) */}
+                <div 
+                  style={{ 
+                    gridColumn: '3', 
+                    gridRow: '2',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: '#fef2f2',
+                    borderRadius: '6px',
+                    padding: '8px',
+                    border: '1px solid #fecaca',
+                    minHeight: '50px',
+                    cursor: 'pointer',
+                    transition: 'background-color 0.2s'
+                  }}
+                  onClick={handleWIPBatchesClick}
+                  title="Click to view WIP batches timeline"
+                  onMouseEnter={(e) => e.target.style.backgroundColor = '#fecaca'}
+                  onMouseLeave={(e) => e.target.style.backgroundColor = '#fef2f2'}
+                >
+                  <div style={{ 
+                    fontSize: '20px', 
+                    fontWeight: 'bold', 
+                    color: '#dc2626', 
+                    lineHeight: '1',
+                    marginBottom: '3px'
+                  }}>
+                    {data.wip?.lateBatches || 0}
+                  </div>
+                  <div style={{ 
+                    fontSize: '10px', 
+                    color: '#6b7280', 
+                    textAlign: 'center',
+                    fontWeight: '500'
+                  }}>
+                    Late Batches
+                  </div>
                 </div>
               </div>
             </KPICard>
@@ -3824,8 +4653,10 @@ function SummaryDashboard() {
                       percentage={data.inventoryBB?.return || 0} 
                       color="#8b5cf6"
                       size={60}
+                      onClick={handleInventoryBBReturnClick}
+                      title="Click to view return/reject items"
                     />
-                    <div className="inventory-label">Return</div>
+                    <div className="inventory-label">Return/Reject</div>
                   </div>
                 </div>
               </div>
@@ -3860,8 +4691,10 @@ function SummaryDashboard() {
                       percentage={data.inventoryBK?.return || 0} 
                       color="#8b5cf6"
                       size={60}
+                      onClick={handleInventoryBKReturnClick}
+                      title="Click to view return/reject items"
                     />
-                    <div className="inventory-label">Return</div>
+                    <div className="inventory-label">Return/Reject</div>
                   </div>
                 </div>
               </div>
@@ -3903,6 +4736,20 @@ function SummaryDashboard() {
           isOpen={coverageModalOpen}
           onClose={() => setCoverageModalOpen(false)}
           forecastData={forecastRawData}
+        />
+        
+        {/* WIP Details Modal */}
+        <WIPDetailsModal 
+          isOpen={wipModalOpen}
+          onClose={() => setWipModalOpen(false)}
+          wipData={wipRawData}
+        />
+        
+        {/* WIP Batches Modal */}
+        <WIPBatchesModal 
+          isOpen={wipBatchesModalOpen}
+          onClose={() => setWipBatchesModalOpen(false)}
+          wipData={wipRawData}
         />
         
         {/* Sales Target Details Modal */}
@@ -3956,6 +4803,22 @@ function SummaryDashboard() {
           onClose={() => setMaterialModalOpen(false)}
           materialData={materialRawData}
           modalConfig={materialModalConfig}
+        />
+
+        {/* Inventory BB Return/Reject Details Modal */}
+        <InventoryReturnRejectDetailsModal 
+          isOpen={inventoryBBReturnModalOpen}
+          onClose={() => setInventoryBBReturnModalOpen(false)}
+          bbbkData={bbbkRawData}
+          itemType="BB"
+        />
+
+        {/* Inventory BK Return/Reject Details Modal */}
+        <InventoryReturnRejectDetailsModal 
+          isOpen={inventoryBKReturnModalOpen}
+          onClose={() => setInventoryBKReturnModalOpen(false)}
+          bbbkData={bbbkRawData}
+          itemType="BK"
         />
       </main>
     </div>

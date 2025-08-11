@@ -76,7 +76,7 @@ function Sidebar() {
         {sidebarMinimized ? (
           <div className="logo-mini">L</div>
         ) : (
-          <img src="/LAPILOGO_White.png" alt="LAPI Logo" className="logo-image" />
+          <img src="./LAPILOGO_White.png" alt="LAPI Logo" className="logo-image" />
         )}
       </div>
 
