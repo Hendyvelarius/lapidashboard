@@ -1500,7 +1500,7 @@ const InventoryReturnRejectDetailsModal = ({ isOpen, onClose, bbbkData, itemType
                         </span>
                         {item.last_stock > 0 && (
                           <span className="product-id" style={{ fontSize: '11px', color: '#f59e0b' }}>
-                            Return/Reject %: {(((item.totalRetur || 0) + (item.totalReject || 0)) / item.last_stock * 100).toFixed(2)}%
+                            Persentase: {(((item.totalRetur || 0) + (item.totalReject || 0)) / item.last_stock * 100).toFixed(2)}%
                           </span>
                         )}
                       </div>
@@ -1529,7 +1529,7 @@ const InventoryReturnRejectDetailsModal = ({ isOpen, onClose, bbbkData, itemType
                         </span>
                         {item.last_stock > 0 && (
                           <span className="product-id" style={{ fontSize: '11px', color: '#ef4444' }}>
-                            Return/Reject %: {(((item.totalRetur || 0) + (item.totalReject || 0)) / item.last_stock * 100).toFixed(2)}%
+                            Persentase: {(((item.totalRetur || 0) + (item.totalReject || 0)) / item.last_stock * 100).toFixed(2)}%
                           </span>
                         )}
                       </div>
@@ -2091,7 +2091,7 @@ const StockOutDetailsModal = ({ isOpen, onClose, stockOutData }) => {
     
     return products.filter(product => {
       const productId = (product.Product_ID || '').toString().toLowerCase();
-      const productName = (product.Product_Name || '').toLowerCase();
+      const productName = (product.Product_NM || '').toLowerCase();
       const search = searchTerm.toLowerCase();
       
       return productId.includes(search) || productName.includes(search);
@@ -2474,7 +2474,7 @@ function SummaryDashboard() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastFetchTime, setLastFetchTime] = useState(null);
-  const [salesChartType, setSalesChartType] = useState('Yearly'); // 'Weekly', 'Daily', or 'Yearly'
+  const [salesChartType, setSalesChartType] = useState('Monthly'); // 'Weekly', 'Daily', or 'Monthly'
   const [salesDropdownOpen, setSalesDropdownOpen] = useState(false);
   const [ofModalOpen, setOfModalOpen] = useState(false);
   const [selectedOfStage, setSelectedOfStage] = useState(null);
@@ -3795,7 +3795,7 @@ function SummaryDashboard() {
           }
         ]
       };
-    } else if (salesChartType === 'Yearly') {
+    } else if (salesChartType === 'Monthly') {
       return {
         labels: data.sales?.yearlyLabels || [],
         datasets: [
@@ -3867,7 +3867,7 @@ function SummaryDashboard() {
             
             if (salesChartType === 'Daily') {
               return `${datasetLabel}: ${value}`;
-            } else if (salesChartType === 'Yearly') {
+            } else if (salesChartType === 'Monthly') {
               return `${datasetLabel}: ${value}`;
             } else if (datasetLabel === 'Cumulative Sales Value') {
               // Calculate weekly sales value (difference from previous week)
@@ -4052,7 +4052,7 @@ function SummaryDashboard() {
                             marginTop: '2px'
                           }}
                         >
-                          {['Daily', 'Weekly', 'Yearly'].map((option) => (
+                          {['Daily', 'Weekly', 'Monthly'].map((option) => (
                             <div
                               key={option}
                               className="dropdown-option"
@@ -4068,9 +4068,9 @@ function SummaryDashboard() {
                                 color: salesChartType === option ? '#3b82f6' : '#374151',
                                 backgroundColor: salesChartType === option ? '#eff6ff' : 'white',
                                 cursor: 'pointer',
-                                borderBottom: option !== 'Yearly' ? '1px solid #e5e7eb' : 'none',
+                                borderBottom: option !== 'Monthly' ? '1px solid #e5e7eb' : 'none',
                                 fontWeight: salesChartType === option ? 'bold' : 'normal',
-                                borderRadius: option === 'Daily' ? '6px 6px 0 0' : option === 'Yearly' ? '0 0 6px 6px' : '0'
+                                borderRadius: option === 'Daily' ? '6px 6px 0 0' : option === 'Monthly' ? '0 0 6px 6px' : '0'
                               }}
                               onMouseEnter={(e) => {
                                 if (salesChartType !== option) {
