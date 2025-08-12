@@ -291,6 +291,357 @@ const InventoryOJDetailsModal = ({ isOpen, onClose, forecastData }) => {
   );
 };
 
+// Inventory OJ Return Details Modal Component
+const InventoryOJReturnDetailsModal = ({ isOpen, onClose, forecastData }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  if (!isOpen || !forecastData) return null;
+
+  // Calculate current period dynamically based on actual date
+  const currentDate = new Date();
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = currentDate.getMonth() + 1;
+  const currentPeriod = currentYear * 100 + currentMonth;
+  
+  // Filter data for current month and items with returns
+  const currentMonthData = forecastData.filter(item => 
+    parseInt(item.Periode) === currentPeriod && (item.retur || 0) > 0
+  );
+  
+  // Filter based on search term
+  const filterItems = (items) => {
+    if (!searchTerm.trim()) return items;
+    
+    return items.filter(item => {
+      const productCode = (item.Product_Code || '').toString().toLowerCase();
+      const productName = (item.Product_NM || '').toLowerCase();
+      const search = searchTerm.toLowerCase();
+      
+      return productCode.includes(search) || productName.includes(search);
+    });
+  };
+
+  const returnItems = filterItems(currentMonthData)
+    .sort((a, b) => {
+      const aValue = (a.retur || 0) * (a.HNA || 0);
+      const bValue = (b.retur || 0) * (b.HNA || 0);
+      return bValue - aValue; // Descending order (highest value first)
+    });
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content of-modal" onClick={e => e.stopPropagation()} style={{ 
+        maxWidth: '800px', 
+        width: '90vw' 
+      }}>
+        <div className="modal-header">
+          <h2>Detail Return Obat Jadi - {currentMonth}/{currentYear}</h2>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <div className="modal-body">
+          {/* Search Bar */}
+          <div className="search-container" style={{ marginBottom: '20px' }}>
+            <input
+              type="text"
+              placeholder="Search by product code or product name..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px 15px',
+                border: '1px solid #d1d5db',
+                borderRadius: '8px',
+                fontSize: '14px',
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+          
+          {/* Search Results Summary */}
+          {searchTerm.trim() && (
+            <div style={{ marginBottom: '15px', fontSize: '14px', color: '#6b7280' }}>
+              Found {returnItems.length} results for "{searchTerm}"
+              {returnItems.length !== currentMonthData.length && 
+                ` (filtered from ${currentMonthData.length} total)`}
+            </div>
+          )}
+          
+          <div className="of-details-container">
+            {/* Return Items */}
+            <div className="of-details-section">
+              <h3 className="of-section-title pending">
+                🔄 Return Items ({returnItems.length})
+              </h3>
+              <div className="of-batch-list">
+                {returnItems.length > 0 ? (
+                  returnItems.map((item, index) => (
+                    <div key={index} className="of-batch-item pending">
+                      <div className="batch-code">Code: {item.Product_Code || 'N/A'}</div>
+                      <div className="product-info">
+                        <span className="product-name">{item.Product_NM || 'N/A'}</span>
+                        <span className="product-id">
+                          Unit Price: {formatNumber(item.HNA || 0)} | 
+                          Returned: {item.retur || 0} | 
+                          Total Value: {formatNumber((item.retur || 0) * (item.HNA || 0))}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-data">Tidak ada item return pada periode ini</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Inventory OJ Slow Moving & Dead Stock Details Modal Component
+const InventoryOJSlowDeadStockDetailsModal = ({ isOpen, onClose, forecastData }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  if (!isOpen || !forecastData) return null;
+
+  // Calculate current period dynamically based on actual date
+  const currentDate = new Date();
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = currentDate.getMonth() + 1;
+  
+  // Calculate period ranges dynamically
+  const last6MonthsPeriods = [];
+  const last3MonthsPeriods = [];
+  
+  for (let i = 5; i >= 0; i--) {
+    const date = new Date(currentYear, currentMonth - 1 - i, 1);
+    const period = date.getFullYear() * 100 + (date.getMonth() + 1);
+    last6MonthsPeriods.push(period);
+    
+    if (i < 3) {
+      last3MonthsPeriods.push(period);
+    }
+  }
+  
+  // Group data by Product_ID to analyze each product's sales and release history
+  const productHistory = {};
+  const productDetails = {};
+  
+  forecastData.forEach(item => {
+    const productId = item.Product_ID;
+    const period = parseInt(item.Periode);
+    const sales = item.Sales || 0;
+    const release = item.Release || 0;
+    const hna = item.HNA || 0;
+    
+    if (!productHistory[productId]) {
+      productHistory[productId] = {};
+      productDetails[productId] = {
+        Product_ID: productId,
+        Product_Code: item.Product_Code || 'N/A',
+        Product_Name: item.Product_Name || item.Product_NM || 'N/A',
+        HNA: hna
+      };
+    }
+    productHistory[productId][period] = { sales, release };
+  });
+  
+  const productIds = Object.keys(productHistory);
+  
+  let allSlowMovingProducts = [];
+  let allDeadStockProducts = [];
+  
+  productIds.forEach(productId => {
+    const history = productHistory[productId];
+    const productDetail = productDetails[productId];
+    
+    // Check for dead stock (0 sales for last 6 months AND stock available in earliest and current periods)
+    const hasSalesInLast6Months = last6MonthsPeriods.some(period => 
+      (history[period]?.sales || 0) > 0
+    );
+    
+    // Check if stock was available in earliest (6 months ago) and current periods
+    const earliestPeriod = last6MonthsPeriods[0]; // First period in the 6-month range
+    const currentPeriod = last6MonthsPeriods[last6MonthsPeriods.length - 1]; // Last period (current)
+    
+    const hasStockInEarliestPeriod = (history[earliestPeriod]?.release || 0) > 0;
+    const hasStockInCurrentPeriod = (history[currentPeriod]?.release || 0) > 0;
+    const currentStock = history[currentPeriod]?.release || 0;
+    
+    const isDeadStock = !hasSalesInLast6Months && hasStockInEarliestPeriod && hasStockInCurrentPeriod;
+    
+    if (isDeadStock) {
+      allDeadStockProducts.push({
+        ...productDetail,
+        currentStock,
+        totalValue: currentStock * (productDetail.HNA || 0)
+      });
+    } else {
+      // Only check for slow moving if not dead stock
+      // Check for slow moving (0 sales for last 3 months AND stock available in earliest and current periods)
+      const hasSalesInLast3Months = last3MonthsPeriods.some(period => 
+        (history[period]?.sales || 0) > 0
+      );
+      
+      // Check if stock was available in earliest (3 months ago) and current periods for slow moving
+      const earliestPeriod3M = last3MonthsPeriods[0]; // First period in the 3-month range
+      const currentPeriod3M = last3MonthsPeriods[last3MonthsPeriods.length - 1]; // Last period (current)
+      
+      const hasStockInEarliestPeriod3M = (history[earliestPeriod3M]?.release || 0) > 0;
+      const hasStockInCurrentPeriod3M = (history[currentPeriod3M]?.release || 0) > 0;
+      const currentStock3M = history[currentPeriod3M]?.release || 0;
+      
+      const isSlowMoving = !hasSalesInLast3Months && hasStockInEarliestPeriod3M && hasStockInCurrentPeriod3M;
+      
+      if (isSlowMoving) {
+        allSlowMovingProducts.push({
+          ...productDetail,
+          currentStock: currentStock3M,
+          totalValue: currentStock3M * (productDetail.HNA || 0)
+        });
+      }
+    }
+  });
+  
+  // Filter based on search term
+  const filterItems = (items) => {
+    if (!searchTerm.trim()) return items;
+    
+    return items.filter(item => {
+      const productCode = (item.Product_Code || '').toString().toLowerCase();
+      const productName = (item.Product_Name || '').toLowerCase();
+      const search = searchTerm.toLowerCase();
+      
+      return productCode.includes(search) || productName.includes(search);
+    });
+  };
+
+  const slowMovingItems = filterItems(allSlowMovingProducts)
+    .sort((a, b) => b.totalValue - a.totalValue); // Descending order (highest value first)
+    
+  const deadStockItems = filterItems(allDeadStockProducts)
+    .sort((a, b) => b.totalValue - a.totalValue); // Descending order (highest value first)
+
+  const totalFiltered = slowMovingItems.length + deadStockItems.length;
+  const totalItems = allSlowMovingProducts.length + allDeadStockProducts.length;
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content of-modal" onClick={e => e.stopPropagation()} style={{ 
+        maxWidth: '1200px', 
+        width: '90vw' 
+      }}>
+        <div className="modal-header">
+          <h2>Detail Slow Moving & Dead Stock Obat Jadi</h2>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <div className="modal-body">
+          <div className="modal-summary" style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            marginBottom: '20px',
+            padding: '15px',
+            backgroundColor: '#f8f9fa',
+            borderRadius: '8px',
+            fontSize: '14px'
+          }}>
+            <div>
+              <strong>Total Products:</strong> {totalItems}
+            </div>
+            <div style={{ color: '#f59e0b' }}>
+              <strong>Slow Moving:</strong> {allSlowMovingProducts.length}
+            </div>
+            <div style={{ color: '#ef4444' }}>
+              <strong>Dead Stock:</strong> {allDeadStockProducts.length}
+            </div>
+          </div>
+          
+          <div className="search-container" style={{ marginBottom: '20px' }}>
+            <input
+              type="text"
+              placeholder="Search by product code or product name..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px 15px',
+                border: '1px solid #d1d5db',
+                borderRadius: '8px',
+                fontSize: '14px',
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+          
+          {searchTerm.trim() && (
+            <div style={{ marginBottom: '15px', fontSize: '14px', color: '#6b7280' }}>
+              Found {totalFiltered} results for "{searchTerm}"
+              {totalFiltered !== totalItems && ` (filtered from ${totalItems} total)`}
+            </div>
+          )}
+          
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', minHeight: '400px' }}>
+            {/* Slow Moving Products */}
+            <div className="of-details-section">
+              <h3 className="of-section-title completed">
+                🐌 Slow Moving ({slowMovingItems.length})
+              </h3>
+              <div className="of-batch-list">
+                {slowMovingItems.length > 0 ? (
+                  slowMovingItems.map((item, index) => (
+                    <div key={index} className="of-batch-item completed">
+                      <div className="batch-code">Code: {item.Product_Code}</div>
+                      <div className="product-info">
+                        <span className="product-name">{item.Product_Name}</span>
+                        <span className="product-id">
+                          Unit Price: {formatNumber(item.HNA || 0)} | 
+                          Stock: {item.currentStock} | 
+                          Total Value: {formatNumber(item.totalValue)}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-data">Tidak ada produk slow moving</div>
+                )}
+              </div>
+            </div>
+
+            {/* Dead Stock Products */}
+            <div className="of-details-section">
+              <h3 className="of-section-title pending">
+                💀 Dead Stock ({deadStockItems.length})
+              </h3>
+              <div className="of-batch-list">
+                {deadStockItems.length > 0 ? (
+                  deadStockItems.map((item, index) => (
+                    <div key={index} className="of-batch-item pending">
+                      <div className="batch-code">Code: {item.Product_Code}</div>
+                      <div className="product-info">
+                        <span className="product-name">{item.Product_Name}</span>
+                        <span className="product-id">
+                          Unit Price: {formatNumber(item.HNA || 0)} | 
+                          Stock: {item.currentStock} | 
+                          Total Value: {formatNumber(item.totalValue)}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-data">Tidak ada produk dead stock</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Sales Target Details Modal Component
 const SalesTargetDetailsModal = ({ isOpen, onClose, forecastData, modalTitle, productGroupFilter }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -1007,8 +1358,18 @@ const InventoryBahanBakuDetailsModal = ({ isOpen, onClose, bbData }) => {
     });
   };
 
-  const slowMovingItems = filterItems(allSlowMovingItems);
-  const deadStockItems = filterItems(allDeadStockItems);
+  const slowMovingItems = filterItems(allSlowMovingItems)
+    .sort((a, b) => {
+      const aValue = (a.last_stock || 0) * (a.UnitPrice || 0);
+      const bValue = (b.last_stock || 0) * (b.UnitPrice || 0);
+      return bValue - aValue; // Descending order (highest value first)
+    });
+  const deadStockItems = filterItems(allDeadStockItems)
+    .sort((a, b) => {
+      const aValue = (a.last_stock || 0) * (a.UnitPrice || 0);
+      const bValue = (b.last_stock || 0) * (b.UnitPrice || 0);
+      return bValue - aValue; // Descending order (highest value first)
+    });
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -1054,15 +1415,22 @@ const InventoryBahanBakuDetailsModal = ({ isOpen, onClose, bbData }) => {
               </h3>
               <div className="of-batch-list">
                 {slowMovingItems.length > 0 ? (
-                  slowMovingItems.map((item, index) => (
-                    <div key={index} className="of-batch-item completed">
-                      <div className="batch-code">Code: {item.item_code}</div>
-                      <div className="product-info">
-                        <span className="product-name">{item.item_name || 'N/A'}</span>
-                        <span className="product-id">Last Transaction: {item.last_transaction_period || 'N/A'}</span>
+                  slowMovingItems.map((item, index) => {
+                    const totalValue = (item.last_stock || 0) * (item.UnitPrice || 0);
+                    return (
+                      <div key={index} className="of-batch-item completed">
+                        <div className="batch-code">Code: {item.item_code}</div>
+                        <div className="product-info">
+                          <span className="product-name">{item.item_name || 'N/A'}</span>
+                          <span className="product-id">
+                            Last Transaction: {item.last_transaction_period || 'N/A'} | 
+                            Stock: {(item.last_stock || 0).toLocaleString()} | 
+                            Total Value: {formatNumber(totalValue)}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div className="no-data">Tidak ada item slow moving</div>
                 )}
@@ -1076,15 +1444,22 @@ const InventoryBahanBakuDetailsModal = ({ isOpen, onClose, bbData }) => {
               </h3>
               <div className="of-batch-list">
                 {deadStockItems.length > 0 ? (
-                  deadStockItems.map((item, index) => (
-                    <div key={index} className="of-batch-item pending">
-                      <div className="batch-code">Code: {item.item_code}</div>
-                      <div className="product-info">
-                        <span className="product-name">{item.item_name || 'N/A'}</span>
-                        <span className="product-id">Last Transaction: {item.last_transaction_period || 'None'}</span>
+                  deadStockItems.map((item, index) => {
+                    const totalValue = (item.last_stock || 0) * (item.UnitPrice || 0);
+                    return (
+                      <div key={index} className="of-batch-item pending">
+                        <div className="batch-code">Code: {item.item_code}</div>
+                        <div className="product-info">
+                          <span className="product-name">{item.item_name || 'N/A'}</span>
+                          <span className="product-id">
+                            Last Transaction: {item.last_transaction_period || 'None'} | 
+                            Stock: {(item.last_stock || 0).toLocaleString()} | 
+                            Total Value: {formatNumber(totalValue)}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div className="no-data">Tidak ada item dead stock</div>
                 )}
@@ -1142,8 +1517,18 @@ const InventoryBahanKemasDetailsModal = ({ isOpen, onClose, bkData }) => {
     });
   };
 
-  const slowMovingItems = filterItems(allSlowMovingItems);
-  const deadStockItems = filterItems(allDeadStockItems);
+  const slowMovingItems = filterItems(allSlowMovingItems)
+    .sort((a, b) => {
+      const aValue = (a.last_stock || 0) * (a.UnitPrice || 0);
+      const bValue = (b.last_stock || 0) * (b.UnitPrice || 0);
+      return bValue - aValue; // Descending order (highest value first)
+    });
+  const deadStockItems = filterItems(allDeadStockItems)
+    .sort((a, b) => {
+      const aValue = (a.last_stock || 0) * (a.UnitPrice || 0);
+      const bValue = (b.last_stock || 0) * (b.UnitPrice || 0);
+      return bValue - aValue; // Descending order (highest value first)
+    });
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -1194,7 +1579,11 @@ const InventoryBahanKemasDetailsModal = ({ isOpen, onClose, bkData }) => {
                       <div className="batch-code">Code: {item.item_code}</div>
                       <div className="product-info">
                         <span className="product-name">{item.item_name || 'N/A'}</span>
-                        <span className="product-id">Last Transaction: {item.last_transaction_period || 'N/A'}</span>
+                        <span className="product-id">
+                          Last Transaction: {item.last_transaction_period || 'N/A'} | 
+                          Stock: {item.last_stock || 0} | 
+                          Total Value: {formatNumber((item.last_stock || 0) * (item.UnitPrice || 0))}
+                        </span>
                       </div>
                     </div>
                   ))
@@ -1216,7 +1605,11 @@ const InventoryBahanKemasDetailsModal = ({ isOpen, onClose, bkData }) => {
                       <div className="batch-code">Code: {item.item_code}</div>
                       <div className="product-info">
                         <span className="product-name">{item.item_name || 'N/A'}</span>
-                        <span className="product-id">Last Transaction: {item.last_transaction_period || 'None'}</span>
+                        <span className="product-id">
+                          Last Transaction: {item.last_transaction_period || 'None'} | 
+                          Stock: {item.last_stock || 0} | 
+                          Total Value: {formatNumber((item.last_stock || 0) * (item.UnitPrice || 0))}
+                        </span>
                       </div>
                     </div>
                   ))
@@ -1271,8 +1664,18 @@ const InventoryBBBKDetailsModal = ({ isOpen, onClose, bbbkData }) => {
     });
   };
 
-  const slowMovingItems = filterItems(allSlowMovingItems);
-  const deadStockItems = filterItems(allDeadStockItems);
+  const slowMovingItems = filterItems(allSlowMovingItems)
+    .sort((a, b) => {
+      const aValue = (a.last_stock || 0) * (a.UnitPrice || 0);
+      const bValue = (b.last_stock || 0) * (b.UnitPrice || 0);
+      return bValue - aValue; // Descending order (highest value first)
+    });
+  const deadStockItems = filterItems(allDeadStockItems)
+    .sort((a, b) => {
+      const aValue = (a.last_stock || 0) * (a.UnitPrice || 0);
+      const bValue = (b.last_stock || 0) * (b.UnitPrice || 0);
+      return bValue - aValue; // Descending order (highest value first)
+    });
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -1318,15 +1721,22 @@ const InventoryBBBKDetailsModal = ({ isOpen, onClose, bbbkData }) => {
               </h3>
               <div className="of-batch-list">
                 {slowMovingItems.length > 0 ? (
-                  slowMovingItems.map((item, index) => (
-                    <div key={index} className="of-batch-item completed">
-                      <div className="batch-code">Code: {item.item_code}</div>
-                      <div className="product-info">
-                        <span className="product-name">{item.item_name || 'N/A'}</span>
-                        <span className="product-id">Last Transaction: {item.last_transaction_period || 'N/A'}</span>
+                  slowMovingItems.map((item, index) => {
+                    const totalValue = (item.last_stock || 0) * (item.UnitPrice || 0);
+                    return (
+                      <div key={index} className="of-batch-item completed">
+                        <div className="batch-code">Code: {item.item_code}</div>
+                        <div className="product-info">
+                          <span className="product-name">{item.item_name || 'N/A'}</span>
+                          <span className="product-id">
+                            Last Transaction: {item.last_transaction_period || 'N/A'} | 
+                            Stock: {(item.last_stock || 0).toLocaleString()} | 
+                            Total Value: {formatNumber(totalValue)}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div className="no-data">Tidak ada item slow moving</div>
                 )}
@@ -1340,15 +1750,22 @@ const InventoryBBBKDetailsModal = ({ isOpen, onClose, bbbkData }) => {
               </h3>
               <div className="of-batch-list">
                 {deadStockItems.length > 0 ? (
-                  deadStockItems.map((item, index) => (
-                    <div key={index} className="of-batch-item pending">
-                      <div className="batch-code">Code: {item.item_code}</div>
-                      <div className="product-info">
-                        <span className="product-name">{item.item_name || 'N/A'}</span>
-                        <span className="product-id">Last Transaction: None</span>
+                  deadStockItems.map((item, index) => {
+                    const totalValue = (item.last_stock || 0) * (item.UnitPrice || 0);
+                    return (
+                      <div key={index} className="of-batch-item pending">
+                        <div className="batch-code">Code: {item.item_code}</div>
+                        <div className="product-info">
+                          <span className="product-name">{item.item_name || 'N/A'}</span>
+                          <span className="product-id">
+                            Last Transaction: None | 
+                            Stock: {(item.last_stock || 0).toLocaleString()} | 
+                            Total Value: {formatNumber(totalValue)}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div className="no-data">Tidak ada item dead stock</div>
                 )}
@@ -1397,9 +1814,24 @@ const InventoryReturnRejectDetailsModal = ({ isOpen, onClose, bbbkData, itemType
     });
   };
 
-  const noReturnRejectItems = filterItems(allNoReturnRejectItems);
-  const returnItems = filterItems(allReturnItems);
-  const rejectItems = filterItems(allRejectItems);
+  const noReturnRejectItems = filterItems(allNoReturnRejectItems)
+    .sort((a, b) => {
+      const aValue = (a.last_stock || 0) * (a.UnitPrice || 0);
+      const bValue = (b.last_stock || 0) * (b.UnitPrice || 0);
+      return bValue - aValue; // Descending order (highest value first)
+    });
+  const returnItems = filterItems(allReturnItems)
+    .sort((a, b) => {
+      const aValue = (a.last_stock || 0) * (a.UnitPrice || 0);
+      const bValue = (b.last_stock || 0) * (b.UnitPrice || 0);
+      return bValue - aValue; // Descending order (highest value first)
+    });
+  const rejectItems = filterItems(allRejectItems)
+    .sort((a, b) => {
+      const aValue = (a.last_stock || 0) * (a.UnitPrice || 0);
+      const bValue = (b.last_stock || 0) * (b.UnitPrice || 0);
+      return bValue - aValue; // Descending order (highest value first)
+    });
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -1466,17 +1898,23 @@ const InventoryReturnRejectDetailsModal = ({ isOpen, onClose, bbbkData, itemType
               </h3>
               <div className="of-batch-list" style={{ maxHeight: '350px', overflowY: 'auto' }}>
                 {noReturnRejectItems.length > 0 ? (
-                  noReturnRejectItems.map((item, index) => (
-                    <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #10b981', marginBottom: '8px' }}>
-                      <div className="batch-code">{item.item_code}</div>
-                      <div className="product-info">
-                        <span className="product-name" style={{ fontSize: '12px' }}>{item.item_name || 'N/A'}</span>
-                        <span className="product-id" style={{ fontSize: '11px' }}>
-                          Stock: {item.last_stock?.toLocaleString() || 0} | Return: 0 | Reject: 0
-                        </span>
+                  noReturnRejectItems.map((item, index) => {
+                    const totalValue = (item.last_stock || 0) * (item.UnitPrice || 0);
+                    return (
+                      <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #10b981', marginBottom: '8px' }}>
+                        <div className="batch-code">{item.item_code}</div>
+                        <div className="product-info">
+                          <span className="product-name" style={{ fontSize: '12px' }}>{item.item_name || 'N/A'}</span>
+                          <span className="product-id" style={{ fontSize: '11px' }}>
+                            Stock: {item.last_stock?.toLocaleString() || 0} | Return: 0 | Reject: 0
+                          </span>
+                          <span className="product-id" style={{ fontSize: '11px', color: '#10b981' }}>
+                            Total Value: {formatNumber(totalValue)}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div className="no-data">Tidak ada item tanpa return/reject</div>
                 )}
@@ -1490,22 +1928,28 @@ const InventoryReturnRejectDetailsModal = ({ isOpen, onClose, bbbkData, itemType
               </h3>
               <div className="of-batch-list" style={{ maxHeight: '350px', overflowY: 'auto' }}>
                 {returnItems.length > 0 ? (
-                  returnItems.map((item, index) => (
-                    <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #f59e0b', marginBottom: '8px' }}>
-                      <div className="batch-code">{item.item_code}</div>
-                      <div className="product-info">
-                        <span className="product-name" style={{ fontSize: '12px' }}>{item.item_name || 'N/A'}</span>
-                        <span className="product-id" style={{ fontSize: '11px' }}>
-                          Stock: {item.last_stock?.toLocaleString() || 0} | Return: {item.totalRetur?.toLocaleString() || 0} | Reject: {item.totalReject?.toLocaleString() || 0}
-                        </span>
-                        {item.last_stock > 0 && (
-                          <span className="product-id" style={{ fontSize: '11px', color: '#f59e0b' }}>
-                            Persentase: {(((item.totalRetur || 0) + (item.totalReject || 0)) / item.last_stock * 100).toFixed(2)}%
+                  returnItems.map((item, index) => {
+                    const totalValue = (item.last_stock || 0) * (item.UnitPrice || 0);
+                    return (
+                      <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #f59e0b', marginBottom: '8px' }}>
+                        <div className="batch-code">{item.item_code}</div>
+                        <div className="product-info">
+                          <span className="product-name" style={{ fontSize: '12px' }}>{item.item_name || 'N/A'}</span>
+                          <span className="product-id" style={{ fontSize: '11px' }}>
+                            Stock: {item.last_stock?.toLocaleString() || 0} | Return: {item.totalRetur?.toLocaleString() || 0} | Reject: {item.totalReject?.toLocaleString() || 0}
                           </span>
-                        )}
+                          <span className="product-id" style={{ fontSize: '11px', color: '#f59e0b' }}>
+                            Total Value: {formatNumber(totalValue)}
+                          </span>
+                          {item.last_stock > 0 && (
+                            <span className="product-id" style={{ fontSize: '11px', color: '#f59e0b' }}>
+                              Return/Reject %: {(((item.totalRetur || 0) + (item.totalReject || 0)) / item.last_stock * 100).toFixed(2)}%
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div className="no-data">Tidak ada item dengan return</div>
                 )}
@@ -1519,22 +1963,28 @@ const InventoryReturnRejectDetailsModal = ({ isOpen, onClose, bbbkData, itemType
               </h3>
               <div className="of-batch-list" style={{ maxHeight: '350px', overflowY: 'auto' }}>
                 {rejectItems.length > 0 ? (
-                  rejectItems.map((item, index) => (
-                    <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #ef4444', marginBottom: '8px' }}>
-                      <div className="batch-code">{item.item_code}</div>
-                      <div className="product-info">
-                        <span className="product-name" style={{ fontSize: '12px' }}>{item.item_name || 'N/A'}</span>
-                        <span className="product-id" style={{ fontSize: '11px' }}>
-                          Stock: {item.last_stock?.toLocaleString() || 0} | Return: {item.totalRetur?.toLocaleString() || 0} | Reject: {item.totalReject?.toLocaleString() || 0}
-                        </span>
-                        {item.last_stock > 0 && (
-                          <span className="product-id" style={{ fontSize: '11px', color: '#ef4444' }}>
-                            Persentase: {(((item.totalRetur || 0) + (item.totalReject || 0)) / item.last_stock * 100).toFixed(2)}%
+                  rejectItems.map((item, index) => {
+                    const totalValue = (item.last_stock || 0) * (item.UnitPrice || 0);
+                    return (
+                      <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #ef4444', marginBottom: '8px' }}>
+                        <div className="batch-code">{item.item_code}</div>
+                        <div className="product-info">
+                          <span className="product-name" style={{ fontSize: '12px' }}>{item.item_name || 'N/A'}</span>
+                          <span className="product-id" style={{ fontSize: '11px' }}>
+                            Stock: {item.last_stock?.toLocaleString() || 0} | Return: {item.totalRetur?.toLocaleString() || 0} | Reject: {item.totalReject?.toLocaleString() || 0}
                           </span>
-                        )}
+                          <span className="product-id" style={{ fontSize: '11px', color: '#ef4444' }}>
+                            Total Value: {formatNumber(totalValue)}
+                          </span>
+                          {item.last_stock > 0 && (
+                            <span className="product-id" style={{ fontSize: '11px', color: '#ef4444' }}>
+                              Return/Reject %: {(((item.totalRetur || 0) + (item.totalReject || 0)) / item.last_stock * 100).toFixed(2)}%
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div className="no-data">Tidak ada item dengan reject</div>
                 )}
@@ -1752,7 +2202,7 @@ const OTADetailsModal = ({ isOpen, onClose, otaData, modalConfig }) => {
   // For OnDelivery and OnTime modals, combine the relevant filtered items
   let combinedItems = [];
   if (modalConfig.type === 'OnDelivery') {
-    combinedItems = filteredData; // For OnDelivery, show all items with 'On Delivery' status
+    combinedItems = filterItems(filteredData); // Apply search filter to OnDelivery items
   } else if (modalConfig.type === 'OnTime') {
     combinedItems = filteredOnTimeItems;
   }
@@ -2484,6 +2934,8 @@ function SummaryDashboard() {
   const [lostSalesModalOpen, setLostSalesModalOpen] = useState(false);
   const [lostSalesRawData, setLostSalesRawData] = useState([]);
   const [inventoryOJModalOpen, setInventoryOJModalOpen] = useState(false);
+  const [inventoryOJSlowDeadStockModalOpen, setInventoryOJSlowDeadStockModalOpen] = useState(false);
+  const [inventoryOJReturnModalOpen, setInventoryOJReturnModalOpen] = useState(false);
   const [inventoryBBBKModalOpen, setInventoryBBBKModalOpen] = useState(false);
   const [inventoryBBModalOpen, setInventoryBBModalOpen] = useState(false);
   const [inventoryBKModalOpen, setInventoryBKModalOpen] = useState(false);
@@ -2744,6 +3196,18 @@ function SummaryDashboard() {
 
   const handleInventoryOJClick = () => {
     setInventoryOJModalOpen(true);
+  };
+
+  const handleInventoryOJSlowMovingClick = () => {
+    setInventoryOJSlowDeadStockModalOpen(true);
+  };
+
+  const handleInventoryOJDeadStockClick = () => {
+    setInventoryOJSlowDeadStockModalOpen(true);
+  };
+
+  const handleInventoryOJReturnClick = () => {
+    setInventoryOJReturnModalOpen(true);
   };
 
   const handleInventoryBBBKClick = () => {
@@ -3359,22 +3823,31 @@ function SummaryDashboard() {
     const bahanBakuItems = materialData.filter(item => item.Item_Type === 'BB');
     const bahanKemasItems = materialData.filter(item => item.Item_Type === 'BK');
 
-    // Calculate fulfilled percentages
-    const calculateFulfilledPercentage = (items) => {
+    // Calculate average availability percentage
+    const calculateAverageAvailabilityPercentage = (items) => {
       if (items.length === 0) return 0;
       
-      const fulfilledItems = items.filter(item => {
+      // Filter out items where needed is 0 or undefined to avoid division by zero
+      const validItems = items.filter(item => (item.needed || 0) > 0);
+      
+      if (validItems.length === 0) return 0;
+      
+      // Calculate individual availability percentages
+      const percentages = validItems.map(item => {
         const lastStock = item.last_stock || 0;
         const needed = item.needed || 0;
-        return lastStock >= needed;
+        // Cap at 100% to avoid skewing the average with overstocked items
+        return Math.min((lastStock / needed) * 100, 100);
       });
       
-      return Math.round((fulfilledItems.length / items.length) * 100);
+      // Calculate average percentage
+      const totalPercentage = percentages.reduce((sum, percentage) => sum + percentage, 0);
+      return Math.round(totalPercentage / percentages.length);
     };
 
     return {
-      bahanBaku: calculateFulfilledPercentage(bahanBakuItems),
-      bahanKemas: calculateFulfilledPercentage(bahanKemasItems)
+      bahanBaku: calculateAverageAvailabilityPercentage(bahanBakuItems),
+      bahanKemas: calculateAverageAvailabilityPercentage(bahanKemasItems)
     };
   };
 
@@ -3393,7 +3866,20 @@ function SummaryDashboard() {
     const currentMonth = currentDate.getMonth() + 1; // getMonth() returns 0-11
     const currentPeriod = currentYear * 100 + currentMonth;
     
-    // Calculate period ranges dynamically
+    // Filter data for current month only for return calculation
+    const currentMonthData = stockData.filter(item => 
+      parseInt(item.Periode) === currentPeriod
+    );
+    
+    // Calculate return value for current month
+    let totalReturnValue = 0;
+    currentMonthData.forEach(item => {
+      const returnQty = item.retur || 0;
+      const unitPrice = item.HNA || 0;
+      totalReturnValue += returnQty * unitPrice;
+    });
+    
+    // Calculate period ranges dynamically for slow moving and dead stock
     const last6MonthsPeriods = [];
     const last3MonthsPeriods = [];
     
@@ -3415,21 +3901,22 @@ function SummaryDashboard() {
       const period = parseInt(item.Periode);
       const sales = item.Sales || 0;
       const release = item.Release || 0;
+      const hna = item.HNA || 0;
       
       if (!productHistory[productId]) {
-        productHistory[productId] = {};
+        productHistory[productId] = { hna };
       }
       productHistory[productId][period] = { sales, release };
     });
     
     const productIds = Object.keys(productHistory);
-    const totalProducts = productIds.length;
     
-    let deadStockCount = 0;
-    let slowMovingCount = 0;
+    let deadStockValue = 0;
+    let slowMovingValue = 0;
     
     productIds.forEach(productId => {
       const history = productHistory[productId];
+      const unitPrice = history.hna || 0;
       
       // Check for dead stock (0 sales for last 6 months AND stock available in earliest and current periods)
       const hasSalesInLast6Months = last6MonthsPeriods.some(period => 
@@ -3442,11 +3929,12 @@ function SummaryDashboard() {
       
       const hasStockInEarliestPeriod = (history[earliestPeriod]?.release || 0) > 0;
       const hasStockInCurrentPeriod = (history[currentPeriod]?.release || 0) > 0;
+      const currentStock = history[currentPeriod]?.release || 0;
       
       const isDeadStock = !hasSalesInLast6Months && hasStockInEarliestPeriod && hasStockInCurrentPeriod;
       
       if (isDeadStock) {
-        deadStockCount++;
+        deadStockValue += currentStock * unitPrice;
       } else {
         // Only check for slow moving if not dead stock
         // Check for slow moving (0 sales for last 3 months AND stock available in earliest and current periods)
@@ -3460,26 +3948,20 @@ function SummaryDashboard() {
         
         const hasStockInEarliestPeriod3M = (history[earliestPeriod3M]?.release || 0) > 0;
         const hasStockInCurrentPeriod3M = (history[currentPeriod3M]?.release || 0) > 0;
+        const currentStock3M = history[currentPeriod3M]?.release || 0;
         
         const isSlowMoving = !hasSalesInLast3Months && hasStockInEarliestPeriod3M && hasStockInCurrentPeriod3M;
         
         if (isSlowMoving) {
-          slowMovingCount++;
+          slowMovingValue += currentStock3M * unitPrice;
         }
       }
     });
     
-    const deadStockPercentage = totalProducts > 0 ? (deadStockCount / totalProducts) * 100 : 0;
-    const slowMovingPercentage = totalProducts > 0 ? (slowMovingCount / totalProducts) * 100 : 0;
-    
-    // For return percentage, we'll use a mock calculation for now
-    // as the return logic wasn't specified for OJ inventory
-    const returnPercentage = 8; // Mock value
-    
     const result = {
-      slowMoving: Math.round(slowMovingPercentage),
-      deadStock: Math.round(deadStockPercentage),
-      return: returnPercentage
+      slowMoving: slowMovingValue,
+      deadStock: deadStockValue,
+      return: totalReturnValue
     };
     
     return result;
@@ -3497,7 +3979,6 @@ function SummaryDashboard() {
       };
     }
 
-    const totalItems = bbData.length;
     const currentDate = new Date();
     const currentYear = currentDate.getFullYear();
     const currentMonth = currentDate.getMonth() + 1;
@@ -3524,29 +4005,26 @@ function SummaryDashboard() {
       return transactionPeriod >= sixMonthsAgoYYYYMM && transactionPeriod <= threeMonthsAgoYYYYMM;
     });
     
-    // Calculate Return/Reject Percentage using real data
-    let totalReturnRejectPercentages = 0;
-    let validItemsCount = 0;
-    
-    bbData.forEach(item => {
-      const lastStock = item.last_stock || 0;
+    // Calculate Return/Reject items (items with return or reject)
+    const returnRejectItems = bbData.filter(item => {
       const totalRetur = item.totalRetur || 0;
       const totalReject = item.totalReject || 0;
-      const totalReturnReject = totalRetur + totalReject;
-      
-      if (lastStock > 0) {
-        const returnRejectPercentage = (totalReturnReject / lastStock) * 100;
-        totalReturnRejectPercentages += returnRejectPercentage;
-        validItemsCount++;
-      }
+      return totalRetur > 0 || totalReject > 0;
     });
     
-    const avgReturnRejectPercentage = validItemsCount > 0 ? (totalReturnRejectPercentages / validItemsCount) : 0;
+    // Calculate total values (last_stock * UnitPrice for each category)
+    const calculateCategoryValue = (items) => {
+      return items.reduce((total, item) => {
+        const lastStock = item.last_stock || 0;
+        const unitPrice = item.UnitPrice || 0;
+        return total + (lastStock * unitPrice);
+      }, 0);
+    };
     
     return {
-      slowMoving: Math.round((slowMovingItems.length / totalItems) * 100),
-      deadStock: Math.round((deadStockItems.length / totalItems) * 100),
-      return: Math.round(avgReturnRejectPercentage)
+      slowMoving: calculateCategoryValue(slowMovingItems),
+      deadStock: calculateCategoryValue(deadStockItems),
+      return: calculateCategoryValue(returnRejectItems)
     };
   };
 
@@ -3562,7 +4040,6 @@ function SummaryDashboard() {
       };
     }
 
-    const totalItems = bkData.length;
     const currentDate = new Date();
     const currentYear = currentDate.getFullYear();
     const currentMonth = currentDate.getMonth() + 1;
@@ -3589,29 +4066,26 @@ function SummaryDashboard() {
       return transactionPeriod >= sixMonthsAgoYYYYMM && transactionPeriod <= threeMonthsAgoYYYYMM;
     });
     
-    // Calculate Return/Reject Percentage using real data
-    let totalReturnRejectPercentages = 0;
-    let validItemsCount = 0;
-    
-    bkData.forEach(item => {
-      const lastStock = item.last_stock || 0;
+    // Calculate Return/Reject items (items with return or reject)
+    const returnRejectItems = bkData.filter(item => {
       const totalRetur = item.totalRetur || 0;
       const totalReject = item.totalReject || 0;
-      const totalReturnReject = totalRetur + totalReject;
-      
-      if (lastStock > 0) {
-        const returnRejectPercentage = (totalReturnReject / lastStock) * 100;
-        totalReturnRejectPercentages += returnRejectPercentage;
-        validItemsCount++;
-      }
+      return totalRetur > 0 || totalReject > 0;
     });
     
-    const avgReturnRejectPercentage = validItemsCount > 0 ? (totalReturnRejectPercentages / validItemsCount) : 0;
+    // Calculate total values (last_stock * UnitPrice for each category)
+    const calculateCategoryValue = (items) => {
+      return items.reduce((total, item) => {
+        const lastStock = item.last_stock || 0;
+        const unitPrice = item.UnitPrice || 0;
+        return total + (lastStock * unitPrice);
+      }, 0);
+    };
     
     return {
-      slowMoving: Math.round((slowMovingItems.length / totalItems) * 100),
-      deadStock: Math.round((deadStockItems.length / totalItems) * 100),
-      return: Math.round(avgReturnRejectPercentage)
+      slowMoving: calculateCategoryValue(slowMovingItems),
+      deadStock: calculateCategoryValue(deadStockItems),
+      return: calculateCategoryValue(returnRejectItems)
     };
   };
 
@@ -4426,7 +4900,7 @@ function SummaryDashboard() {
                         display: 'flex',
                         alignItems: 'center',
                         gap: '6px',
-                        fontSize: '11px',
+                        fontSize: '14px',
                         color: '#374151',
                         cursor: 'pointer',
                         padding: '4px',
@@ -4594,29 +5068,37 @@ function SummaryDashboard() {
                 <div className="inventory-grid">
                   <div className="inventory-item">
                     <CircularProgress 
-                      percentage={data.inventoryOJ?.slowMoving || 0} 
+                      percentage={50} 
                       color="#f59e0b"
                       size={60}
-                      onClick={handleInventoryOJClick}
+                      onClick={handleInventoryOJSlowMovingClick}
                       title="Click to view slow moving products"
+                      centerContent={formatNumber(data.inventoryOJ?.slowMoving || 0)}
+                      showPercentage={false}
                     />
                     <div className="inventory-label">Slow Moving</div>
                   </div>
                   <div className="inventory-item">
                     <CircularProgress 
-                      percentage={data.inventoryOJ?.deadStock || 0} 
+                      percentage={50} 
                       color="#ef4444"
                       size={60}
-                      onClick={handleInventoryOJClick}
+                      onClick={handleInventoryOJDeadStockClick}
                       title="Click to view dead stock products"
+                      centerContent={formatNumber(data.inventoryOJ?.deadStock || 0)}
+                      showPercentage={false}
                     />
                     <div className="inventory-label">Dead Stock</div>
                   </div>
                   <div className="inventory-item">
                     <CircularProgress 
-                      percentage={data.inventoryOJ?.return || 0} 
+                      percentage={50} 
                       color="#8b5cf6"
                       size={60}
+                      onClick={handleInventoryOJReturnClick}
+                      title="Click to view returned products"
+                      centerContent={formatNumber(data.inventoryOJ?.return || 0)}
+                      showPercentage={false}
                     />
                     <div className="inventory-label">Return</div>
                   </div>
@@ -4630,31 +5112,37 @@ function SummaryDashboard() {
                 <div className="inventory-grid">
                   <div className="inventory-item">
                     <CircularProgress 
-                      percentage={data.inventoryBB?.slowMoving || 0} 
+                      percentage={50} 
                       color="#f59e0b"
                       size={60}
                       onClick={handleInventoryBBClick}
                       title="Click to view slow moving items"
+                      centerContent={formatNumber(data.inventoryBB?.slowMoving || 0)}
+                      showPercentage={false}
                     />
                     <div className="inventory-label">Slow Moving</div>
                   </div>
                   <div className="inventory-item">
                     <CircularProgress 
-                      percentage={data.inventoryBB?.deadStock || 0} 
+                      percentage={50} 
                       color="#ef4444"
                       size={60}
                       onClick={handleInventoryBBClick}
                       title="Click to view dead stock items"
+                      centerContent={formatNumber(data.inventoryBB?.deadStock || 0)}
+                      showPercentage={false}
                     />
                     <div className="inventory-label">Dead Stock</div>
                   </div>
                   <div className="inventory-item">
                     <CircularProgress 
-                      percentage={data.inventoryBB?.return || 0} 
+                      percentage={50} 
                       color="#8b5cf6"
                       size={60}
                       onClick={handleInventoryBBReturnClick}
                       title="Click to view return/reject items"
+                      centerContent={formatNumber(data.inventoryBB?.return || 0)}
+                      showPercentage={false}
                     />
                     <div className="inventory-label">Return/Reject</div>
                   </div>
@@ -4668,31 +5156,37 @@ function SummaryDashboard() {
                 <div className="inventory-grid">
                   <div className="inventory-item">
                     <CircularProgress 
-                      percentage={data.inventoryBK?.slowMoving || 0} 
+                      percentage={50} 
                       color="#f59e0b"
                       size={60}
                       onClick={handleInventoryBKClick}
                       title="Click to view slow moving items"
+                      centerContent={formatNumber(data.inventoryBK?.slowMoving || 0)}
+                      showPercentage={false}
                     />
                     <div className="inventory-label">Slow Moving</div>
                   </div>
                   <div className="inventory-item">
                     <CircularProgress 
-                      percentage={data.inventoryBK?.deadStock || 0} 
+                      percentage={50} 
                       color="#ef4444"
                       size={60}
                       onClick={handleInventoryBKClick}
                       title="Click to view dead stock items"
+                      centerContent={formatNumber(data.inventoryBK?.deadStock || 0)}
+                      showPercentage={false}
                     />
                     <div className="inventory-label">Dead Stock</div>
                   </div>
                   <div className="inventory-item">
                     <CircularProgress 
-                      percentage={data.inventoryBK?.return || 0} 
+                      percentage={50} 
                       color="#8b5cf6"
                       size={60}
                       onClick={handleInventoryBKReturnClick}
                       title="Click to view return/reject items"
+                      centerContent={formatNumber(data.inventoryBK?.return || 0)}
+                      showPercentage={false}
                     />
                     <div className="inventory-label">Return/Reject</div>
                   </div>
@@ -4728,6 +5222,20 @@ function SummaryDashboard() {
         <InventoryOJDetailsModal 
           isOpen={inventoryOJModalOpen}
           onClose={() => setInventoryOJModalOpen(false)}
+          forecastData={forecastRawData}
+        />
+        
+        {/* Inventory OJ Return Details Modal */}
+        <InventoryOJReturnDetailsModal 
+          isOpen={inventoryOJReturnModalOpen}
+          onClose={() => setInventoryOJReturnModalOpen(false)}
+          forecastData={forecastRawData}
+        />
+        
+        {/* Inventory OJ Slow Moving & Dead Stock Details Modal */}
+        <InventoryOJSlowDeadStockDetailsModal 
+          isOpen={inventoryOJSlowDeadStockModalOpen}
+          onClose={() => setInventoryOJSlowDeadStockModalOpen(false)}
           forecastData={forecastRawData}
         />
         

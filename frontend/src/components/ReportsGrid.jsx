@@ -13,7 +13,7 @@ const cards = [
   },
   {
     icon: <FaRegFileAlt size={36} color="#ffb347" />,
-    title: "Forecast & Stock Report",
+    title: "Finished Goods",
     desc: "Laporan prediksi, penjualan, dan stok produk.",
   },
   {
@@ -62,7 +62,7 @@ export default function ReportsGrid() {
   const handleCardClick = (card) => {
     if (card.title === "Product Cycle Time" && card.modal) {
       setPctModalOpen(true);
-    } else if (card.title === "Forecast & Stock Report") {
+    } else if (card.title === "Finished Goods") {
       navigate("/stock-forecast");
     }
     // Add more navigation cases for other cards here later
@@ -81,7 +81,7 @@ export default function ReportsGrid() {
 
   return (
     <div className="reports-grid-container">
-      <h2 className="reports-title">Silahkan pilih <span style={{color: '#4f8cff'}}>kategori</span> laporan.</h2>
+      <h2 className="reports-title">Silahkan pilih <span style={{color: '#4f8cff'}}>kategori</span> dashboard.</h2>
       <div className="reports-grid">
         {cards.map((card, idx) => (
           <div

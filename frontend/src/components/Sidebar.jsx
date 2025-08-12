@@ -85,28 +85,28 @@ function Sidebar() {
         {!sidebarMinimized && <div className="sidebar-section-title">MENU UTAMA</div>}
         <nav className="sidebar-nav">
           <Link 
-            to="/" 
-            className={`sidebar-btn${location.pathname === '/' ? ' active' : ''}`}
-            title={sidebarMinimized ? 'Dashboard' : ''}
-          > 
-            <LayoutDashboard size={20} />
-            {!sidebarMinimized && <span>Dashboard</span>}
-          </Link>
-          <Link 
             to="/summary" 
-            className={`sidebar-btn${location.pathname === '/summary' ? ' active' : ''}`}
+            className={`sidebar-btn${location.pathname === '/summary' || location.pathname === '/' ? ' active' : ''}`}
             title={sidebarMinimized ? 'Summary' : ''}
           > 
             <BarChart size={20} />
             {!sidebarMinimized && <span>Summary</span>}
           </Link>
           <Link 
+            to="/beta" 
+            className={`sidebar-btn${location.pathname === '/beta' ? ' active' : ''}`}
+            title={sidebarMinimized ? 'Beta' : ''}
+          > 
+            <LayoutDashboard size={20} />
+            {!sidebarMinimized && <span>Beta</span>}
+          </Link>
+          <Link 
             to="/reports" 
             className={`sidebar-btn${location.pathname === '/reports' ? ' active' : ''}`}
-            title={sidebarMinimized ? 'Reports' : ''}
+            title={sidebarMinimized ? 'Dashboards' : ''}
           > 
             <FileText size={20} />
-            {!sidebarMinimized && <span>Reports</span>}
+            {!sidebarMinimized && <span>Dashboards</span>}
           </Link>
           <Link 
             to="/ai" 
