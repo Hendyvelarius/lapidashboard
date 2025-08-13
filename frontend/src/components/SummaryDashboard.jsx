@@ -367,7 +367,7 @@ const InventoryOJReturnDetailsModal = ({ isOpen, onClose, forecastData }) => {
             </div>
           )}
           
-          <div className="of-details-container">
+          <div className="of-details-container-full">
             {/* Return Items */}
             <div className="of-details-section">
               <h3 className="of-section-title pending">
@@ -1329,15 +1329,21 @@ const InventoryBahanBakuDetailsModal = ({ isOpen, onClose, bbData }) => {
   const sixMonthsAgoYYYYMM = sixMonthsAgo.getFullYear() * 100 + (sixMonthsAgo.getMonth() + 1);
   const threeMonthsAgoYYYYMM = threeMonthsAgo.getFullYear() * 100 + (threeMonthsAgo.getMonth() + 1);
   
-  // Calculate Dead Stock (null last_transaction_period or older than 6 months)
-  const allDeadStockItems = bbData.filter(item => 
-    item.last_transaction_period === null || 
-    item.last_transaction_period === '' ||
-    (item.last_transaction_period && parseInt(item.last_transaction_period) < sixMonthsAgoYYYYMM)
-  );
+  // Calculate Dead Stock (null last_transaction_period or older than 6 months, but must have stock)
+  const allDeadStockItems = bbData.filter(item => {
+    const lastStock = item.last_stock || 0;
+    if (lastStock === 0) return false; // Filter out items with zero stock
+    
+    return item.last_transaction_period === null || 
+           item.last_transaction_period === '' ||
+           (item.last_transaction_period && parseInt(item.last_transaction_period) < sixMonthsAgoYYYYMM);
+  });
   
-  // Calculate Slow Moving (3-6 months old)
+  // Calculate Slow Moving (3-6 months old, but must have stock)
   const allSlowMovingItems = bbData.filter(item => {
+    const lastStock = item.last_stock || 0;
+    if (lastStock === 0) return false; // Filter out items with zero stock
+    
     if (!item.last_transaction_period || item.last_transaction_period === null) {
       return false; // Already counted as dead stock
     }
@@ -1488,15 +1494,21 @@ const InventoryBahanKemasDetailsModal = ({ isOpen, onClose, bkData }) => {
   const sixMonthsAgoYYYYMM = sixMonthsAgo.getFullYear() * 100 + (sixMonthsAgo.getMonth() + 1);
   const threeMonthsAgoYYYYMM = threeMonthsAgo.getFullYear() * 100 + (threeMonthsAgo.getMonth() + 1);
   
-  // Calculate Dead Stock (null last_transaction_period or older than 6 months)
-  const allDeadStockItems = bkData.filter(item => 
-    item.last_transaction_period === null || 
-    item.last_transaction_period === '' ||
-    (item.last_transaction_period && parseInt(item.last_transaction_period) < sixMonthsAgoYYYYMM)
-  );
+  // Calculate Dead Stock (null last_transaction_period or older than 6 months, but must have stock)
+  const allDeadStockItems = bkData.filter(item => {
+    const lastStock = item.last_stock || 0;
+    if (lastStock === 0) return false; // Filter out items with zero stock
+    
+    return item.last_transaction_period === null || 
+           item.last_transaction_period === '' ||
+           (item.last_transaction_period && parseInt(item.last_transaction_period) < sixMonthsAgoYYYYMM);
+  });
   
-  // Calculate Slow Moving (3-6 months old)
+  // Calculate Slow Moving (3-6 months old, but must have stock)
   const allSlowMovingItems = bkData.filter(item => {
+    const lastStock = item.last_stock || 0;
+    if (lastStock === 0) return false; // Filter out items with zero stock
+    
     if (!item.last_transaction_period || item.last_transaction_period === null) {
       return false; // Already counted as dead stock
     }
@@ -1637,13 +1649,19 @@ const InventoryBBBKDetailsModal = ({ isOpen, onClose, bbbkData }) => {
   const threeMonthsAgo = new Date(currentYear, currentMonth - 4, 1);
   const threeMonthsAgoYYYYMM = threeMonthsAgo.getFullYear() * 100 + (threeMonthsAgo.getMonth() + 1);
   
-  // Calculate Dead Stock (null last_transaction_period)
-  const allDeadStockItems = bbbkData.filter(item => 
-    item.last_transaction_period === null || item.last_transaction_period === ''
-  );
+  // Calculate Dead Stock (null last_transaction_period, but must have stock)
+  const allDeadStockItems = bbbkData.filter(item => {
+    const lastStock = item.last_stock || 0;
+    if (lastStock === 0) return false; // Filter out items with zero stock
+    
+    return item.last_transaction_period === null || item.last_transaction_period === '';
+  });
   
-  // Calculate Slow Moving (last_transaction_period older than 3 months)
+  // Calculate Slow Moving (last_transaction_period older than 3 months, but must have stock)
   const allSlowMovingItems = bbbkData.filter(item => {
+    const lastStock = item.last_stock || 0;
+    if (lastStock === 0) return false; // Filter out items with zero stock
+    
     if (!item.last_transaction_period || item.last_transaction_period === null) {
       return false; // Already counted as dead stock
     }
@@ -3989,15 +4007,21 @@ function SummaryDashboard() {
     const sixMonthsAgoYYYYMM = sixMonthsAgo.getFullYear() * 100 + (sixMonthsAgo.getMonth() + 1);
     const threeMonthsAgoYYYYMM = threeMonthsAgo.getFullYear() * 100 + (threeMonthsAgo.getMonth() + 1);
     
-    // Calculate Dead Stock (null last_transaction_period or older than 6 months)
-    const deadStockItems = bbData.filter(item => 
-      item.last_transaction_period === null || 
-      item.last_transaction_period === '' ||
-      (item.last_transaction_period && parseInt(item.last_transaction_period) < sixMonthsAgoYYYYMM)
-    );
+    // Calculate Dead Stock (null last_transaction_period or older than 6 months, but must have stock)
+    const deadStockItems = bbData.filter(item => {
+      const lastStock = item.last_stock || 0;
+      if (lastStock === 0) return false; // Filter out items with zero stock
+      
+      return item.last_transaction_period === null || 
+             item.last_transaction_period === '' ||
+             (item.last_transaction_period && parseInt(item.last_transaction_period) < sixMonthsAgoYYYYMM);
+    });
     
-    // Calculate Slow Moving (3-6 months old)
+    // Calculate Slow Moving (3-6 months old, but must have stock)
     const slowMovingItems = bbData.filter(item => {
+      const lastStock = item.last_stock || 0;
+      if (lastStock === 0) return false; // Filter out items with zero stock
+      
       if (!item.last_transaction_period || item.last_transaction_period === null) {
         return false; // Already counted as dead stock
       }
@@ -4050,15 +4074,21 @@ function SummaryDashboard() {
     const sixMonthsAgoYYYYMM = sixMonthsAgo.getFullYear() * 100 + (sixMonthsAgo.getMonth() + 1);
     const threeMonthsAgoYYYYMM = threeMonthsAgo.getFullYear() * 100 + (threeMonthsAgo.getMonth() + 1);
     
-    // Calculate Dead Stock (null last_transaction_period or older than 6 months)
-    const deadStockItems = bkData.filter(item => 
-      item.last_transaction_period === null || 
-      item.last_transaction_period === '' ||
-      (item.last_transaction_period && parseInt(item.last_transaction_period) < sixMonthsAgoYYYYMM)
-    );
+    // Calculate Dead Stock (null last_transaction_period or older than 6 months, but must have stock)
+    const deadStockItems = bkData.filter(item => {
+      const lastStock = item.last_stock || 0;
+      if (lastStock === 0) return false; // Filter out items with zero stock
+      
+      return item.last_transaction_period === null || 
+             item.last_transaction_period === '' ||
+             (item.last_transaction_period && parseInt(item.last_transaction_period) < sixMonthsAgoYYYYMM);
+    });
     
-    // Calculate Slow Moving (3-6 months old)
+    // Calculate Slow Moving (3-6 months old, but must have stock)
     const slowMovingItems = bkData.filter(item => {
+      const lastStock = item.last_stock || 0;
+      if (lastStock === 0) return false; // Filter out items with zero stock
+      
       if (!item.last_transaction_period || item.last_transaction_period === null) {
         return false; // Already counted as dead stock
       }
@@ -4105,13 +4135,19 @@ function SummaryDashboard() {
     const threeMonthsAgo = new Date(currentYear, currentMonth - 4, 1); // 3 months ago
     const threeMonthsAgoYYYYMM = threeMonthsAgo.getFullYear() * 100 + (threeMonthsAgo.getMonth() + 1);
     
-    // Calculate Dead Stock (null last_transaction_period)
-    const deadStockItems = bbbkData.filter(item => 
-      item.last_transaction_period === null || item.last_transaction_period === ''
-    );
+    // Calculate Dead Stock (null last_transaction_period, but must have stock)
+    const deadStockItems = bbbkData.filter(item => {
+      const lastStock = item.last_stock || 0;
+      if (lastStock === 0) return false; // Filter out items with zero stock
+      
+      return item.last_transaction_period === null || item.last_transaction_period === '';
+    });
     
-    // Calculate Slow Moving (last_transaction_period older than 3 months)
+    // Calculate Slow Moving (last_transaction_period older than 3 months, but must have stock)
     const slowMovingItems = bbbkData.filter(item => {
+      const lastStock = item.last_stock || 0;
+      if (lastStock === 0) return false; // Filter out items with zero stock
+      
       if (!item.last_transaction_period || item.last_transaction_period === null) {
         return false; // Already counted as dead stock
       }
