@@ -2618,7 +2618,11 @@ const StockOutDetailsModal = ({ isOpen, onClose, stockOutData }) => {
                       <div className="batch-code">ID: {product.Product_ID}</div>
                       <div className="product-info">
                         <span className="product-name">{product.Product_NM || 'N/A'}</span>
-                        <span className="product-id">Produksi: {product.Produksi || 0} | WIP: {product.WIP || 0}</span>
+                        <span className="product-id">
+                          Produksi: {product.Produksi || 0} | 
+                          WIP: {product.WIP || 0} | 
+                          Quarantine: {product.StockKarantinaNotRekapBPHP || 0}
+                        </span>
                       </div>
                     </div>
                   ))
@@ -2640,7 +2644,11 @@ const StockOutDetailsModal = ({ isOpen, onClose, stockOutData }) => {
                       <div className="batch-code">ID: {product.Product_ID}</div>
                       <div className="product-info">
                         <span className="product-name">{product.Product_NM || 'N/A'}</span>
-                        <span className="product-id">Produksi: {product.Produksi || 0} | WIP: {product.WIP || 0}</span>
+                        <span className="product-id">
+                          Produksi: {product.Produksi || 0} | 
+                          WIP: {product.WIP || 0} | 
+                          Quarantine: {product.StockKarantinaNotRekapBPHP || 0}
+                        </span>
                       </div>
                     </div>
                   ))
@@ -3049,7 +3057,7 @@ function SummaryDashboard() {
         if (cachedData && !cachedData.isExpired) {
           console.log('📦 Using cached data');
           setData(cachedData.data);
-          setOfRawData(cachedData.rawData.ofData || []);
+          setOfRawData(applyOFBusinessLogic(cachedData.rawData.ofData || []));
           setForecastRawData(cachedData.rawData.forecastData || []);
           setLostSalesRawData(cachedData.rawData.lostSalesData || []);
           setBbbkRawData(cachedData.rawData.bbbkData || []);
@@ -3104,7 +3112,7 @@ function SummaryDashboard() {
         materialData: materialData || []
       };
 
-      setOfRawData(rawData.ofData);
+      setOfRawData(applyOFBusinessLogic(rawData.ofData));
       setForecastRawData(rawData.forecastData);
       setLostSalesRawData(rawData.lostSalesData);
       setBbbkRawData(rawData.bbbkData);
@@ -3791,6 +3799,32 @@ function SummaryDashboard() {
     };
   };
 
+  // Helper function to apply OF business logic
+  const applyOFBusinessLogic = (ofData) => {
+    if (!ofData || ofData.length === 0) return [];
+    
+    return ofData.map(item => {
+      const ruangLingkup = item.RuangLingkup || '';
+      const isSpecialType = ruangLingkup === 'TOLL OUT JASA' || ruangLingkup === 'IMPOR PRODUK';
+      const qaCompleted = item.QA === 1;
+      
+      if (isSpecialType && qaCompleted) {
+        // If it's a special type and QA is completed, mark all intermediate steps as completed
+        return {
+          ...item,
+          PotongStock: 1,
+          Proses: 1,
+          Kemas: 1,
+          Dok: 1,
+          QC: 1
+        };
+      }
+      
+      // Otherwise, return the item as-is
+      return item;
+    });
+  };
+
   const processOrderFulfillmentData = (ofData) => {
     if (!ofData || ofData.length === 0) {
       return {
@@ -3804,16 +3838,19 @@ function SummaryDashboard() {
       };
     }
 
-    const total = ofData.length;
+    // Apply business logic
+    const processedOfData = applyOFBusinessLogic(ofData);
+
+    const total = processedOfData.length;
     
-    // Calculate percentages for each OF stage
-    const turunPpiTrue = ofData.filter(item => item.TurunPPI === 1).length;
-    const potongStockTrue = ofData.filter(item => item.PotongStock === 1).length;
-    const prosesTrue = ofData.filter(item => item.Proses === 1).length;
-    const kemasTrue = ofData.filter(item => item.Kemas === 1).length;
-    const dokumenTrue = ofData.filter(item => item.Dok === 1).length;
-    const qcTrue = ofData.filter(item => item.QC === 1).length;
-    const qaTrue = ofData.filter(item => item.QA === 1).length;
+    // Calculate percentages for each OF stage using the processed data
+    const turunPpiTrue = processedOfData.filter(item => item.TurunPPI === 1).length;
+    const potongStockTrue = processedOfData.filter(item => item.PotongStock === 1).length;
+    const prosesTrue = processedOfData.filter(item => item.Proses === 1).length;
+    const kemasTrue = processedOfData.filter(item => item.Kemas === 1).length;
+    const dokumenTrue = processedOfData.filter(item => item.Dok === 1).length;
+    const qcTrue = processedOfData.filter(item => item.QC === 1).length;
+    const qaTrue = processedOfData.filter(item => item.QA === 1).length;
 
 
     const result = {
@@ -3976,10 +4013,22 @@ function SummaryDashboard() {
       }
     });
     
+    // Calculate total inventory value for current period
+    let totalInventoryValue = 0;
+    currentMonthData.forEach(item => {
+      const stock = item.Release || 0;
+      const unitPrice = item.HNA || 0;
+      totalInventoryValue += stock * unitPrice;
+    });
+    
     const result = {
       slowMoving: slowMovingValue,
       deadStock: deadStockValue,
-      return: totalReturnValue
+      return: totalReturnValue,
+      totalValue: totalInventoryValue,
+      slowMovingPercentage: totalInventoryValue > 0 ? (slowMovingValue / totalInventoryValue) * 100 : 0,
+      deadStockPercentage: totalInventoryValue > 0 ? (deadStockValue / totalInventoryValue) * 100 : 0,
+      returnPercentage: totalInventoryValue > 0 ? (totalReturnValue / totalInventoryValue) * 100 : 0
     };
     
     return result;
@@ -4045,10 +4094,27 @@ function SummaryDashboard() {
       }, 0);
     };
     
+    // Calculate total inventory value for all BB items with stock
+    const totalInventoryValue = bbData
+      .filter(item => (item.last_stock || 0) > 0)
+      .reduce((total, item) => {
+        const lastStock = item.last_stock || 0;
+        const unitPrice = item.UnitPrice || 0;
+        return total + (lastStock * unitPrice);
+      }, 0);
+    
+    const slowMovingValue = calculateCategoryValue(slowMovingItems);
+    const deadStockValue = calculateCategoryValue(deadStockItems);
+    const returnValue = calculateCategoryValue(returnRejectItems);
+    
     return {
-      slowMoving: calculateCategoryValue(slowMovingItems),
-      deadStock: calculateCategoryValue(deadStockItems),
-      return: calculateCategoryValue(returnRejectItems)
+      slowMoving: slowMovingValue,
+      deadStock: deadStockValue,
+      return: returnValue,
+      totalValue: totalInventoryValue,
+      slowMovingPercentage: totalInventoryValue > 0 ? (slowMovingValue / totalInventoryValue) * 100 : 0,
+      deadStockPercentage: totalInventoryValue > 0 ? (deadStockValue / totalInventoryValue) * 100 : 0,
+      returnPercentage: totalInventoryValue > 0 ? (returnValue / totalInventoryValue) * 100 : 0
     };
   };
 
@@ -4112,10 +4178,27 @@ function SummaryDashboard() {
       }, 0);
     };
     
+    // Calculate total inventory value for all BK items with stock
+    const totalInventoryValue = bkData
+      .filter(item => (item.last_stock || 0) > 0)
+      .reduce((total, item) => {
+        const lastStock = item.last_stock || 0;
+        const unitPrice = item.UnitPrice || 0;
+        return total + (lastStock * unitPrice);
+      }, 0);
+    
+    const slowMovingValue = calculateCategoryValue(slowMovingItems);
+    const deadStockValue = calculateCategoryValue(deadStockItems);
+    const returnValue = calculateCategoryValue(returnRejectItems);
+    
     return {
-      slowMoving: calculateCategoryValue(slowMovingItems),
-      deadStock: calculateCategoryValue(deadStockItems),
-      return: calculateCategoryValue(returnRejectItems)
+      slowMoving: slowMovingValue,
+      deadStock: deadStockValue,
+      return: returnValue,
+      totalValue: totalInventoryValue,
+      slowMovingPercentage: totalInventoryValue > 0 ? (slowMovingValue / totalInventoryValue) * 100 : 0,
+      deadStockPercentage: totalInventoryValue > 0 ? (deadStockValue / totalInventoryValue) * 100 : 0,
+      returnPercentage: totalInventoryValue > 0 ? (returnValue / totalInventoryValue) * 100 : 0
     };
   };
 
@@ -5104,7 +5187,7 @@ function SummaryDashboard() {
                 <div className="inventory-grid">
                   <div className="inventory-item">
                     <CircularProgress 
-                      percentage={50} 
+                      percentage={data.inventoryOJ?.slowMovingPercentage || 0} 
                       color="#f59e0b"
                       size={60}
                       onClick={handleInventoryOJSlowMovingClick}
@@ -5116,7 +5199,7 @@ function SummaryDashboard() {
                   </div>
                   <div className="inventory-item">
                     <CircularProgress 
-                      percentage={50} 
+                      percentage={data.inventoryOJ?.deadStockPercentage || 0} 
                       color="#ef4444"
                       size={60}
                       onClick={handleInventoryOJDeadStockClick}
@@ -5128,7 +5211,7 @@ function SummaryDashboard() {
                   </div>
                   <div className="inventory-item">
                     <CircularProgress 
-                      percentage={50} 
+                      percentage={data.inventoryOJ?.returnPercentage || 0} 
                       color="#8b5cf6"
                       size={60}
                       onClick={handleInventoryOJReturnClick}
@@ -5148,7 +5231,7 @@ function SummaryDashboard() {
                 <div className="inventory-grid">
                   <div className="inventory-item">
                     <CircularProgress 
-                      percentage={50} 
+                      percentage={data.inventoryBB?.slowMovingPercentage || 0} 
                       color="#f59e0b"
                       size={60}
                       onClick={handleInventoryBBClick}
@@ -5160,7 +5243,7 @@ function SummaryDashboard() {
                   </div>
                   <div className="inventory-item">
                     <CircularProgress 
-                      percentage={50} 
+                      percentage={data.inventoryBB?.deadStockPercentage || 0} 
                       color="#ef4444"
                       size={60}
                       onClick={handleInventoryBBClick}
@@ -5172,7 +5255,7 @@ function SummaryDashboard() {
                   </div>
                   <div className="inventory-item">
                     <CircularProgress 
-                      percentage={50} 
+                      percentage={data.inventoryBB?.returnPercentage || 0} 
                       color="#8b5cf6"
                       size={60}
                       onClick={handleInventoryBBReturnClick}
@@ -5192,7 +5275,7 @@ function SummaryDashboard() {
                 <div className="inventory-grid">
                   <div className="inventory-item">
                     <CircularProgress 
-                      percentage={50} 
+                      percentage={data.inventoryBK?.slowMovingPercentage || 0} 
                       color="#f59e0b"
                       size={60}
                       onClick={handleInventoryBKClick}
@@ -5204,7 +5287,7 @@ function SummaryDashboard() {
                   </div>
                   <div className="inventory-item">
                     <CircularProgress 
-                      percentage={50} 
+                      percentage={data.inventoryBK?.deadStockPercentage || 0} 
                       color="#ef4444"
                       size={60}
                       onClick={handleInventoryBKClick}
@@ -5216,7 +5299,7 @@ function SummaryDashboard() {
                   </div>
                   <div className="inventory-item">
                     <CircularProgress 
-                      percentage={50} 
+                      percentage={data.inventoryBK?.returnPercentage || 0} 
                       color="#8b5cf6"
                       size={60}
                       onClick={handleInventoryBKReturnClick}
