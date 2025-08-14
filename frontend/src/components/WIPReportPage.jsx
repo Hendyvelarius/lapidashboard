@@ -55,8 +55,7 @@ function InfoCard({ title, value, icon, change, changeType }) {
 }
 
 // TableCard component for displaying WIP data in a modern table
-function TableCard({ title, columns, data, loading, error }) {
-  const [searchTerm, setSearchTerm] = useState("");
+function TableCard({ title, columns, data, loading, error, sortConfig, onSort, onSearch, searchTerm }) {
   
   // Export to Excel handler
   const exportToExcel = () => {
@@ -74,46 +73,6 @@ function TableCard({ title, columns, data, loading, error }) {
     XLSX.writeFile(workbook, `WIP_Report_${new Date().toISOString().slice(0,10)}.xlsx`);
   };
 
-  const [sortConfig, setSortConfig] = useState({ key: null, direction: null });
-
-  const handleSort = (columnKey) => {
-    let direction = 'asc';
-    if (sortConfig.key === columnKey && sortConfig.direction === 'asc') {
-      direction = 'desc';
-    }
-    setSortConfig({ key: columnKey, direction });
-  };
-
-  // Filter and sort data
-  const filteredData = useMemo(() => {
-    if (!searchTerm) return data;
-    const lower = searchTerm.toLowerCase();
-    return data.filter(row =>
-      columns.some(col =>
-        String(row[col.key] ?? "").toLowerCase().includes(lower)
-      )
-    );
-  }, [data, columns, searchTerm]);
-
-  const sortedData = useMemo(() => {
-    if (!sortConfig.key) return filteredData;
-    const sorted = [...filteredData].sort((a, b) => {
-      const aVal = a[sortConfig.key];
-      const bVal = b[sortConfig.key];
-      if (typeof aVal === 'number' && typeof bVal === 'number') {
-        return sortConfig.direction === 'asc' ? aVal - bVal : bVal - aVal;
-      }
-      const aStr = String(aVal || '').toLowerCase();
-      const bStr = String(bVal || '').toLowerCase();
-      if (sortConfig.direction === 'asc') {
-        return aStr.localeCompare(bStr);
-      } else {
-        return bStr.localeCompare(aStr);
-      }
-    });
-    return sorted;
-  }, [filteredData, sortConfig]);
-
   const getSortIcon = (columnKey) => {
     if (sortConfig.key !== columnKey) return '⇅';
     return sortConfig.direction === 'asc' ? '↑' : '↓';
@@ -129,7 +88,7 @@ function TableCard({ title, columns, data, loading, error }) {
             className="table-search-input"
             placeholder="Search..."
             value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
+            onChange={e => onSearch(e.target.value)}
             style={{ padding: '0.4rem 0.8rem', borderRadius: 6, border: '1px solid #e0e7ef', fontSize: '0.95rem', minWidth: 120 }}
             aria-label="Search table"
           />
@@ -170,7 +129,7 @@ function TableCard({ title, columns, data, loading, error }) {
                     <th 
                       key={col.key}
                       className="sortable-header"
-                      onClick={() => handleSort(col.key)}
+                      onClick={() => onSort(col.key)}
                     >
                       <div className="header-content">
                         <span>{col.label}</span>
@@ -181,8 +140,8 @@ function TableCard({ title, columns, data, loading, error }) {
                 </tr>
               </thead>
               <tbody>
-                {sortedData && sortedData.length > 0 ? (
-                  sortedData.map((row, i) => (
+                {data && data.length > 0 ? (
+                  data.map((row, i) => (
                     <tr key={i}>
                       {columns.map((col) => (
                         <td key={col.key}>{row[col.key] || '-'}</td>
@@ -211,6 +170,8 @@ export default function WIPReportPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [tableFilter, setTableFilter] = useState(null);
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: null });
+  const [searchTerm, setSearchTerm] = useState("");
   
   // Chart selection states
   const [smallChartModalOpen, setSmallChartModalOpen] = useState(false);
@@ -267,6 +228,20 @@ export default function WIPReportPage() {
 
   const wipStats = calculateWIPStats(data);
 
+  // Sort handler
+  const handleSort = (columnKey) => {
+    let direction = 'asc';
+    if (sortConfig.key === columnKey && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key: columnKey, direction });
+  };
+
+  // Search handler
+  const handleSearch = (term) => {
+    setSearchTerm(term);
+  };
+
   // Helper function to format numbers
   const formatNumber = (num) => {
     if (num >= 1000000000) return (num / 1000000000).toFixed(1) + 'B';
@@ -274,27 +249,6 @@ export default function WIPReportPage() {
     if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
     return num?.toLocaleString() || '0';
   };
-
-  // Table filtering logic
-  const getFilteredTableData = useMemo(() => {
-    if (!tableFilter) return data;
-    
-    switch (tableFilter.type) {
-      case 'status':
-        return data.filter(item => item.status === tableFilter.value);
-      case 'kelompok':
-        return data.filter(item => item.kelompok === tableFilter.value);
-      case 'dept':
-        return data.filter(item => item.dept === tableFilter.value);
-      case 'durationRange':
-        return data.filter(item => {
-          const duration = item.duration || 0;
-          return duration >= tableFilter.min && duration <= tableFilter.max;
-        });
-      default:
-        return data;
-    }
-  }, [data, tableFilter]);
 
   // Chart click handlers
   const handleCategoryChartClick = (type, elements, chart) => {
@@ -903,11 +857,74 @@ export default function WIPReportPage() {
 
   // Process data for table display
   const processedTableData = useMemo(() => {
-    return data.map(item => ({
-      ...item,
-      formattedValue: formatNumber((item.actual || item.standard || 0) * (item.price || 0))
-    }));
+    return data.map(item => {
+      const rawValue = (item.actual || item.standard || 0) * (item.price || 0);
+      return {
+        ...item,
+        rawValue: rawValue, // Store raw numeric value for sorting
+        formattedValue: formatNumber(rawValue) // Store formatted value for display
+      };
+    });
   }, [data]);
+
+  // Table filtering logic - work with processedTableData directly
+  const getFilteredTableData = useMemo(() => {
+    if (!tableFilter) return processedTableData;
+    
+    switch (tableFilter.type) {
+      case 'status':
+        return processedTableData.filter(item => item.status === tableFilter.value);
+      case 'kelompok':
+        return processedTableData.filter(item => item.kelompok === tableFilter.value);
+      case 'dept':
+        return processedTableData.filter(item => item.dept === tableFilter.value);
+      case 'durationRange':
+        return processedTableData.filter(item => {
+          const duration = item.duration || 0;
+          return duration >= tableFilter.min && duration <= tableFilter.max;
+        });
+      default:
+        return processedTableData;
+    }
+  }, [processedTableData, tableFilter]);
+
+  // Search filtering
+  const searchFilteredData = useMemo(() => {
+    if (!searchTerm) return getFilteredTableData;
+    const lower = searchTerm.toLowerCase();
+    return getFilteredTableData.filter(row =>
+      tableColumns.some(col =>
+        String(row[col.key] ?? "").toLowerCase().includes(lower)
+      )
+    );
+  }, [getFilteredTableData, searchTerm]);
+
+  // Sorting logic
+  const sortedData = useMemo(() => {
+    if (!sortConfig.key) return searchFilteredData;
+    const sorted = [...searchFilteredData].sort((a, b) => {
+      let aVal = a[sortConfig.key];
+      let bVal = b[sortConfig.key];
+      
+      // Special handling for formattedValue - use rawValue for sorting
+      if (sortConfig.key === 'formattedValue') {
+        aVal = a.rawValue || 0;
+        bVal = b.rawValue || 0;
+      }
+      
+      if (typeof aVal === 'number' && typeof bVal === 'number') {
+        return sortConfig.direction === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+      const aStr = String(aVal || '').toLowerCase();
+      const bStr = String(bVal || '').toLowerCase();
+      if (sortConfig.direction === 'asc') {
+        return aStr.localeCompare(bStr);
+      } else {
+        return bStr.localeCompare(aStr);
+      }
+    });
+    return sorted;
+  }, [searchFilteredData, sortConfig]);
 
   // Fetch data when component mounts
   useEffect(() => {
@@ -989,7 +1006,7 @@ export default function WIPReportPage() {
             <InfoCard
               title="Batch Value Tertinggi"
               value={`IDR ${formatNumber(wipStats.highestValueBatch.value)}`}
-              icon="�"
+              icon="💎"
               change={wipStats.highestValueBatch.name}
               changeType="positive"
             />
@@ -1120,7 +1137,7 @@ export default function WIPReportPage() {
                   }
                 </span>
                 <span style={{ color: '#6b7280', fontSize: '14px' }}>
-                  ({getFilteredTableData.length} dari {data.length} item)
+                  ({sortedData.length} dari {data.length} item)
                 </span>
               </div>
               <button
@@ -1146,9 +1163,13 @@ export default function WIPReportPage() {
             <TableCard
               title="WIP Batch Data"
               columns={tableColumns}
-              data={processedTableData.filter((_, index) => getFilteredTableData.includes(data[index]))}
+              data={sortedData}
               loading={loading}
               error={error}
+              sortConfig={sortConfig}
+              onSort={handleSort}
+              onSearch={handleSearch}
+              searchTerm={searchTerm}
             />
           </div>
         </div>

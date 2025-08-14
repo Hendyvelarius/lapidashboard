@@ -3,8 +3,6 @@ const router = express.Router();
 const SqlController = require('../controllers/SqlController');
 const { verifyToken } = require('../middleware/auth');
 
-const openaiRoutes = require('./openai');
-
 // Authentication endpoint to verify and decode JWT token
 router.get('/auth/verify', verifyToken, (req, res) => {
   res.json({
@@ -43,8 +41,5 @@ router.get('/dailySales', SqlController.getDailySales);
 router.get('/lostSales', SqlController.getLostSales);
 router.get('/ota', SqlController.getOTA);
 router.get('/material', SqlController.getMaterial);
-
-// OpenAI chat endpoint
-router.use('/ai', openaiRoutes);
 
 module.exports = router;

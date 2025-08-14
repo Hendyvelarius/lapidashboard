@@ -8,7 +8,6 @@ import PCTReportPage from "./components/PCTReportPage";
 import WIPReportPage from "./components/WIPReportPage";
 import StockForecastDashboard from "./components/StockForecastDashboard";
 import SummaryDashboard from "./components/SummaryDashboard";
-import AIChat from "./components/AIChat";
 
 // Component to handle auth token from URL
 function AuthHandler({ children }) {
@@ -97,7 +96,6 @@ export default function AppRouter() {
         />
         <Route path="/wip" element={<ProtectedRoute><WIPReportPage /></ProtectedRoute>} />
         <Route path="/stock-forecast" element={<ProtectedRoute><StockForecastDashboard /></ProtectedRoute>} />
-        <Route path="/ai" element={<ProtectedRoute><AIChat /></ProtectedRoute>} />
       </Routes>
       </AuthHandler>
       </AuthProvider>

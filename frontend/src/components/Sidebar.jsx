@@ -7,7 +7,6 @@ import {
   ChevronDown,
   User,
   LogOut,
-  MessageCircle,
   BarChart,
   ChevronLeft,
   ChevronRight
@@ -107,14 +106,6 @@ function Sidebar() {
           > 
             <FileText size={20} />
             {!sidebarMinimized && <span>Dashboards</span>}
-          </Link>
-          <Link 
-            to="/ai" 
-            className={`sidebar-btn${location.pathname === '/ai' ? ' active' : ''}`}
-            title={sidebarMinimized ? 'AI Assistant' : ''}
-          > 
-            <MessageCircle size={20} />
-            {!sidebarMinimized && <span>AI Assistant</span>}
           </Link>
           
           {/* Toggle Button - Styled as navigation item but with distinct appearance */}

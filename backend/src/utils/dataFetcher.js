@@ -20,42 +20,7 @@ async function fetchWipData(type = 'raw') {
     const response = await axios.get(`${API_BASE_URL}${endpoint}`);
     const data = response.data;
     
-    // If it's raw WIP data, provide both summary for AI and full data for tables
-    if (type === 'raw' && data.data && data.data.length > 0) {
-      const items = data.data;
-      const summary = {
-        total_items: items.length,
-        categories: {},
-        departments: {},
-        avg_duration: Math.round(items.reduce((sum, item) => sum + (item.duration || 0), 0) / items.length),
-        recent_items: items.slice(0, 15).map(item => ({
-          name: item.name,
-          batch: item.batch,
-          duration: item.duration,
-          kelompok: item.kelompok,
-          dept: item.dept
-        }))
-      };
-      
-      // Count by categories
-      items.forEach(item => {
-        const category = item.kelompok || 'Unknown';
-        summary.categories[category] = (summary.categories[category] || 0) + 1;
-      });
-      
-      // Count by departments
-      items.forEach(item => {
-        const dept = item.dept || 'Unknown';
-        summary.departments[dept] = (summary.departments[dept] || 0) + 1;
-      });
-      
-      return { 
-        summary, 
-        fullData: items, // Include full data for table rendering
-        note: `Showing summary of ${items.length} total items. Full data available for table display.` 
-      };
-    }
-    
+    // Return the data as is
     return response.data;
   } catch (error) {
     console.error('Error fetching WIP data:', error.message);
