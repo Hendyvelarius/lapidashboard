@@ -46,7 +46,8 @@ function WipConverter(rawData) {
     price: item["Product_SalesHNA"],
     standard: item["StdOutput"],
     actual: item["BPHP"],
-    status: item["Status"]
+    status: item["Status"],
+    statusDuration: item["StatusDuration"]
   }));
 }
 

@@ -5,6 +5,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import App from "./App";
 import Reports from "./Reports";
 import PCTReportPage from "./components/PCTReportPage";
+import WIPReportPage from "./components/WIPReportPage";
 import StockForecastDashboard from "./components/StockForecastDashboard";
 import SummaryDashboard from "./components/SummaryDashboard";
 import AIChat from "./components/AIChat";
@@ -94,6 +95,7 @@ export default function AppRouter() {
             </ProtectedRoute>
           }
         />
+        <Route path="/wip" element={<ProtectedRoute><WIPReportPage /></ProtectedRoute>} />
         <Route path="/stock-forecast" element={<ProtectedRoute><StockForecastDashboard /></ProtectedRoute>} />
         <Route path="/ai" element={<ProtectedRoute><AIChat /></ProtectedRoute>} />
       </Routes>

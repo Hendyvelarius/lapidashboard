@@ -1083,7 +1083,14 @@ const WIPDetailsModal = ({ isOpen, onClose, wipData }) => {
             <div>
               <strong>Total Batches:</strong> {totalBatches}
             </div>
-            {Object.keys(allGroupedData).map(status => (
+            {/* Display status counts in specific order: Proses, Kemas, Karantina */}
+            {['Proses', 'Kemas', 'Karantina'].filter(status => allGroupedData[status]).map(status => (
+              <div key={status} style={{ color: getStatusColor(status) }}>
+                <strong>{status}:</strong> {allGroupedData[status].length}
+              </div>
+            ))}
+            {/* Display any additional statuses not in the predefined order */}
+            {Object.keys(allGroupedData).filter(status => !['Proses', 'Kemas', 'Karantina'].includes(status)).map(status => (
               <div key={status} style={{ color: getStatusColor(status) }}>
                 <strong>{status}:</strong> {allGroupedData[status].length}
               </div>
@@ -1116,7 +1123,8 @@ const WIPDetailsModal = ({ isOpen, onClose, wipData }) => {
           )}
           
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', minHeight: '400px' }}>
-            {Object.keys(filteredGroups).map(status => (
+            {/* Display in specific order: Proses, Kemas, Karantina */}
+            {['Proses', 'Kemas', 'Karantina'].filter(status => filteredGroups[status]).map(status => (
               <div key={status} className="of-details-section">
                 <h3 className="of-section-title" style={{ color: getStatusColor(status) }}>
                   📦 {status} ({filteredGroups[status].length})
@@ -1136,7 +1144,40 @@ const WIPDetailsModal = ({ isOpen, onClose, wipData }) => {
                               {batch.name || 'Unknown Product'}
                             </span>
                             <span className="product-id" style={{ fontSize: '11px', color: '#6b7280' }}>
-                              Code: {batch.id || 'N/A'} | Price: {formatNumber(price)} | Units: {formatNumber(units)} | Value: {formatNumber(value)}
+                              Code: {batch.id || 'N/A'} | Status Duration: {batch.statusDuration || 0} days | Duration: {batch.duration || 0} days | Units: {formatNumber(units)} | Price: {formatNumber(price)} | Value: {formatNumber(value)}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="no-data">Tidak ada batch {status}</div>
+                  )}
+                </div>
+              </div>
+            ))}
+            {/* Display any additional statuses not in the predefined order */}
+            {Object.keys(filteredGroups).filter(status => !['Proses', 'Kemas', 'Karantina'].includes(status)).map(status => (
+              <div key={status} className="of-details-section">
+                <h3 className="of-section-title" style={{ color: getStatusColor(status) }}>
+                  📦 {status} ({filteredGroups[status].length})
+                </h3>
+                <div className="of-batch-list" style={{ maxHeight: '350px', overflowY: 'auto' }}>
+                  {filteredGroups[status].length > 0 ? (
+                    filteredGroups[status].map((batch, index) => {
+                      const units = batch.actual !== null && batch.actual !== undefined ? batch.actual : (batch.standard || 0);
+                      const price = batch.price || 0;
+                      const value = price * units;
+                      
+                      return (
+                        <div key={index} className="of-batch-item" style={{ borderLeft: `4px solid ${getStatusColor(status)}`, marginBottom: '8px' }}>
+                          <div className="batch-code">Batch: {batch.batch || 'N/A'}</div>
+                          <div className="product-info">
+                            <span className="product-name" style={{ fontSize: '12px', fontWeight: '500' }}>
+                              {batch.name || 'Unknown Product'}
+                            </span>
+                            <span className="product-id" style={{ fontSize: '11px', color: '#6b7280' }}>
+                              Code: {batch.id || 'N/A'} | Status Duration: {batch.statusDuration || 0} days | Duration: {batch.duration || 0} days | Units: {formatNumber(units)} | Price: {formatNumber(price)} | Value: {formatNumber(value)}
                             </span>
                           </div>
                         </div>
@@ -3760,31 +3801,46 @@ function SummaryDashboard() {
       statusGroups[status].totalValue += value;
     });
 
-    // Convert to array for chart
-    const statusDistribution = Object.entries(statusGroups).map(([status, data]) => ({
-      status,
-      count: data.count,
-      value: data.totalValue
-    }));
+    // Convert to array for chart with specific order: Proses, Kemas, Karantina
+    const statusOrder = ['Proses', 'Kemas', 'Karantina'];
+    const statusDistribution = statusOrder
+      .filter(status => statusGroups[status]) // Only include statuses that exist in data
+      .map(status => ({
+        status,
+        count: statusGroups[status].count,
+        value: statusGroups[status].totalValue
+      }))
+      .concat(
+        // Add any additional statuses not in the predefined order
+        Object.entries(statusGroups)
+          .filter(([status]) => !statusOrder.includes(status))
+          .map(([status, data]) => ({
+            status,
+            count: data.count,
+            value: data.totalValue
+          }))
+      );
 
     // Calculate total value for percentages
     const totalValue = statusDistribution.reduce((sum, item) => sum + item.value, 0);
 
-    // Create chart data
+    // Create chart data with colors matching the status order
+    const getStatusColor = (status) => {
+      switch (status.toLowerCase()) {
+        case 'proses': return '#10b981'; // Green
+        case 'kemas': return '#f59e0b'; // Orange
+        case 'karantina': return '#ef4444'; // Red
+        default: return '#6b7280'; // Gray
+      }
+    };
+
     const chartData = {
       labels: statusDistribution.map(item => item.status),
       datasets: [{
         data: statusDistribution.map(item => 
           totalValue > 0 ? ((item.value / totalValue) * 100) : 0
         ),
-        backgroundColor: [
-          '#10b981', // Green
-          '#f59e0b', // Yellow
-          '#ef4444', // Red
-          '#06b6d4', // Cyan
-          '#8b5cf6', // Purple
-          '#f97316'  // Orange
-        ],
+        backgroundColor: statusDistribution.map(item => getStatusColor(item.status)),
         borderWidth: 0,
         cutout: '60%'
       }]

@@ -17,16 +17,15 @@ const cards = [
     desc: "Laporan prediksi, penjualan, dan stok produk.",
   },
   {
+    icon: <FaBoxOpen size={36} color="#4f8cff" />, // Work In Progress
+    title: "Work In Progress",
+    desc: "Informasi mengenai batch produk yang dalam proses pengerjaan.",
+  },
+  {
     icon: <FaClipboardList size={36} color="#38e6c5" />, // Order Fulfillment
     title: "In Construction",
     desc: "Work in progress, coming soon.",
   },
-  {
-    icon: <FaBoxOpen size={36} color="#4f8cff" />, // Work In Progress
-    title: "In Construction",
-    desc: "Work in progress, coming soon.",
-  },
-
   {
     icon: <FaRegImage size={36} color="#6a5acd" />,
     title: "In Construction",
@@ -64,6 +63,8 @@ export default function ReportsGrid() {
       setPctModalOpen(true);
     } else if (card.title === "Finished Goods") {
       navigate("/stock-forecast");
+    } else if (card.title === "Work In Progress") {
+      navigate("/wip");
     }
     // Add more navigation cases for other cards here later
   };
