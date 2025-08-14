@@ -3805,7 +3805,7 @@ function SummaryDashboard() {
     
     return ofData.map(item => {
       const ruangLingkup = item.RuangLingkup || '';
-      const isSpecialType = ruangLingkup === 'TOLL OUT JASA' || ruangLingkup === 'IMPOR PRODUK';
+      const isSpecialType = ruangLingkup === 'TOLL OUT JASA' || ruangLingkup === 'IMPOR PRODUK' || ruangLingkup === 'TOLL OUT BELI';
       const qaCompleted = item.QA === 1;
       
       if (isSpecialType && qaCompleted) {
