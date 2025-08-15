@@ -3794,11 +3794,13 @@ function SummaryDashboard() {
       if (!statusGroups[status]) {
         statusGroups[status] = {
           count: 0,
-          totalValue: 0
+          totalValue: 0,
+          totalStatusDuration: 0
         };
       }
       statusGroups[status].count++;
       statusGroups[status].totalValue += value;
+      statusGroups[status].totalStatusDuration += (item.statusDuration || 0);
     });
 
     // Convert to array for chart with specific order: Proses, Kemas, Karantina
@@ -3808,7 +3810,8 @@ function SummaryDashboard() {
       .map(status => ({
         status,
         count: statusGroups[status].count,
-        value: statusGroups[status].totalValue
+        value: statusGroups[status].totalValue,
+        avgDuration: Math.round(statusGroups[status].totalStatusDuration / statusGroups[status].count)
       }))
       .concat(
         // Add any additional statuses not in the predefined order
@@ -3817,7 +3820,8 @@ function SummaryDashboard() {
           .map(([status, data]) => ({
             status,
             count: data.count,
-            value: data.totalValue
+            value: data.totalValue,
+            avgDuration: Math.round(data.totalStatusDuration / data.count)
           }))
       );
 
@@ -5021,7 +5025,7 @@ function SummaryDashboard() {
                               callbacks: {
                                 label: function(context) {
                                   const statusData = data.wip?.statusDistribution[context.dataIndex];
-                                  return `${context.label}: ${context.parsed.toFixed(1)}% (${formatNumber(statusData?.value || 0)})`;
+                                  return `${context.label}: ${context.parsed.toFixed(1)}% (${formatNumber(statusData?.value || 0)}) - Avg: ${statusData?.avgDuration || 0} days`;
                                 }
                               }
                             }
@@ -5066,7 +5070,7 @@ function SummaryDashboard() {
                   flexDirection: 'column',
                   gap: '8px',
                   justifyContent: 'center',
-                  marginLeft: '-50px'
+                  marginLeft: '-90px'
                 }}>
                   {data.wip?.statusDistribution.slice(0, 3).map((item, index) => (
                     <div 
@@ -5095,7 +5099,7 @@ function SummaryDashboard() {
                         flexShrink: 0
                       }}></div>
                       <div style={{ flex: 1, fontWeight: '500' }}>
-                        {item.status} - {item.count} batches ({formatNumber(item.value)})
+                        {item.status} - {item.count} batch ({formatNumber(item.value)}) {item.avgDuration} days
                       </div>
                     </div>
                   ))}
