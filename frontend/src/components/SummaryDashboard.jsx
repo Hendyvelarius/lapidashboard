@@ -891,10 +891,10 @@ const CoverageDetailsModal = ({ isOpen, onClose, forecastData }) => {
               <strong>Total Products:</strong> {currentPeriodData.length}
             </div>
             <div style={{ color: '#ef4444' }}>
-              <strong>SKU Under (&lt;100%):</strong> {allUnderProducts.length}
+              <strong>SKU Under (&lt;130%):</strong> {allUnderProducts.length}
             </div>
             <div style={{ color: '#10b981' }}>
-              <strong>SKU Normal (100-299%):</strong> {allNormalProducts.length}
+              <strong>SKU Normal (130-299%):</strong> {allNormalProducts.length}
             </div>
             <div style={{ color: '#f59e0b' }}>
               <strong>SKU Over (≥300%):</strong> {allOverProducts.length}
