@@ -2233,9 +2233,11 @@ const OTADetailsModal = ({ isOpen, onClose, otaData, modalConfig }) => {
     filteredData = otaData.filter(item => 
       item.Status === 'On Delivery'
     );
-  } else if (modalConfig.type === 'OnTime') {
-    // For OnTime click: show items with Status 'On Time'
-    filteredData = otaData.filter(item => item.Status === 'On Time');
+  } else if (modalConfig.type === 'OnTime' || modalConfig.type === 'Early' || modalConfig.type === 'Late') {
+    // For OnTime, Early, Late clicks: show three-list format with all OTA data (excluding On Delivery)
+    filteredData = otaData.filter(item => 
+      item.Status === 'Early' || item.Status === 'On Time' || item.Status === 'Late'
+    );
   }
 
   // Split data by status for three-list display (for BB/BK) or show filtered list
@@ -2258,18 +2260,16 @@ const OTADetailsModal = ({ isOpen, onClose, otaData, modalConfig }) => {
   const filteredOnTimeItems = filterItems(onTimeItems);
   const filteredLateItems = filterItems(lateItems);
 
-  // For OnDelivery and OnTime modals, combine the relevant filtered items
+  // For OnDelivery modal, combine the relevant filtered items
   let combinedItems = [];
   if (modalConfig.type === 'OnDelivery') {
     combinedItems = filterItems(filteredData); // Apply search filter to OnDelivery items
-  } else if (modalConfig.type === 'OnTime') {
-    combinedItems = filteredOnTimeItems;
   }
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content of-modal" onClick={e => e.stopPropagation()} style={{ 
-        maxWidth: (modalConfig.type === 'BB' || modalConfig.type === 'BK') ? '1200px' : '800px', 
+        maxWidth: (modalConfig.type === 'BB' || modalConfig.type === 'BK' || modalConfig.type === 'Early' || modalConfig.type === 'Late' || modalConfig.type === 'OnTime') ? '1200px' : '800px', 
         width: '90vw' 
       }}>
         <div className="modal-header">
@@ -2289,7 +2289,7 @@ const OTADetailsModal = ({ isOpen, onClose, otaData, modalConfig }) => {
             <div>
               <strong>Total Items:</strong> {filteredData.length}
             </div>
-            {(modalConfig.type === 'BB' || modalConfig.type === 'BK') && (
+            {(modalConfig.type === 'BB' || modalConfig.type === 'BK' || modalConfig.type === 'Early' || modalConfig.type === 'Late' || modalConfig.type === 'OnTime') && (
               <>
                 <div style={{ color: '#10b981' }}>
                   <strong>Early:</strong> {earlyItems.length}
@@ -2326,14 +2326,13 @@ const OTADetailsModal = ({ isOpen, onClose, otaData, modalConfig }) => {
             <div style={{ marginBottom: '15px', fontSize: '14px', color: '#6b7280' }}>
               Found {
                 modalConfig.type === 'OnDelivery' ? combinedItems.length :
-                modalConfig.type === 'OnTime' ? combinedItems.length :
                 filteredEarlyItems.length + filteredOnTimeItems.length + filteredLateItems.length
               } results for "{searchTerm}"
             </div>
           )}
           
-          {/* For BB/BK: Show three lists in grid layout like Coverage modal */}
-          {(modalConfig.type === 'BB' || modalConfig.type === 'BK') && (
+          {/* For BB/BK/OnTime/Early/Late: Show three lists in grid layout like Coverage modal */}
+          {(modalConfig.type === 'BB' || modalConfig.type === 'BK' || modalConfig.type === 'OnTime' || modalConfig.type === 'Early' || modalConfig.type === 'Late') && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', minHeight: '400px' }}>
               {/* Early Items */}
               <div className="of-details-section">
@@ -3341,6 +3340,22 @@ function SummaryDashboard() {
     setOtaModalConfig({
       title: 'Detail OTA - On Time Performance',
       type: 'OnTime'
+    });
+    setOtaModalOpen(true);
+  };
+
+  const handleOTAEarlyClick = () => {
+    setOtaModalConfig({
+      title: 'Detail OTA - Early Deliveries',
+      type: 'Early'
+    });
+    setOtaModalOpen(true);
+  };
+
+  const handleOTALateClick = () => {
+    setOtaModalConfig({
+      title: 'Detail OTA - Late Deliveries',
+      type: 'Late'
     });
     setOtaModalOpen(true);
   };
@@ -4402,17 +4417,29 @@ function SummaryDashboard() {
     // Count On Delivery items
     const onDeliveryCount = otaData.filter(item => item.Status === "On Delivery").length;
 
+    // Count Early and Late items
+    const earlyCount = otaData.filter(item => item.Status === "Early").length;
+    const lateCount = otaData.filter(item => item.Status === "Late").length;
+
     // Calculate overall On Time percentage
     const totalOnTime = otaData.filter(item => item.Status === "On Time").length;
     const totalEarlyLate = otaData.filter(item => item.Status === "Early" || item.Status === "Late").length;
     const totalComparable = totalOnTime + totalEarlyLate;
     const onTimePercentage = totalComparable > 0 ? (totalOnTime / totalComparable) * 100 : 0;
 
+    // Calculate Early and Late percentages
+    const earlyPercentage = totalComparable > 0 ? (earlyCount / totalComparable) * 100 : 0;
+    const latePercentage = totalComparable > 0 ? (lateCount / totalComparable) * 100 : 0;
+
     return {
       bahanBakuPercentage: Math.round(bahanBakuPercentage),
       bahanKemasPercentage: Math.round(bahanKemasPercentage),
       onDeliveryCount: onDeliveryCount,
-      onTimePercentage: Math.round(onTimePercentage)
+      earlyCount: earlyCount,
+      lateCount: lateCount,
+      onTimePercentage: Math.round(onTimePercentage),
+      earlyPercentage: Math.round(earlyPercentage),
+      latePercentage: Math.round(latePercentage)
     };
   };
 
@@ -4916,6 +4943,16 @@ function SummaryDashboard() {
                   <div className="ota-info-card" onClick={handleOTAOnTimeClick} title="Click to view On Time performance details">
                     <div className="ota-info-value">{data.ota?.onTimePercentage || 0}%</div>
                     <div className="ota-info-label">On Time</div>
+                  </div>
+                  
+                  {/* Third row: Early and Late percentages */}
+                  <div className="ota-info-card" onClick={handleOTAEarlyClick} title="Click to view Early delivery details">
+                    <div className="ota-info-value">{data.ota?.earlyPercentage || 0}%</div>
+                    <div className="ota-info-label">Early</div>
+                  </div>
+                  <div className="ota-info-card" onClick={handleOTALateClick} title="Click to view Late delivery details">
+                    <div className="ota-info-value">{data.ota?.latePercentage || 0}%</div>
+                    <div className="ota-info-label">Late</div>
                   </div>
                 </div>
               </div>
