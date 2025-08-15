@@ -833,14 +833,14 @@ const CoverageDetailsModal = ({ isOpen, onClose, forecastData }) => {
   const allUnderProducts = currentPeriodData
     .filter(item => {
       const coverage = getCoverage(item);
-      return coverage < 100;
+      return coverage < 130;
     })
     .sort((a, b) => getCoverage(b) - getCoverage(a));
 
   const allNormalProducts = currentPeriodData
     .filter(item => {
       const coverage = getCoverage(item);
-      return coverage >= 100 && coverage <= 299;
+      return coverage >= 130 && coverage <= 299;
     })
     .sort((a, b) => getCoverage(b) - getCoverage(a));
 
@@ -2408,12 +2408,12 @@ const OTADetailsModal = ({ isOpen, onClose, otaData, modalConfig }) => {
             </div>
           )}
 
-          {/* For OnDelivery/OnTime: Show single filtered list */}
-          {(modalConfig.type === 'OnDelivery' || modalConfig.type === 'OnTime') && (
+          {/* For OnDelivery: Show single filtered list */}
+          {(modalConfig.type === 'OnDelivery') && (
             <div className="of-details-container-full">
               <div className="of-details-section">
                 <h3 className="of-section-title completed">
-                  {modalConfig.type === 'OnDelivery' ? '📦 On Delivery Items' : '✅ On Time Items'} ({combinedItems.length})
+                  📦 On Delivery Items ({combinedItems.length})
                 </h3>
                 <div className="of-batch-list">
                   {combinedItems.length > 0 ? (
