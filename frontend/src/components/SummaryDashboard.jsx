@@ -18,12 +18,57 @@ const formatNumber = (num) => {
   return num?.toLocaleString() || '0';
 };
 
+// Helper function to determine color based on coverage percentage
+const getCoverageColor = (percentage) => {
+  if (percentage < 50) return '#ef4444'; // red
+  if (percentage < 100) return '#f59e0b'; // yellow/orange
+  return '#10b981'; // green
+};
+
+// Helper function to create donut chart data for OTA
+const createOTADonutData = (onTime, early, late) => {
+  const total = onTime + early + late;
+  if (total === 0) {
+    return {
+      labels: ['No Data'],
+      datasets: [{
+        data: [1],
+        backgroundColor: ['#e5e7eb'],
+        borderWidth: 0,
+        cutout: '70%'
+      }],
+      notLatePercentage: 0
+    };
+  }
+
+  const notLatePercentage = Math.round(((onTime + early) / total) * 100);
+
+  return {
+    labels: [
+      `On Time: ${onTime} (${Math.round((onTime / total) * 100)}%)`,
+      `Early: ${early} (${Math.round((early / total) * 100)}%)`,
+      `Late: ${late} (${Math.round((late / total) * 100)}%)`
+    ],
+    datasets: [{
+      data: [onTime, early, late],
+      backgroundColor: ['#10b981', '#3b82f6', '#ef4444'], // green, blue, red
+      borderWidth: 0,
+      cutout: '70%'
+    }],
+    // Store total and notLate percentage for center text
+    _total: total,
+    notLatePercentage: notLatePercentage
+  };
+};
+
 // Circular Progress Chart Component with Custom Center Content
 const CircularProgress = ({ percentage, size = 120, strokeWidth = 12, color = '#4f8cff', backgroundColor = '#e5e7eb', title, onClick, className = '', centerContent, showPercentage = true }) => {
   const radius = (size - strokeWidth) / 2;
   const circumference = radius * 2 * Math.PI;
   const strokeDasharray = circumference;
-  const strokeDashoffset = circumference - (percentage / 100) * circumference;
+  // Cap visual percentage at 100% while keeping actual percentage for display
+  const visualPercentage = Math.min(percentage, 100);
+  const strokeDashoffset = circumference - (visualPercentage / 100) * circumference;
 
   return (
     <div 
@@ -808,7 +853,7 @@ const SalesTargetDetailsModal = ({ isOpen, onClose, forecastData, modalTitle, pr
 };
 
 // Coverage Details Modal Component
-const CoverageDetailsModal = ({ isOpen, onClose, forecastData }) => {
+const CoverageDetailsModal = ({ isOpen, onClose, forecastData, productGroupFilter = null, modalTitle = "Detail Coverage Stock FG" }) => {
   const [searchTerm, setSearchTerm] = useState('');
   
   if (!isOpen || !forecastData) return null;
@@ -817,10 +862,17 @@ const CoverageDetailsModal = ({ isOpen, onClose, forecastData }) => {
   const currentDate = new Date();
   const currentPeriod = `${currentDate.getFullYear()}${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
   
-  // Filter forecast data by current period
-  const currentPeriodData = forecastData.filter(item => 
+  // Filter forecast data by current period and optionally by product group
+  let currentPeriodData = forecastData.filter(item => 
     String(item.Periode || '').toString() === currentPeriod
   );
+
+  // Apply product group filter if provided
+  if (productGroupFilter) {
+    currentPeriodData = currentPeriodData.filter(item => 
+      item.Product_Group === productGroupFilter
+    );
+  }
 
   // Calculate coverage percentage for a product
   const getCoverage = (product) => {
@@ -874,7 +926,7 @@ const CoverageDetailsModal = ({ isOpen, onClose, forecastData }) => {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content of-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '1200px', width: '90vw' }}>
         <div className="modal-header">
-          <h2>Detail Coverage Stock FG</h2>
+          <h2>{modalTitle}</h2>
           <button className="modal-close" onClick={onClose}>&times;</button>
         </div>
         <div className="modal-body">
@@ -3012,6 +3064,8 @@ function SummaryDashboard() {
   const [wipModalOpen, setWipModalOpen] = useState(false);
   const [wipBatchesModalOpen, setWipBatchesModalOpen] = useState(false);
   const [coverageModalOpen, setCoverageModalOpen] = useState(false);
+  const [coverageFokusModalOpen, setCoverageFokusModalOpen] = useState(false);
+  const [coverageNonFokusModalOpen, setCoverageNonFokusModalOpen] = useState(false);
   const [pctModalOpen, setPctModalOpen] = useState(false);
   const [pctRawData, setPctRawData] = useState([]);
   const [otaRawData, setOtaRawData] = useState([]);
@@ -3167,6 +3221,8 @@ function SummaryDashboard() {
         inventory: processInventoryData(forecastData || []),
         stockOut: processStockOutData(forecastData || [], lostSalesData || []),
         coverage: processCoverageData(forecastData || []),
+        coverageFokus: processCoverageFokusData(forecastData || []),
+        coverageNonFokus: processCoverageNonFokusData(forecastData || []),
         whOccupancy: processWHOccupancyData(wipData.data || []),
         orderFulfillment: processOrderFulfillmentData(ofData || []),
         materialAvailability: processMaterialAvailabilityData(materialData || []),
@@ -3194,6 +3250,8 @@ function SummaryDashboard() {
         inventory: processInventoryData([]),
         stockOut: processStockOutData([], []),
         coverage: processCoverageData([]),
+        coverageFokus: processCoverageFokusData([]),
+        coverageNonFokus: processCoverageNonFokusData([]),
         whOccupancy: processWHOccupancyData([]),
         orderFulfillment: {
           turunPpi: 78,
@@ -3300,6 +3358,14 @@ function SummaryDashboard() {
     setCoverageModalOpen(true);
   };
 
+  const handleCoverageFokusClick = () => {
+    setCoverageFokusModalOpen(true);
+  };
+
+  const handleCoverageNonFokusClick = () => {
+    setCoverageNonFokusModalOpen(true);
+  };
+
   const handleWIPClick = () => {
     setWipModalOpen(true);
   };
@@ -3328,37 +3394,11 @@ function SummaryDashboard() {
     setOtaModalOpen(true);
   };
 
-  const handleOTAOnDeliveryClick = () => {
-    setOtaModalConfig({
-      title: 'Detail OTA - On Delivery',
-      type: 'OnDelivery'
-    });
-    setOtaModalOpen(true);
-  };
-
-  const handleOTAOnTimeClick = () => {
-    setOtaModalConfig({
-      title: 'Detail OTA - On Time Performance',
-      type: 'OnTime'
-    });
-    setOtaModalOpen(true);
-  };
-
-  const handleOTAEarlyClick = () => {
-    setOtaModalConfig({
-      title: 'Detail OTA - Early Deliveries',
-      type: 'Early'
-    });
-    setOtaModalOpen(true);
-  };
-
-  const handleOTALateClick = () => {
-    setOtaModalConfig({
-      title: 'Detail OTA - Late Deliveries',
-      type: 'Late'
-    });
-    setOtaModalOpen(true);
-  };
+  // Removed unused OTA handlers since we now use donut charts instead of individual cards
+  // const handleOTAOnDeliveryClick = () => { ... };
+  // const handleOTAOnTimeClick = () => { ... };
+  // const handleOTAEarlyClick = () => { ... };
+  // const handleOTALateClick = () => { ... };
 
   const handleMaterialBahanBakuClick = () => {
     setMaterialModalConfig({
@@ -3715,6 +3755,130 @@ function SummaryDashboard() {
     // Filter data by current period
     const currentPeriodData = stockData.filter(item => 
       String(item.Periode || '').toString() === currentPeriod
+    );
+    
+    if (currentPeriodData.length === 0) {
+      return {
+        percentage: 0,
+        under: 0,
+        over: 0
+      };
+    }
+    
+    let underCount = 0;
+    let overCount = 0;
+    let totalCoveragePercentage = 0;
+    let validProductsCount = 0;
+    
+    currentPeriodData.forEach(item => {
+      const forecast = item.Forecast || 0;
+      const stock = item.Release || 0;
+      
+      if (forecast > 0) {
+        const coveragePercentage = (stock / forecast) * 100;
+        
+        // Count Under/Over stock based on new criteria
+        if (coveragePercentage < 130) {
+          underCount++;
+        } else if (coveragePercentage >= 300) {
+          overCount++;
+        }
+        // Note: Products with 130-299% coverage are considered "normal" and not counted in under/over
+        
+        totalCoveragePercentage += coveragePercentage;
+        validProductsCount++;
+      }
+    });
+    
+    // Calculate average coverage percentage across all products
+    const averageCoverage = validProductsCount > 0 ? totalCoveragePercentage / validProductsCount : 0;
+    
+    return {
+      percentage: Math.round(averageCoverage),
+      under: underCount,
+      over: overCount
+    };
+  };
+
+  const processCoverageFokusData = (stockData) => {
+    if (!stockData || stockData.length === 0) {
+      return {
+        percentage: 0,
+        under: 0,
+        over: 0
+      };
+    }
+
+    // Get current period (YYYYMM format)
+    const currentDate = new Date();
+    const currentPeriod = `${currentDate.getFullYear()}${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+    
+    // Filter data by current period and Focus products only
+    const currentPeriodData = stockData.filter(item => 
+      String(item.Periode || '').toString() === currentPeriod &&
+      item.Product_Group === "1. PRODUK FOKUS"
+    );
+    
+    if (currentPeriodData.length === 0) {
+      return {
+        percentage: 0,
+        under: 0,
+        over: 0
+      };
+    }
+    
+    let underCount = 0;
+    let overCount = 0;
+    let totalCoveragePercentage = 0;
+    let validProductsCount = 0;
+    
+    currentPeriodData.forEach(item => {
+      const forecast = item.Forecast || 0;
+      const stock = item.Release || 0;
+      
+      if (forecast > 0) {
+        const coveragePercentage = (stock / forecast) * 100;
+        
+        // Count Under/Over stock based on new criteria
+        if (coveragePercentage < 130) {
+          underCount++;
+        } else if (coveragePercentage >= 300) {
+          overCount++;
+        }
+        // Note: Products with 130-299% coverage are considered "normal" and not counted in under/over
+        
+        totalCoveragePercentage += coveragePercentage;
+        validProductsCount++;
+      }
+    });
+    
+    // Calculate average coverage percentage across all products
+    const averageCoverage = validProductsCount > 0 ? totalCoveragePercentage / validProductsCount : 0;
+    
+    return {
+      percentage: Math.round(averageCoverage),
+      under: underCount,
+      over: overCount
+    };
+  };
+
+  const processCoverageNonFokusData = (stockData) => {
+    if (!stockData || stockData.length === 0) {
+      return {
+        percentage: 0,
+        under: 0,
+        over: 0
+      };
+    }
+
+    // Get current period (YYYYMM format)
+    const currentDate = new Date();
+    const currentPeriod = `${currentDate.getFullYear()}${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+    
+    // Filter data by current period and Non Focus products only
+    const currentPeriodData = stockData.filter(item => 
+      String(item.Periode || '').toString() === currentPeriod &&
+      item.Product_Group === "2. PRODUK NON FOKUS"
     );
     
     if (currentPeriodData.length === 0) {
@@ -4394,7 +4558,9 @@ function SummaryDashboard() {
         bahanBakuPercentage: 0,
         bahanKemasPercentage: 0,
         onDeliveryCount: 0,
-        onTimePercentage: 0
+        onTimePercentage: 0,
+        bahanBaku: { onTime: 0, early: 0, late: 0 },
+        bahanKemas: { onTime: 0, early: 0, late: 0 }
       };
     }
 
@@ -4402,17 +4568,19 @@ function SummaryDashboard() {
     const bahanBakuData = otaData.filter(item => item.item_type === "BB");
     const bahanKemasData = otaData.filter(item => item.item_type === "BK");
 
-    // Calculate Bahan Baku percentage (On Time vs Early + Late)
+    // Calculate Bahan Baku data
     const bbOnTime = bahanBakuData.filter(item => item.Status === "On Time").length;
-    const bbEarlyLate = bahanBakuData.filter(item => item.Status === "Early" || item.Status === "Late").length;
-    const bbTotal = bbOnTime + bbEarlyLate;
-    const bahanBakuPercentage = bbTotal > 0 ? (bbOnTime / bbTotal) * 100 : 0;
+    const bbEarly = bahanBakuData.filter(item => item.Status === "Early").length;
+    const bbLate = bahanBakuData.filter(item => item.Status === "Late").length;
+    const bbTotal = bbOnTime + bbEarly + bbLate;
+    const bahanBakuPercentage = bbTotal > 0 ? ((bbOnTime + bbEarly) / bbTotal) * 100 : 0; // "Not Late" = Early + On Time
 
-    // Calculate Bahan Kemas percentage (On Time vs Early + Late)
+    // Calculate Bahan Kemas data
     const bkOnTime = bahanKemasData.filter(item => item.Status === "On Time").length;
-    const bkEarlyLate = bahanKemasData.filter(item => item.Status === "Early" || item.Status === "Late").length;
-    const bkTotal = bkOnTime + bkEarlyLate;
-    const bahanKemasPercentage = bkTotal > 0 ? (bkOnTime / bkTotal) * 100 : 0;
+    const bkEarly = bahanKemasData.filter(item => item.Status === "Early").length;
+    const bkLate = bahanKemasData.filter(item => item.Status === "Late").length;
+    const bkTotal = bkOnTime + bkEarly + bkLate;
+    const bahanKemasPercentage = bkTotal > 0 ? ((bkOnTime + bkEarly) / bkTotal) * 100 : 0; // "Not Late" = Early + On Time
 
     // Count On Delivery items
     const onDeliveryCount = otaData.filter(item => item.Status === "On Delivery").length;
@@ -4439,7 +4607,17 @@ function SummaryDashboard() {
       lateCount: lateCount,
       onTimePercentage: Math.round(onTimePercentage),
       earlyPercentage: Math.round(earlyPercentage),
-      latePercentage: Math.round(latePercentage)
+      latePercentage: Math.round(latePercentage),
+      bahanBaku: {
+        onTime: bbOnTime,
+        early: bbEarly,
+        late: bbLate
+      },
+      bahanKemas: {
+        onTime: bkOnTime,
+        early: bkEarly,
+        late: bkLate
+      }
     };
   };
 
@@ -4883,76 +5061,209 @@ function SummaryDashboard() {
               </div>
             </KPICard>
 
-            {/* Material Availability */}
-            <KPICard title="MATERIAL AVAILABILITY" className="material-availability-card">
-              <div className="material-availability-content">
-                <div className="material-info-card">
-                  <CircularProgress 
-                    percentage={data.materialAvailability?.bahanBaku || 0} 
-                    color="#10b981"
-                    size={60}
-                    onClick={handleMaterialBahanBakuClick}
-                    title="Click to view Bahan Baku details"
-                  />
-                  <div className="material-info-label">Bahan Baku</div>
+            {/* Coverage Stock FG */}
+            <KPICard title="COVERAGE STOCK FG" className="coverage-card">
+              <div className="coverage-content-split">
+                {/* Focus Products Section */}
+                <div className="coverage-section">
+                  <div className="coverage-content">
+                    <div className="coverage-main">
+                      <div className="coverage-section-title">PRODUK FOKUS</div>
+                      <CircularProgress 
+                        percentage={data.coverageFokus?.percentage || 0} 
+                        color={getCoverageColor(data.coverageFokus?.percentage || 0)}
+                        size={80}
+                        onClick={handleCoverageFokusClick}
+                        title="Click to view focus coverage details"
+                      />
+                    </div>
+                    <div className="coverage-info-cards">
+                      <div className="coverage-info-card" onClick={handleCoverageFokusClick} style={{ cursor: 'pointer' }} title="Click to view focus coverage details">
+                        <div className="coverage-info-value">{data.coverageFokus?.under || 0}</div>
+                        <div className="coverage-info-label">SKU Under</div>
+                      </div>
+                      <div className="coverage-info-card" onClick={handleCoverageFokusClick} style={{ cursor: 'pointer' }} title="Click to view focus coverage details">
+                        <div className="coverage-info-value">{data.coverageFokus?.over || 0}</div>
+                        <div className="coverage-info-label">SKU Over</div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div className="material-info-card">
-                  <CircularProgress 
-                    percentage={data.materialAvailability?.bahanKemas || 0} 
-                    color="#f59e0b"
-                    size={60}
-                    onClick={handleMaterialBahanKemasClick}
-                    title="Click to view Bahan Kemas details"
-                  />
-                  <div className="material-info-label">Bahan Kemas</div>
+
+                {/* Non Focus Products Section */}
+                <div className="coverage-section">
+                  <div className="coverage-content">
+                    <div className="coverage-main">
+                      <div className="coverage-section-title">PRODUK NON FOKUS</div>
+                      <CircularProgress 
+                        percentage={data.coverageNonFokus?.percentage || 0} 
+                        color={getCoverageColor(data.coverageNonFokus?.percentage || 0)}
+                        size={80}
+                        onClick={handleCoverageNonFokusClick}
+                        title="Click to view non-focus coverage details"
+                      />
+                    </div>
+                    <div className="coverage-info-cards">
+                      <div className="coverage-info-card" onClick={handleCoverageNonFokusClick} style={{ cursor: 'pointer' }} title="Click to view non-focus coverage details">
+                        <div className="coverage-info-value">{data.coverageNonFokus?.under || 0}</div>
+                        <div className="coverage-info-label">SKU Under</div>
+                      </div>
+                      <div className="coverage-info-card" onClick={handleCoverageNonFokusClick} style={{ cursor: 'pointer' }} title="Click to view non-focus coverage details">
+                        <div className="coverage-info-value">{data.coverageNonFokus?.over || 0}</div>
+                        <div className="coverage-info-label">SKU Over</div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </KPICard>
 
             {/* OTA */}
             <KPICard title="OTA" className="ota-card">
-              <div className="ota-content">
-                <div className="ota-grid">
-                  {/* First row: Bahan Baku and Bahan Kemas percentages */}
-                  <div className="ota-circle-item">
-                    <CircularProgress 
-                      percentage={data.ota?.bahanBakuPercentage || 0} 
-                      color="#10b981"
-                      size={60}
-                      onClick={handleOTABahanBakuClick}
-                      title="Click to view Bahan Baku OTA details"
-                    />
-                    <div className="ota-label">Bahan Baku</div>
+              <div className="ota-content-split">
+                {/* Bahan Baku Section */}
+                <div className="ota-section">
+                  <div className="ota-section-title">BAHAN BAKU</div>
+                  <div className="ota-chart-container">
+                    <div style={{ height: '100%', width: '100%', position: 'relative' }}>
+                      <div 
+                        onClick={handleOTABahanBakuClick} 
+                        style={{ 
+                          position: 'absolute', 
+                          top: '0', 
+                          left: '0', 
+                          width: '65%', // Cover only chart area, not legend
+                          height: '100%', 
+                          cursor: 'pointer',
+                          zIndex: 5
+                        }} 
+                        title="Click to view Bahan Baku OTA details"
+                      />
+                      <Doughnut 
+                        data={createOTADonutData(
+                          data.ota?.bahanBaku?.onTime || 0,
+                          data.ota?.bahanBaku?.early || 0,
+                          data.ota?.bahanBaku?.late || 0
+                        )}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: false,
+                          plugins: {
+                            legend: {
+                              display: true,
+                              position: 'right',
+                              labels: {
+                                boxWidth: 10,
+                                padding: 8,
+                                font: {
+                                  size: 12
+                                },
+                                usePointStyle: true
+                              }
+                            },
+                            tooltip: {
+                              callbacks: {
+                                label: function(context) {
+                                  const label = context.label || '';
+                                  return label; // Already formatted with count and percentage
+                                }
+                              }
+                            }
+                          }
+                        }}
+                      />
+                      {/* Center Text Overlay - Also clickable */}
+                      <div 
+                        className="ota-center-text"
+                        onClick={handleOTABahanBakuClick}
+                        style={{ cursor: 'pointer', zIndex: 10 }}
+                        title="Click to view Bahan Baku OTA details"
+                      >
+                        <div className="ota-center-percentage">
+                          {(() => {
+                            const onTime = data.ota?.bahanBaku?.onTime || 0;
+                            const early = data.ota?.bahanBaku?.early || 0;
+                            const late = data.ota?.bahanBaku?.late || 0;
+                            const total = onTime + early + late;
+                            return total > 0 ? Math.round(((onTime + early) / total) * 100) : 0;
+                          })()}%
+                        </div>
+                        <div className="ota-center-label">Not Late</div>
+                      </div>
+                    </div>
                   </div>
-                  <div className="ota-circle-item">
-                    <CircularProgress 
-                      percentage={data.ota?.bahanKemasPercentage || 0} 
-                      color="#f59e0b"
-                      size={60}
-                      onClick={handleOTABahanKemasClick}
-                      title="Click to view Bahan Kemas OTA details"
-                    />
-                    <div className="ota-label">Bahan Kemas</div>
-                  </div>
-                  
-                  {/* Second row: On Delivery count and On Time percentage */}
-                  <div className="ota-info-card" onClick={handleOTAOnDeliveryClick} title="Click to view On Delivery details">
-                    <div className="ota-info-value">{data.ota?.onDeliveryCount || 0}</div>
-                    <div className="ota-info-label">On Delivery</div>
-                  </div>
-                  <div className="ota-info-card" onClick={handleOTAOnTimeClick} title="Click to view On Time performance details">
-                    <div className="ota-info-value">{data.ota?.onTimePercentage || 0}%</div>
-                    <div className="ota-info-label">On Time</div>
-                  </div>
-                  
-                  {/* Third row: Early and Late percentages */}
-                  <div className="ota-info-card" onClick={handleOTAEarlyClick} title="Click to view Early delivery details">
-                    <div className="ota-info-value">{data.ota?.earlyPercentage || 0}%</div>
-                    <div className="ota-info-label">Early</div>
-                  </div>
-                  <div className="ota-info-card" onClick={handleOTALateClick} title="Click to view Late delivery details">
-                    <div className="ota-info-value">{data.ota?.latePercentage || 0}%</div>
-                    <div className="ota-info-label">Late</div>
+                </div>
+
+                {/* Bahan Kemas Section */}
+                <div className="ota-section">
+                  <div className="ota-section-title">BAHAN KEMAS</div>
+                  <div className="ota-chart-container">
+                    <div style={{ height: '100%', width: '100%', position: 'relative' }}>
+                      <div 
+                        onClick={handleOTABahanKemasClick} 
+                        style={{ 
+                          position: 'absolute', 
+                          top: '0', 
+                          left: '0', 
+                          width: '65%', // Cover only chart area, not legend
+                          height: '100%', 
+                          cursor: 'pointer',
+                          zIndex: 5
+                        }} 
+                        title="Click to view Bahan Kemas OTA details"
+                      />
+                      <Doughnut 
+                        data={createOTADonutData(
+                          data.ota?.bahanKemas?.onTime || 0,
+                          data.ota?.bahanKemas?.early || 0,
+                          data.ota?.bahanKemas?.late || 0
+                        )}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: false,
+                          plugins: {
+                            legend: {
+                              display: true,
+                              position: 'right',
+                              labels: {
+                                boxWidth: 10,
+                                padding: 8,
+                                font: {
+                                  size: 12
+                                },
+                                usePointStyle: true
+                              }
+                            },
+                            tooltip: {
+                              callbacks: {
+                                label: function(context) {
+                                  const label = context.label || '';
+                                  return label; // Already formatted with count and percentage
+                                }
+                              }
+                            }
+                          }
+                        }}
+                      />
+                      {/* Center Text Overlay - Also clickable */}
+                      <div 
+                        className="ota-center-text"
+                        onClick={handleOTABahanKemasClick}
+                        style={{ cursor: 'pointer', zIndex: 10 }}
+                        title="Click to view Bahan Kemas OTA details"
+                      >
+                        <div className="ota-center-percentage">
+                          {(() => {
+                            const onTime = data.ota?.bahanKemas?.onTime || 0;
+                            const early = data.ota?.bahanKemas?.early || 0;
+                            const late = data.ota?.bahanKemas?.late || 0;
+                            const total = onTime + early + late;
+                            return total > 0 ? Math.round(((onTime + early) / total) * 100) : 0;
+                          })()}%
+                        </div>
+                        <div className="ota-center-label">Not Late</div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -4991,27 +5302,28 @@ function SummaryDashboard() {
               </div>
             </KPICard>
 
-            {/* Coverage Stock FG */}
-            <KPICard title="COVERAGE STOCK FG" className="coverage-card">
-              <div className="coverage-content">
-                <div className="coverage-main">
+            {/* Material Availability */}
+            <KPICard title="MATERIAL AVAILABILITY" className="material-availability-card">
+              <div className="material-availability-content">
+                <div className="material-info-card">
                   <CircularProgress 
-                    percentage={data.coverage?.percentage || 0} 
-                    color="#1f2937"
-                    size={90}
-                    onClick={handleCoverageClick}
-                    title="Click to view coverage details"
+                    percentage={data.materialAvailability?.bahanBaku || 0} 
+                    color="#10b981"
+                    size={60}
+                    onClick={handleMaterialBahanBakuClick}
+                    title="Click to view Bahan Baku details"
                   />
+                  <div className="material-info-label">Bahan Baku</div>
                 </div>
-                <div className="coverage-info-cards">
-                  <div className="coverage-info-card" onClick={handleCoverageClick} style={{ cursor: 'pointer' }} title="Click to view coverage details">
-                    <div className="coverage-info-value">{data.coverage?.under || 0}</div>
-                    <div className="coverage-info-label">SKU Under</div>
-                  </div>
-                  <div className="coverage-info-card" onClick={handleCoverageClick} style={{ cursor: 'pointer' }} title="Click to view coverage details">
-                    <div className="coverage-info-value">{data.coverage?.over || 0}</div>
-                    <div className="coverage-info-label">SKU Over</div>
-                  </div>
+                <div className="material-info-card">
+                  <CircularProgress 
+                    percentage={data.materialAvailability?.bahanKemas || 0} 
+                    color="#f59e0b"
+                    size={60}
+                    onClick={handleMaterialBahanKemasClick}
+                    title="Click to view Bahan Kemas details"
+                  />
+                  <div className="material-info-label">Bahan Kemas</div>
                 </div>
               </div>
             </KPICard>
@@ -5460,6 +5772,24 @@ function SummaryDashboard() {
           isOpen={coverageModalOpen}
           onClose={() => setCoverageModalOpen(false)}
           forecastData={forecastRawData}
+        />
+        
+        {/* Coverage Fokus Details Modal */}
+        <CoverageDetailsModal 
+          isOpen={coverageFokusModalOpen}
+          onClose={() => setCoverageFokusModalOpen(false)}
+          forecastData={forecastRawData}
+          productGroupFilter="1. PRODUK FOKUS"
+          modalTitle="Detail Coverage Stock FG - Produk Fokus"
+        />
+        
+        {/* Coverage Non-Fokus Details Modal */}
+        <CoverageDetailsModal 
+          isOpen={coverageNonFokusModalOpen}
+          onClose={() => setCoverageNonFokusModalOpen(false)}
+          forecastData={forecastRawData}
+          productGroupFilter="2. PRODUK NON FOKUS"
+          modalTitle="Detail Coverage Stock FG - Produk Non Fokus"
         />
         
         {/* WIP Details Modal */}
