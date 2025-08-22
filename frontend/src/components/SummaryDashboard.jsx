@@ -3484,6 +3484,54 @@ function SummaryDashboard() {
   };
 
   // Data processing functions
+  // Helper function to calculate week boundaries according to business rules
+  const calculateWeekBoundaries = (year, month) => {
+    const firstDayOfMonth = new Date(year, month - 1, 1);
+    const lastDayOfMonth = new Date(year, month, 0);
+    const daysInMonth = lastDayOfMonth.getDate();
+    
+    // Find the first Sunday of the month or before
+    const firstSunday = new Date(firstDayOfMonth);
+    const dayOfWeek = firstSunday.getDay(); // 0 = Sunday, 1 = Monday, etc.
+    
+    // If month doesn't start on Sunday, include the days before the first full week in Week 1
+    let week1Start = 1;
+    let week1End;
+    
+    if (dayOfWeek === 0) {
+      // Month starts on Sunday - Week 1 starts normally
+      week1End = 7;
+    } else {
+      // Month doesn't start on Sunday - absorb earlier days into Week 1
+      week1End = 7 + (7 - dayOfWeek);
+      if (week1End > daysInMonth) week1End = daysInMonth;
+    }
+    
+    const weeks = [];
+    weeks.push({ start: week1Start, end: Math.min(week1End, daysInMonth) });
+    
+    // Calculate Week 2 and Week 3 (full weeks)
+    let currentStart = week1End + 1;
+    for (let weekNum = 2; weekNum <= 3; weekNum++) {
+      if (currentStart <= daysInMonth) {
+        const weekEnd = Math.min(currentStart + 6, daysInMonth);
+        weeks.push({ start: currentStart, end: weekEnd });
+        currentStart = weekEnd + 1;
+      } else {
+        weeks.push({ start: daysInMonth + 1, end: daysInMonth }); // Empty week
+      }
+    }
+    
+    // Week 4 gets all remaining days
+    if (currentStart <= daysInMonth) {
+      weeks.push({ start: currentStart, end: daysInMonth });
+    } else {
+      weeks.push({ start: daysInMonth + 1, end: daysInMonth }); // Empty week
+    }
+    
+    return weeks;
+  };
+
   const processSalesData = (stockData, dailySalesData) => {
     const today = new Date();
     const currentMonth = today.getMonth() + 1;
@@ -3534,34 +3582,36 @@ function SummaryDashboard() {
     });
     const targetAchievementPercentage = totalProducts > 0 ? (metTargetProducts.length / totalProducts) * 100 : 0;
 
-    // Calculate weekly cumulative sales value data for chart
-    const weeklyData = {};
-    const cumulativeWeeklyData = [];
+    // Calculate weekly sales data using new business logic
+    const weekBoundaries = calculateWeekBoundaries(currentYear, currentMonth);
+    const weeklyData = [0, 0, 0, 0]; // W1, W2, W3, W4
+    const weeklyForecastData = [0, 0, 0, 0]; // Weekly forecast = monthly forecast / 4
+    const weeklyForecast = monthlyForecast / 4;
     
-    // Group sales by week for current month
+    // Fill weekly forecast for all 4 weeks
+    for (let i = 0; i < 4; i++) {
+      weeklyForecastData[i] = weeklyForecast;
+    }
+    
+    // Group sales by the new week boundaries
     dailySalesData.forEach(item => {
       const itemDate = new Date(item.SalesDate);
       const itemMonth = itemDate.getMonth() + 1;
       const itemYear = itemDate.getFullYear();
+      const itemDay = itemDate.getDate();
       
       // Only include current month data
       if (itemMonth === currentMonth && itemYear === currentYear) {
-        const week = item.WeekOfMonth;
-        if (!weeklyData[week]) {
-          weeklyData[week] = 0;
+        // Find which week this day belongs to
+        for (let weekIndex = 0; weekIndex < weekBoundaries.length; weekIndex++) {
+          const week = weekBoundaries[weekIndex];
+          if (itemDay >= week.start && itemDay <= week.end) {
+            weeklyData[weekIndex] += item.TotalPrice || 0;
+            break;
+          }
         }
-        weeklyData[week] += item.TotalPrice || 0;
       }
     });
-
-    // Convert to cumulative chart data
-    let cumulativeTotal = 0;
-    for (let week = 1; week <= 5; week++) {
-      const weeklyAmount = weeklyData[week] || 0;
-      cumulativeTotal += weeklyAmount;
-      
-      cumulativeWeeklyData.push(cumulativeTotal);
-    }
 
     // Calculate current week's daily sales value data
     const currentWeekStart = new Date(today);
@@ -3677,7 +3727,8 @@ function SummaryDashboard() {
       nonFokusAchievementPercentage: nonFokusAchievementPercentage,
       fokusProductCount: fokusProducts.length,
       nonFokusProductCount: nonFokusProducts.length,
-      weeklyData: cumulativeWeeklyData,
+      weeklyData: weeklyData,
+      weeklyForecastData: weeklyForecastData,
       dailyWeekData: dailyWeekData,
       dailyWeekLabels: dailyWeekLabels,
       monthlyForecast: monthlyForecast,
@@ -4681,24 +4732,25 @@ function SummaryDashboard() {
       };
     } else {
       return {
-        labels: ['W1', 'W2', 'W3', 'W4', 'W5'],
+        labels: ['W1', 'W2', 'W3', 'W4'],
         datasets: [
           {
-            label: 'Cumulative Sales Value',
+            label: 'Weekly Sales',
             data: data.sales?.weeklyData || [],
-            borderColor: '#3b82f6',
-            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            borderColor: '#9333ea',
+            backgroundColor: 'rgba(147, 51, 234, 0.3)',
+            borderWidth: 2,
             fill: true,
             tension: 0.4
           },
           {
-            label: 'Monthly Forecast',
-            data: new Array(5).fill(data.sales?.monthlyForecast || 0),
+            label: 'Weekly Forecast',
+            data: data.sales?.weeklyForecastData || [],
             borderColor: '#ef4444',
-            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+            backgroundColor: 'rgba(239, 68, 68, 0.3)',
+            borderWidth: 2,
+            borderDash: [5, 5],
             fill: false,
-            tension: 0,
-            borderDash: [5, 5]
           }
         ]
       };
@@ -4727,18 +4779,10 @@ function SummaryDashboard() {
               return `${datasetLabel}: ${value}`;
             } else if (salesChartType === 'Monthly') {
               return `${datasetLabel}: ${value}`;
-            } else if (datasetLabel === 'Cumulative Sales Value') {
-              // Calculate weekly sales value (difference from previous week)
-              const weekIndex = context.dataIndex;
-              const weeklyData = data.sales?.weeklyData || [];
-              const currentWeekTotal = weeklyData[weekIndex] || 0;
-              const previousWeekTotal = weekIndex > 0 ? (weeklyData[weekIndex - 1] || 0) : 0;
-              const weeklySales = currentWeekTotal - previousWeekTotal;
-              
-              return [
-                `Weekly Sales Value: ${formatNumber(weeklySales)}`,
-                `Monthly Sales Value: ${value}`
-              ];
+            } else if (datasetLabel === 'Weekly Sales') {
+              return `${datasetLabel}: ${value}`;
+            } else if (datasetLabel === 'Weekly Forecast') {
+              return `${datasetLabel}: ${value}`;
             }
             return `${datasetLabel}: ${value}`;
           }
