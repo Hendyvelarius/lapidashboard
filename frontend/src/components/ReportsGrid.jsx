@@ -22,9 +22,9 @@ const cards = [
     desc: "Informasi mengenai batch produk yang dalam proses pengerjaan.",
   },
   {
-    icon: <FaClipboardList size={36} color="#38e6c5" />, // Order Fulfillment
-    title: "In Construction",
-    desc: "Work in progress, coming soon.",
+    icon: <FaClipboardList size={36} color="#38e6c5" />, // Production
+    title: "Production",
+    desc: "Informasi proses produksi secara keseluruhan.",
   },
   {
     icon: <FaRegImage size={36} color="#6a5acd" />,
@@ -65,6 +65,8 @@ export default function ReportsGrid() {
       navigate("/stock-forecast");
     } else if (card.title === "Work In Progress") {
       navigate("/wip");
+    } else if (card.title === "Production") {
+      navigate("/production");
     }
     // Add more navigation cases for other cards here later
   };

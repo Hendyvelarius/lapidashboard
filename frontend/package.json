@@ -12,6 +12,7 @@
   "dependencies": {
     "@agney/react-loading": "^0.1.2",
     "chart.js": "^4.5.0",
+    "chartjs-plugin-datalabels": "^2.2.0",
     "dotenv": "^17.2.1",
     "lucide-react": "^0.525.0",
     "react": "^19.1.0",

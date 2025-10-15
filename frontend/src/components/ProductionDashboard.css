@@ -1,0 +1,175 @@
+.production-dashboard {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  display: flex;
+}
+
+.production-main-content {
+  flex: 1;
+  margin-left: 250px;
+  min-height: 100vh;
+}
+
+.production-content {
+  padding: 1rem;
+  max-width: 100%;
+  margin: 0 auto;
+  height: 100vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* Section Styling */
+.production-section {
+  margin-bottom: 0;
+}
+
+.section-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #2c3e50;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 3px solid #4f8cff;
+  display: inline-block;
+}
+
+/* WIP Bar Chart */
+.wip-bar-card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+  padding: 1.5rem;
+  margin-top: 0.75rem;
+}
+
+.wip-bar-chart-container {
+  height: 350px;
+  width: 100%;
+  position: relative;
+}
+
+/* PCT Section */
+.pct-row {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
+
+.pct-card {
+  flex: 1;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+  padding: 1rem;
+}
+
+.pct-placeholder-card {
+  flex: 1;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed #e9ecef;
+}
+
+.placeholder-content {
+  text-align: center;
+}
+
+.placeholder-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  filter: grayscale(0.5);
+  opacity: 0.7;
+}
+
+.placeholder-content h3 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #2c3e50;
+  margin: 0.5rem 0;
+}
+
+.placeholder-content p {
+  color: #6c757d;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.pct-description {
+  margin-bottom: 0.75rem;
+}
+
+.pct-description p {
+  color: #6c757d;
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.pct-chart-container {
+  height: 220px;
+  position: relative;
+}
+
+/* Responsive Design */
+@media (max-width: 1200px) {
+  .production-main-content {
+    margin-left: 200px;
+  }
+}
+
+@media (max-width: 900px) {
+  .pct-row {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 768px) {
+  .production-main-content {
+    margin-left: 0;
+  }
+
+  .production-content {
+    padding: 0.75rem;
+  }
+
+  .section-title {
+    font-size: 1.1rem;
+  }
+
+  .wip-bar-chart-container {
+    height: 300px;
+  }
+
+  .pct-chart-container {
+    height: 180px;
+  }
+}
+
+@media (max-width: 480px) {
+  .section-title {
+    font-size: 1rem;
+  }
+
+  .wip-bar-chart-container {
+    height: 250px;
+  }
+
+  .pct-card {
+    padding: 0.75rem;
+  }
+
+  .pct-placeholder-card {
+    padding: 0.75rem;
+  }
+  
+  .placeholder-icon {
+    font-size: 2rem;
+  }
+}
