@@ -258,10 +258,51 @@ const ProductionDashboard = () => {
         {/* WIP Section */}
         <section className="production-section">
           <h2 className="section-title">Work In Progress (WIP) by Product Type</h2>
-          <div className="wip-bar-card">
-            <div className="wip-bar-chart-container">
-              <Bar data={createWIPBarChartData()} options={wipBarOptions} plugins={[ChartDataLabels]} />
-            </div>
+          <div className="wip-stepper-grid">
+            {productTypes.map((product, index) => {
+              const data = wipData[product.name] || [];
+              const totalBatches = data.reduce((sum, val) => sum + val, 0);
+              
+              return (
+                <div key={`wip-stepper-${index}-${product.name}`} className="wip-stepper-card">
+                  <div className="wip-stepper-header" style={{ borderLeftColor: product.color }}>
+                    <h3 className="wip-stepper-title">{product.name}</h3>
+                    <div className="wip-stepper-total">
+                      <span className="stepper-total-label">Total:</span>
+                      <span className="stepper-total-value" style={{ color: product.color }}>
+                        {totalBatches}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="wip-stepper-body">
+                    <div className="stepper-container">
+                      {product.stages.map((stage, stageIndex) => {
+                        const batchCount = data[stageIndex] || 0;
+                        const isLast = stageIndex === product.stages.length - 1;
+                        
+                        return (
+                          <div key={`stage-${stageIndex}`} className="stepper-item">
+                            <div className="stepper-circle-wrapper">
+                              <div 
+                                className="stepper-circle" 
+                                style={{ 
+                                  backgroundColor: stageColors[stageIndex % stageColors.length],
+                                  opacity: batchCount > 0 ? 1 : 0.3
+                                }}
+                              >
+                                <span className="stepper-batch-count">{batchCount}</span>
+                              </div>
+                              {!isLast && <div className="stepper-line"></div>}
+                            </div>
+                            <div className="stepper-label">{stage}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </section>
 

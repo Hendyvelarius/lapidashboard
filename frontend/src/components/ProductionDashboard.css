@@ -36,19 +36,125 @@
   display: inline-block;
 }
 
-/* WIP Bar Chart */
-.wip-bar-card {
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
-  padding: 1.5rem;
+/* WIP Stepper Grid */
+.wip-stepper-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
   margin-top: 0.75rem;
 }
 
-.wip-bar-chart-container {
-  height: 350px;
+.wip-stepper-card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+}
+
+.wip-stepper-header {
+  padding: 0.75rem 1rem;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-left: 4px solid #4f8cff;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.wip-stepper-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #2c3e50;
+  margin: 0;
+}
+
+.wip-stepper-total {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.stepper-total-label {
+  font-size: 0.7rem;
+  color: #6c757d;
+  text-transform: uppercase;
+}
+
+.stepper-total-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.wip-stepper-body {
+  padding: 1rem;
+}
+
+.stepper-container {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.stepper-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  position: relative;
+}
+
+.stepper-circle-wrapper {
+  display: flex;
+  align-items: center;
   width: 100%;
   position: relative;
+}
+
+.stepper-circle {
+  width: 45px;
+  height: 45px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: bold;
+  font-size: 0.9rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  position: relative;
+  z-index: 2;
+  margin: 0 auto;
+  transition: transform 0.2s ease;
+}
+
+.stepper-circle:hover {
+  transform: scale(1.1);
+}
+
+.stepper-batch-count {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.stepper-line {
+  position: absolute;
+  left: calc(50% + 22.5px);
+  right: calc(-50% + 22.5px);
+  height: 3px;
+  background: linear-gradient(to right, rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.05));
+  top: 21px;
+  z-index: 1;
+}
+
+.stepper-label {
+  margin-top: 0.5rem;
+  font-size: 0.7rem;
+  color: #6c757d;
+  text-align: center;
+  line-height: 1.2;
+  word-wrap: break-word;
+  max-width: 100%;
+  font-weight: 500;
 }
 
 /* PCT Section */
@@ -118,6 +224,12 @@
 }
 
 /* Responsive Design */
+@media (max-width: 1400px) {
+  .wip-stepper-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 1200px) {
   .production-main-content {
     margin-left: 200px;
@@ -143,8 +255,14 @@
     font-size: 1.1rem;
   }
 
-  .wip-bar-chart-container {
-    height: 300px;
+  .stepper-circle {
+    width: 40px;
+    height: 40px;
+    font-size: 0.85rem;
+  }
+
+  .stepper-label {
+    font-size: 0.65rem;
   }
 
   .pct-chart-container {
@@ -157,8 +275,18 @@
     font-size: 1rem;
   }
 
-  .wip-bar-chart-container {
-    height: 250px;
+  .wip-stepper-grid {
+    gap: 0.75rem;
+  }
+
+  .stepper-circle {
+    width: 35px;
+    height: 35px;
+    font-size: 0.8rem;
+  }
+
+  .stepper-label {
+    font-size: 0.6rem;
   }
 
   .pct-card {
