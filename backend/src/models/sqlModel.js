@@ -355,4 +355,93 @@ async function getMaterial() {
   return result.recordset;
 }
 
-module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary};
+async function getPCTBreakdown() {
+  const db = await connect();
+  const query = `
+    WITH FilteredAlur AS (
+      SELECT 
+        ap.*,
+        mp.Product_Name,
+        ISNULL(mtg.tahapan_group, 'Other') AS tahapan_group
+      FROM t_alur_proses ap
+      JOIN m_Product mp ON ap.Product_ID = mp.Product_ID
+      LEFT JOIN m_tahapan_group mtg ON ap.kode_tahapan = mtg.kode_tahapan
+      WHERE 
+        ap.Batch_Date LIKE '[1-2][0-9][0-9][0-9]/[0-1][0-9]/[0-3][0-9]'
+        AND LEN(ap.Batch_Date) = 10
+        AND ISDATE(ap.Batch_Date) = 1
+        AND CONVERT(date, ap.Batch_Date, 111) >= DATEADD(month, -2, GETDATE())
+        AND mp.Product_Name NOT LIKE '%granulat%'
+    ),
+    -- Get only batches that have completed "Approve Realese" with EndDate
+    CompletedBatches AS (
+      SELECT DISTINCT Batch_No
+      FROM FilteredAlur
+      WHERE LOWER(nama_tahapan) LIKE '%approve%realese%'
+        AND EndDate IS NOT NULL
+    ),
+    -- Calculate stage durations for each batch
+    BatchStageDurations AS (
+      SELECT 
+        fa.Batch_No,
+        fa.Product_ID,
+        fa.Product_Name,
+        -- Timbang stage
+        DATEDIFF(DAY,
+          MIN(CASE WHEN fa.tahapan_group = 'Timbang' THEN fa.StartDate END),
+          MAX(CASE WHEN fa.tahapan_group = 'Timbang' THEN fa.EndDate END)
+        ) AS Timbang_Days,
+        -- QC stage
+        DATEDIFF(DAY,
+          MIN(CASE WHEN fa.tahapan_group = 'QC' THEN fa.StartDate END),
+          MAX(CASE WHEN fa.tahapan_group = 'QC' THEN fa.EndDate END)
+        ) AS QC_Days,
+        -- Mikro stage
+        DATEDIFF(DAY,
+          MIN(CASE WHEN fa.tahapan_group = 'Mikro' THEN fa.StartDate END),
+          MAX(CASE WHEN fa.tahapan_group = 'Mikro' THEN fa.EndDate END)
+        ) AS Mikro_Days,
+        -- QA stage
+        DATEDIFF(DAY,
+          MIN(CASE WHEN fa.tahapan_group = 'QA' THEN fa.StartDate END),
+          MAX(CASE WHEN fa.tahapan_group = 'QA' THEN fa.EndDate END)
+        ) AS QA_Days,
+        -- Proses stage (everything else that's not null and not the above categories)
+        DATEDIFF(DAY,
+          MIN(CASE 
+            WHEN fa.tahapan_group NOT IN ('Timbang', 'QC', 'Mikro', 'QA') 
+              AND fa.tahapan_group <> 'Other'
+              AND fa.tahapan_group IS NOT NULL 
+            THEN fa.StartDate 
+          END),
+          MAX(CASE 
+            WHEN fa.tahapan_group NOT IN ('Timbang', 'QC', 'Mikro', 'QA') 
+              AND fa.tahapan_group <> 'Other'
+              AND fa.tahapan_group IS NOT NULL 
+            THEN fa.EndDate 
+          END)
+        ) AS Proses_Days
+      FROM FilteredAlur fa
+      INNER JOIN CompletedBatches cb ON fa.Batch_No = cb.Batch_No
+      GROUP BY fa.Batch_No, fa.Product_ID, fa.Product_Name
+    )
+    -- Calculate averages across all batches
+    SELECT 
+      COUNT(DISTINCT Batch_No) AS Total_Batches,
+      AVG(CAST(Timbang_Days AS FLOAT)) AS Avg_Timbang_Days,
+      AVG(CAST(QC_Days AS FLOAT)) AS Avg_QC_Days,
+      AVG(CAST(Mikro_Days AS FLOAT)) AS Avg_Mikro_Days,
+      AVG(CAST(QA_Days AS FLOAT)) AS Avg_QA_Days,
+      AVG(CAST(Proses_Days AS FLOAT)) AS Avg_Proses_Days
+    FROM BatchStageDurations
+    WHERE Timbang_Days IS NOT NULL 
+      OR QC_Days IS NOT NULL 
+      OR Mikro_Days IS NOT NULL 
+      OR QA_Days IS NOT NULL 
+      OR Proses_Days IS NOT NULL
+  `;
+  const result = await db.request().query(query);
+  return result.recordset;
+}
+
+module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown};

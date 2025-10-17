@@ -4,24 +4,14 @@ import { Doughnut, Bar } from 'react-chartjs-2';
 import ChartDataLabels from 'chartjs-plugin-datalabels';
 import DashboardLoading from './DashboardLoading';
 import Sidebar from './Sidebar';
+import { apiUrl } from '../api';
 import './ProductionDashboard.css';
 
 ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, Tooltip, Legend);
 
-// Mock data generator for WIP stages
+// Mock data generator for WIP stages (temporary fallback)
 const generateMockWIPData = (stages) => {
   return stages.map(stage => Math.floor(Math.random() * 11)); // 0-10 batches
-};
-
-// Mock data for PCT (average days for each stage)
-const generateMockPCTData = () => {
-  return {
-    Timbang: Math.floor(Math.random() * 5) + 1,
-    Proses: Math.floor(Math.random() * 10) + 5,
-    QC: Math.floor(Math.random() * 7) + 2,
-    Mikro: Math.floor(Math.random() * 5) + 3,
-    QA: Math.floor(Math.random() * 4) + 2,
-  };
 };
 
 // Product type configurations
@@ -74,19 +64,78 @@ const ProductionDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [wipData, setWipData] = useState({});
   const [pctData, setPctData] = useState({});
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Simulate data fetching
-    setTimeout(() => {
-      const mockWIP = {};
-      productTypes.forEach(product => {
-        mockWIP[product.name] = generateMockWIPData(product.stages);
-      });
-      
-      setWipData(mockWIP);
-      setPctData(generateMockPCTData());
-      setLoading(false);
-    }, 1000);
+    // Fetch real PCT Breakdown data
+    const fetchPCTBreakdown = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        const response = await fetch(apiUrl('/api/pctBreakdown'));
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        const data = result.data && result.data.length > 0 ? result.data[0] : null;
+        
+        if (data) {
+          // Transform API data to match our frontend structure
+          const pctBreakdown = {
+            Timbang: Math.round(data.Avg_Timbang_Days || 0),
+            Proses: Math.round(data.Avg_Proses_Days || 0),
+            QC: Math.round(data.Avg_QC_Days || 0),
+            Mikro: Math.round(data.Avg_Mikro_Days || 0),
+            QA: Math.round(data.Avg_QA_Days || 0),
+          };
+          setPctData(pctBreakdown);
+          console.log('PCT Breakdown Data:', pctBreakdown);
+          console.log('Total Batches:', data.Total_Batches);
+        } else {
+          console.warn('No PCT data available');
+          setPctData({
+            Timbang: 0,
+            Proses: 0,
+            QC: 0,
+            Mikro: 0,
+            QA: 0,
+          });
+        }
+        
+        // Generate mock WIP data for now
+        const mockWIP = {};
+        productTypes.forEach(product => {
+          mockWIP[product.name] = generateMockWIPData(product.stages);
+        });
+        setWipData(mockWIP);
+        
+        setLoading(false);
+      } catch (err) {
+        console.error('Error fetching PCT breakdown:', err);
+        setError(err.message);
+        
+        // Fallback to empty data on error
+        setPctData({
+          Timbang: 0,
+          Proses: 0,
+          QC: 0,
+          Mikro: 0,
+          QA: 0,
+        });
+        
+        const mockWIP = {};
+        productTypes.forEach(product => {
+          mockWIP[product.name] = generateMockWIPData(product.stages);
+        });
+        setWipData(mockWIP);
+        
+        setLoading(false);
+      }
+    };
+
+    fetchPCTBreakdown();
   }, []);
 
   // Create grouped bar chart data for WIP
@@ -309,10 +358,25 @@ const ProductionDashboard = () => {
         {/* PCT Breakdown Section */}
         <section className="production-section">
           <h2 className="section-title">Product Cycle Time (PCT) Breakdown</h2>
+          {error && (
+            <div className="error-banner" style={{
+              backgroundColor: '#fee',
+              border: '1px solid #fcc',
+              borderRadius: '8px',
+              padding: '12px 16px',
+              marginBottom: '16px',
+              color: '#c33',
+            }}>
+              <strong>⚠️ Error loading data:</strong> {error}
+            </div>
+          )}
           <div className="pct-row">
             <div className="pct-card">
               <div className="pct-description">
-                <p>Average days for each stage in the production process</p>
+                <p>Average days for each stage in the production process (Last 2 months)</p>
+                <small style={{ color: '#666', fontSize: '0.85rem' }}>
+                  📊 Data from completed batches with "Approve Release"
+                </small>
               </div>
               <div className="pct-chart-container">
                 <Bar data={pctChartData} options={pctOptions} />
