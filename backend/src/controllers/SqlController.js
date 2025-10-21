@@ -236,4 +236,14 @@ async function getPCTBreakdown(req, res) {
   }
 }
 
-module.exports = { getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getOrderFulfillment, getStockReport, getofsummary, getPCTBreakdown };
+async function getWIPData(req, res) {
+  try {
+    const data = await SqlModel.getWIPData();
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching WIP Data:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+module.exports = { getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getOrderFulfillment, getStockReport, getofsummary, getPCTBreakdown, getWIPData };

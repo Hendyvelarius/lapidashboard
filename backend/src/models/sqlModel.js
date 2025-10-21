@@ -444,4 +444,24 @@ async function getPCTBreakdown() {
   return result.recordset;
 }
 
-module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown};
+async function getWIPData() {
+  const db = await connect();
+  const query = `select a.Product_ID, a.Batch_No, a.Batch_Date, a.nama_tahapan, a.kode_tahapan, a.StartDate, a.EndDate, urutan,  grp.tahapan_group,
+ Product_Name, gp.Group_Dept, sediaan.Jenis_Sediaan
+ --into #tmpData
+ from t_alur_proses a 
+ left join t_dnc_product b on a.Batch_No=b.DNc_BatchNo and a.Product_ID = b.DNc_ProductID and a.Batch_Date =b.DNC_BatchDate
+ join (select distinct Batch_No, Batch_Date, Product_ID from t_rfid_batch_card where isActive=1 and Batch_Status='Open') c on c.Product_ID = a.Product_ID and c.Batch_Date=a.Batch_Date and c.Batch_No = a.Batch_No
+ left join m_tahapan_group grp on a.kode_tahapan= grp.kode_tahapan
+ join m_product prod on a.Product_ID = prod.Product_ID
+ join m_product_pn_group gp on gp.Group_ProductID = a.Product_ID and replace(Group_Periode,' ','') = CONVERT(varchar(6), getdate(),112)
+ join m_product_sediaan_produksi sediaan on sediaan.Product_ID=a.Product_ID
+ where
+ b.DNc_BatchNo is null
+ and CONVERT(nvarchar(6), a.Batch_Date, 112) between  CONVERT(nvarchar(6), dateadd(month,-12,GETDATE()), 112) and CONVERT(nvarchar(6), GETDATE(), 112)`;
+  
+  const result = await db.request().query(query);
+  return result.recordset;
+}
+
+module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getWIPData};

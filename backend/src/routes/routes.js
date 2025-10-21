@@ -17,6 +17,7 @@ router.get('/auth/verify', verifyToken, (req, res) => {
 router.get('/wip', SqlController.getWip);
 router.get('/wipDept', SqlController.getWipProdByDept)
 router.get('/wipGroup', SqlController.getWipByGroup);
+router.get('/wipData', SqlController.getWIPData);
 router.get('/alur', SqlController.getAlur);
 router.get('/batch', SqlController.getBatchAlur);
 

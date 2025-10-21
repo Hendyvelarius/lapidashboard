@@ -38,8 +38,8 @@
 
 /* WIP Stepper Grid */
 .wip-stepper-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: 1rem;
   margin-top: 0.75rem;
 }
@@ -49,6 +49,8 @@
   border-radius: 12px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .wip-stepper-header {
@@ -58,6 +60,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  min-height: 60px;
 }
 
 .wip-stepper-title {
@@ -86,6 +89,9 @@
 
 .wip-stepper-body {
   padding: 1rem;
+  flex: 1;
+  display: flex;
+  align-items: center;
 }
 
 .stepper-container {
@@ -93,6 +99,8 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 0.5rem;
+  width: 100%;
+  min-height: 100px;
 }
 
 .stepper-item {
@@ -155,6 +163,10 @@
   word-wrap: break-word;
   max-width: 100%;
   font-weight: 500;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* PCT Section */
