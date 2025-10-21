@@ -379,66 +379,84 @@ async function getPCTBreakdown() {
       FROM FilteredAlur
       WHERE LOWER(nama_tahapan) LIKE '%approve%realese%'
         AND EndDate IS NOT NULL
-    ),
-    -- Calculate stage durations for each batch
-    BatchStageDurations AS (
-      SELECT 
-        fa.Batch_No,
-        fa.Product_ID,
-        fa.Product_Name,
-        -- Timbang stage
-        DATEDIFF(DAY,
-          MIN(CASE WHEN fa.tahapan_group = 'Timbang' THEN fa.StartDate END),
-          MAX(CASE WHEN fa.tahapan_group = 'Timbang' THEN fa.EndDate END)
-        ) AS Timbang_Days,
-        -- QC stage
-        DATEDIFF(DAY,
-          MIN(CASE WHEN fa.tahapan_group = 'QC' THEN fa.StartDate END),
-          MAX(CASE WHEN fa.tahapan_group = 'QC' THEN fa.EndDate END)
-        ) AS QC_Days,
-        -- Mikro stage
-        DATEDIFF(DAY,
-          MIN(CASE WHEN fa.tahapan_group = 'Mikro' THEN fa.StartDate END),
-          MAX(CASE WHEN fa.tahapan_group = 'Mikro' THEN fa.EndDate END)
-        ) AS Mikro_Days,
-        -- QA stage
-        DATEDIFF(DAY,
-          MIN(CASE WHEN fa.tahapan_group = 'QA' THEN fa.StartDate END),
-          MAX(CASE WHEN fa.tahapan_group = 'QA' THEN fa.EndDate END)
-        ) AS QA_Days,
-        -- Proses stage (everything else that's not null and not the above categories)
-        DATEDIFF(DAY,
-          MIN(CASE 
-            WHEN fa.tahapan_group NOT IN ('Timbang', 'QC', 'Mikro', 'QA') 
-              AND fa.tahapan_group <> 'Other'
-              AND fa.tahapan_group IS NOT NULL 
-            THEN fa.StartDate 
-          END),
-          MAX(CASE 
-            WHEN fa.tahapan_group NOT IN ('Timbang', 'QC', 'Mikro', 'QA') 
-              AND fa.tahapan_group <> 'Other'
-              AND fa.tahapan_group IS NOT NULL 
-            THEN fa.EndDate 
-          END)
-        ) AS Proses_Days
-      FROM FilteredAlur fa
-      INNER JOIN CompletedBatches cb ON fa.Batch_No = cb.Batch_No
-      GROUP BY fa.Batch_No, fa.Product_ID, fa.Product_Name
     )
-    -- Calculate averages across all batches
+    -- Return batch-level details with stage durations
     SELECT 
-      COUNT(DISTINCT Batch_No) AS Total_Batches,
-      AVG(CAST(Timbang_Days AS FLOAT)) AS Avg_Timbang_Days,
-      AVG(CAST(QC_Days AS FLOAT)) AS Avg_QC_Days,
-      AVG(CAST(Mikro_Days AS FLOAT)) AS Avg_Mikro_Days,
-      AVG(CAST(QA_Days AS FLOAT)) AS Avg_QA_Days,
-      AVG(CAST(Proses_Days AS FLOAT)) AS Avg_Proses_Days
-    FROM BatchStageDurations
-    WHERE Timbang_Days IS NOT NULL 
-      OR QC_Days IS NOT NULL 
-      OR Mikro_Days IS NOT NULL 
-      OR QA_Days IS NOT NULL 
-      OR Proses_Days IS NOT NULL
+      fa.Batch_No,
+      fa.Batch_Date,
+      fa.Product_ID,
+      fa.Product_Name,
+      -- Timbang stage
+      DATEDIFF(DAY,
+        MIN(CASE WHEN fa.tahapan_group = 'Timbang' THEN fa.StartDate END),
+        MAX(CASE WHEN fa.tahapan_group = 'Timbang' THEN fa.EndDate END)
+      ) AS Timbang_Days,
+      -- QC stage
+      DATEDIFF(DAY,
+        MIN(CASE WHEN fa.tahapan_group = 'QC' THEN fa.StartDate END),
+        MAX(CASE WHEN fa.tahapan_group = 'QC' THEN fa.EndDate END)
+      ) AS QC_Days,
+      -- Mikro stage
+      DATEDIFF(DAY,
+        MIN(CASE WHEN fa.tahapan_group = 'Mikro' THEN fa.StartDate END),
+        MAX(CASE WHEN fa.tahapan_group = 'Mikro' THEN fa.EndDate END)
+      ) AS Mikro_Days,
+      -- QA stage
+      DATEDIFF(DAY,
+        MIN(CASE WHEN fa.tahapan_group = 'QA' THEN fa.StartDate END),
+        MAX(CASE WHEN fa.tahapan_group = 'QA' THEN fa.EndDate END)
+      ) AS QA_Days,
+      -- Proses stage (everything else that's not null and not the above categories)
+      DATEDIFF(DAY,
+        MIN(CASE 
+          WHEN fa.tahapan_group NOT IN ('Timbang', 'QC', 'Mikro', 'QA') 
+            AND fa.tahapan_group <> 'Other'
+            AND fa.tahapan_group IS NOT NULL 
+          THEN fa.StartDate 
+        END),
+        MAX(CASE 
+          WHEN fa.tahapan_group NOT IN ('Timbang', 'QC', 'Mikro', 'QA') 
+            AND fa.tahapan_group <> 'Other'
+            AND fa.tahapan_group IS NOT NULL 
+          THEN fa.EndDate 
+        END)
+      ) AS Proses_Days
+    FROM FilteredAlur fa
+    INNER JOIN CompletedBatches cb ON fa.Batch_No = cb.Batch_No
+    GROUP BY fa.Batch_No, fa.Batch_Date, fa.Product_ID, fa.Product_Name
+    HAVING (
+      DATEDIFF(DAY,
+        MIN(CASE WHEN fa.tahapan_group = 'Timbang' THEN fa.StartDate END),
+        MAX(CASE WHEN fa.tahapan_group = 'Timbang' THEN fa.EndDate END)
+      ) IS NOT NULL
+      OR DATEDIFF(DAY,
+        MIN(CASE WHEN fa.tahapan_group = 'QC' THEN fa.StartDate END),
+        MAX(CASE WHEN fa.tahapan_group = 'QC' THEN fa.EndDate END)
+      ) IS NOT NULL
+      OR DATEDIFF(DAY,
+        MIN(CASE WHEN fa.tahapan_group = 'Mikro' THEN fa.StartDate END),
+        MAX(CASE WHEN fa.tahapan_group = 'Mikro' THEN fa.EndDate END)
+      ) IS NOT NULL
+      OR DATEDIFF(DAY,
+        MIN(CASE WHEN fa.tahapan_group = 'QA' THEN fa.StartDate END),
+        MAX(CASE WHEN fa.tahapan_group = 'QA' THEN fa.EndDate END)
+      ) IS NOT NULL
+      OR DATEDIFF(DAY,
+        MIN(CASE 
+          WHEN fa.tahapan_group NOT IN ('Timbang', 'QC', 'Mikro', 'QA') 
+            AND fa.tahapan_group <> 'Other'
+            AND fa.tahapan_group IS NOT NULL 
+          THEN fa.StartDate 
+        END),
+        MAX(CASE 
+          WHEN fa.tahapan_group NOT IN ('Timbang', 'QC', 'Mikro', 'QA') 
+            AND fa.tahapan_group <> 'Other'
+            AND fa.tahapan_group IS NOT NULL 
+          THEN fa.EndDate 
+        END)
+      ) IS NOT NULL
+    )
+    ORDER BY fa.Batch_No
   `;
   const result = await db.request().query(query);
   return result.recordset;

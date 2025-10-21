@@ -76,11 +76,14 @@ const ProductionDashboard = () => {
   const [rawWipData, setRawWipData] = useState([]);
   const [processedWipData, setProcessedWipData] = useState([]);
   const [pctData, setPctData] = useState({});
+  const [pctRawData, setPctRawData] = useState([]); // Store raw batch-level PCT data
   const [error, setError] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedStageData, setSelectedStageData] = useState(null);
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [selectedTaskData, setSelectedTaskData] = useState(null);
+  const [pctModalOpen, setPctModalOpen] = useState(false); // PCT chart click modal
+  const [selectedPctStage, setSelectedPctStage] = useState(null); // Selected PCT stage data
 
   // Process raw WIP data according to business rules
   const processWIPData = (rawData) => {
@@ -328,29 +331,64 @@ const ProductionDashboard = () => {
     setTaskModalOpen(true);
   };
 
+  // Handle PCT bar chart click
+  const handlePctBarClick = (stageName) => {
+    const stageKey = `${stageName}_Days`;
+    
+    // Filter batches that have data for this stage
+    const stageBatches = pctRawData
+      .filter(batch => batch[stageKey] !== null && batch[stageKey] !== undefined && !isNaN(batch[stageKey]))
+      .map(batch => ({
+        ...batch,
+        stageDays: batch[stageKey]
+      }))
+      .sort((a, b) => b.stageDays - a.stageDays); // Sort by days descending
+    
+    setSelectedPctStage({
+      stageName: stageName,
+      batches: stageBatches,
+      averageDays: pctData[stageName] || 0,
+    });
+    setPctModalOpen(true);
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
         setError(null);
 
-        // Fetch PCT Breakdown data
+        // Fetch PCT Breakdown data (now batch-level details)
         const pctResponse = await fetch(apiUrl('/api/pctBreakdown'));
         if (!pctResponse.ok) {
           throw new Error(`PCT API error! status: ${pctResponse.status}`);
         }
         
         const pctResult = await pctResponse.json();
-        const pctDataItem = pctResult.data && pctResult.data.length > 0 ? pctResult.data[0] : null;
+        const pctBatchData = pctResult.data || [];
         
-        if (pctDataItem) {
-          const pctBreakdown = {
-            Timbang: Math.round(pctDataItem.Avg_Timbang_Days || 0),
-            Proses: Math.round(pctDataItem.Avg_Proses_Days || 0),
-            QC: Math.round(pctDataItem.Avg_QC_Days || 0),
-            Mikro: Math.round(pctDataItem.Avg_Mikro_Days || 0),
-            QA: Math.round(pctDataItem.Avg_QA_Days || 0),
-          };
+        // Store raw batch data
+        setPctRawData(pctBatchData);
+        
+        // Calculate averages for the chart
+        if (pctBatchData.length > 0) {
+          const stages = ['Timbang', 'Proses', 'QC', 'Mikro', 'QA'];
+          const pctBreakdown = {};
+          
+          stages.forEach(stage => {
+            const stageKey = `${stage}_Days`;
+            const values = pctBatchData
+              .map(batch => batch[stageKey])
+              .filter(val => val !== null && val !== undefined && !isNaN(val));
+            
+            if (values.length > 0) {
+              const avg = values.reduce((sum, val) => sum + val, 0) / values.length;
+              pctBreakdown[stage] = Math.round(avg);
+            } else {
+              pctBreakdown[stage] = 0;
+            }
+          });
+          
           setPctData(pctBreakdown);
         } else {
           setPctData({
@@ -435,6 +473,14 @@ const ProductionDashboard = () => {
   const pctOptions = {
     responsive: true,
     maintainAspectRatio: false,
+    onClick: (event, elements) => {
+      if (elements.length > 0) {
+        const elementIndex = elements[0].index;
+        const stageNames = Object.keys(pctData);
+        const clickedStage = stageNames[elementIndex];
+        handlePctBarClick(clickedStage);
+      }
+    },
     plugins: {
       legend: {
         display: false,
@@ -442,7 +488,11 @@ const ProductionDashboard = () => {
       tooltip: {
         callbacks: {
           label: function(context) {
-            return `${context.parsed.y} days`;
+            const batchCount = pctRawData.filter(batch => {
+              const stageKey = `${context.label}_Days`;
+              return batch[stageKey] !== null && batch[stageKey] !== undefined;
+            }).length;
+            return `${context.parsed.y} days avg (${batchCount} batches)`;
           },
         },
       },
@@ -908,6 +958,139 @@ const ProductionDashboard = () => {
                             }) : '-'}
                           </div>
                         </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+
+      {/* PCT Stage Details Modal */}
+      <Modal
+        open={pctModalOpen}
+        onClose={() => setPctModalOpen(false)}
+        title={selectedPctStage ? `${selectedPctStage.stageName} Stage Details` : ''}
+      >
+        {selectedPctStage && (
+          <div style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+            {/* Summary Card */}
+            <div style={{
+              backgroundColor: '#f0f9ff',
+              border: '1px solid #bfdbfe',
+              borderRadius: '8px',
+              padding: '16px',
+              marginBottom: '16px',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: '0.8rem', color: '#6b7280', marginBottom: '4px' }}>
+                    AVERAGE DURATION
+                  </div>
+                  <div style={{ fontSize: '1.75rem', fontWeight: '700', color: '#2563eb' }}>
+                    {selectedPctStage.averageDays} days
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '0.8rem', color: '#6b7280', marginBottom: '4px' }}>
+                    TOTAL BATCHES
+                  </div>
+                  <div style={{ fontSize: '1.75rem', fontWeight: '700', color: '#2563eb' }}>
+                    {selectedPctStage.batches.length}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Batch List */}
+            <div style={{ marginBottom: '8px', fontSize: '0.85rem', fontWeight: '600', color: '#6b7280' }}>
+              BATCHES (sorted by duration)
+            </div>
+            
+            {selectedPctStage.batches.length === 0 ? (
+              <div style={{
+                textAlign: 'center',
+                padding: '32px',
+                color: '#9ca3af',
+                fontSize: '0.9rem',
+              }}>
+                No batch data available for this stage
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {selectedPctStage.batches.map((batch, index) => {
+                  // Color coding based on duration vs average
+                  const isAboveAverage = batch.stageDays > selectedPctStage.averageDays;
+                  const borderColor = isAboveAverage ? '#ef4444' : '#10b981';
+                  const bgColor = isAboveAverage ? '#fef2f2' : '#f0fdf4';
+                  
+                  return (
+                    <div
+                      key={`${batch.Batch_No}-${index}`}
+                      style={{
+                        backgroundColor: bgColor,
+                        border: `1px solid ${borderColor}40`,
+                        borderLeft: `4px solid ${borderColor}`,
+                        borderRadius: '8px',
+                        padding: '12px',
+                        transition: 'all 0.2s ease',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <div>
+                          <div style={{ fontSize: '0.9rem', fontWeight: '600', color: '#2c3e50' }}>
+                            Batch: {batch.Batch_No}
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '2px' }}>
+                            Product: {batch.Product_Name}
+                          </div>
+                        </div>
+                        <div style={{
+                          fontSize: '1.25rem',
+                          fontWeight: '700',
+                          color: borderColor,
+                        }}>
+                          {batch.stageDays} days
+                        </div>
+                      </div>
+                      
+                      <div style={{ 
+                        display: 'grid', 
+                        gridTemplateColumns: 'repeat(2, 1fr)', 
+                        gap: '8px',
+                        fontSize: '0.75rem',
+                        paddingTop: '8px',
+                        borderTop: '1px solid #e5e7eb',
+                      }}>
+                        <div>
+                          <span style={{ color: '#9ca3af' }}>Product ID:</span>
+                          <span style={{ marginLeft: '6px', color: '#374151', fontWeight: '500' }}>
+                            {batch.Product_ID}
+                          </span>
+                        </div>
+                        <div>
+                          <span style={{ color: '#9ca3af' }}>Batch Date:</span>
+                          <span style={{ marginLeft: '6px', color: '#374151', fontWeight: '500' }}>
+                            {batch.Batch_Date}
+                          </span>
+                        </div>
+                      </div>
+                      
+                      {/* Difference from average indicator */}
+                      <div style={{ 
+                        marginTop: '8px', 
+                        fontSize: '0.7rem', 
+                        color: borderColor,
+                        fontWeight: '600',
+                      }}>
+                        {isAboveAverage 
+                          ? `+${batch.stageDays - selectedPctStage.averageDays} days above average`
+                          : batch.stageDays === selectedPctStage.averageDays
+                          ? 'At average duration'
+                          : `${selectedPctStage.averageDays - batch.stageDays} days below average`
+                        }
                       </div>
                     </div>
                   );
