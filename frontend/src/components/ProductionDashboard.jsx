@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Chart as ChartJS, ArcElement, BarElement, CategoryScale, LinearScale, Tooltip, Legend } from 'chart.js';
-import { Doughnut, Bar } from 'react-chartjs-2';
+import { Chart as ChartJS, ArcElement, BarElement, CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend } from 'chart.js';
+import { Doughnut, Bar, Line } from 'react-chartjs-2';
 import ChartDataLabels from 'chartjs-plugin-datalabels';
 import DashboardLoading from './DashboardLoading';
 import Sidebar from './Sidebar';
@@ -8,7 +8,7 @@ import Modal from './Modal';
 import { apiUrl } from '../api';
 import './ProductionDashboard.css';
 
-ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, Tooltip, Legend);
+ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend);
 
 // Department colors for headers
 const deptColors = {
@@ -77,6 +77,7 @@ const ProductionDashboard = () => {
   const [processedWipData, setProcessedWipData] = useState([]);
   const [pctData, setPctData] = useState({});
   const [pctRawData, setPctRawData] = useState([]); // Store raw batch-level PCT data
+  const [forecastData, setForecastData] = useState([]); // Store forecast vs production data
   const [error, setError] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedStageData, setSelectedStageData] = useState(null);
@@ -352,6 +353,40 @@ const ProductionDashboard = () => {
     setPctModalOpen(true);
   };
 
+  // Process forecast data to get monthly totals for current year
+  const processForecastData = (rawForecastData) => {
+    if (!rawForecastData || rawForecastData.length === 0) return [];
+
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth() + 1; // 0-indexed, so add 1
+
+    // Initialize monthly data for the year
+    const monthlyData = [];
+    for (let month = 1; month <= 12; month++) {
+      const periode = `${currentYear}${month.toString().padStart(2, '0')}`; // e.g., "202501"
+      
+      // Filter data for this periode
+      const monthData = rawForecastData.filter(item => item.Periode === periode);
+      
+      // Sum forecast and production
+      const totalForecast = monthData.reduce((sum, item) => sum + (parseFloat(item.Forecast) || 0), 0);
+      const totalProduction = monthData.reduce((sum, item) => sum + (parseFloat(item.Produksi) || 0), 0);
+      
+      monthlyData.push({
+        month: month,
+        monthName: new Date(currentYear, month - 1).toLocaleString('en-US', { month: 'short' }),
+        periode: periode,
+        forecast: Math.round(totalForecast),
+        production: Math.round(totalProduction),
+        hasData: month <= currentMonth, // Only show data for past/current months
+        achievement: totalForecast > 0 ? Math.round((totalProduction / totalForecast) * 100) : 0
+      });
+    }
+
+    return monthlyData;
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -416,6 +451,22 @@ const ProductionDashboard = () => {
         const processed = processWIPData(wipRawData);
         console.log('Processed WIP Data:', processed);
         setProcessedWipData(processed);
+
+        // Fetch Forecast data
+        const forecastResponse = await fetch(apiUrl('/api/forecast'));
+        if (!forecastResponse.ok) {
+          throw new Error(`Forecast API error! status: ${forecastResponse.status}`);
+        }
+
+        const forecastResult = await forecastResponse.json();
+        const forecastRawData = forecastResult || [];
+        
+        console.log('Raw Forecast Data:', forecastRawData);
+        
+        // Process forecast data to monthly totals
+        const processedForecast = processForecastData(forecastRawData);
+        console.log('Processed Forecast Data:', processedForecast);
+        setForecastData(processedForecast);
         
         setLoading(false);
       } catch (err) {
@@ -510,6 +561,155 @@ const ProductionDashboard = () => {
         },
         grid: {
           color: 'rgba(0, 0, 0, 0.05)',
+        },
+      },
+      x: {
+        grid: {
+          display: false,
+        },
+      },
+    },
+  };
+
+  // Create forecast vs production chart data
+  const forecastChartData = {
+    labels: forecastData.map(d => d.monthName),
+    datasets: [
+      {
+        type: 'bar',
+        label: 'Forecast',
+        data: forecastData.map(d => d.hasData ? d.forecast : null),
+        backgroundColor: 'rgba(79, 140, 255, 0.7)',
+        borderColor: '#4f8cff',
+        borderWidth: 2,
+        borderRadius: 6,
+        order: 2,
+      },
+      {
+        type: 'bar',
+        label: 'Production',
+        data: forecastData.map(d => d.hasData ? d.production : null),
+        backgroundColor: 'rgba(16, 185, 129, 0.7)',
+        borderColor: '#10b981',
+        borderWidth: 2,
+        borderRadius: 6,
+        order: 3,
+      },
+      {
+        type: 'line',
+        label: 'Achievement %',
+        data: forecastData.map(d => d.hasData ? d.achievement : null),
+        borderColor: '#9333ea',
+        backgroundColor: 'rgba(147, 51, 234, 0.1)',
+        borderWidth: 3,
+        pointRadius: 5,
+        pointHoverRadius: 7,
+        pointBackgroundColor: '#9333ea',
+        pointBorderColor: '#fff',
+        pointBorderWidth: 2,
+        tension: 0.3,
+        fill: true,
+        yAxisID: 'y1',
+        order: 1,
+      },
+    ],
+  };
+
+  const forecastChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: {
+      mode: 'index',
+      intersect: false,
+    },
+    plugins: {
+      legend: {
+        display: true,
+        position: 'top',
+        labels: {
+          usePointStyle: true,
+          padding: 15,
+          font: {
+            size: 11,
+            weight: '600',
+          },
+        },
+      },
+      tooltip: {
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        padding: 12,
+        titleFont: {
+          size: 13,
+          weight: 'bold',
+        },
+        bodyFont: {
+          size: 12,
+        },
+        callbacks: {
+          label: function(context) {
+            let label = context.dataset.label || '';
+            if (label) {
+              label += ': ';
+            }
+            if (context.parsed.y !== null) {
+              if (context.dataset.yAxisID === 'y1') {
+                label += context.parsed.y + '%';
+              } else {
+                label += context.parsed.y.toLocaleString() + ' units';
+              }
+            }
+            return label;
+          },
+        },
+      },
+      datalabels: {
+        display: false,
+      },
+    },
+    scales: {
+      y: {
+        type: 'linear',
+        display: true,
+        position: 'left',
+        beginAtZero: true,
+        title: {
+          display: true,
+          text: 'Units',
+          font: {
+            weight: 'bold',
+            size: 11,
+          },
+        },
+        ticks: {
+          callback: function(value) {
+            return value.toLocaleString();
+          },
+        },
+        grid: {
+          color: 'rgba(0, 0, 0, 0.05)',
+        },
+      },
+      y1: {
+        type: 'linear',
+        display: true,
+        position: 'right',
+        beginAtZero: true,
+        max: 120,
+        title: {
+          display: true,
+          text: 'Achievement %',
+          font: {
+            weight: 'bold',
+            size: 11,
+          },
+        },
+        ticks: {
+          callback: function(value) {
+            return value + '%';
+          },
+        },
+        grid: {
+          drawOnChartArea: false,
         },
       },
       x: {
@@ -682,10 +882,39 @@ const ProductionDashboard = () => {
               </div>
             </div>
             <div className="pct-placeholder-card">
-              <div className="placeholder-content">
-                <div className="placeholder-icon">📊</div>
-                <h3>Additional Metrics</h3>
-                <p>More production insights coming soon</p>
+              <div style={{ width: '100%' }}>
+                <div style={{ 
+                  marginBottom: '12px',
+                  paddingBottom: '8px',
+                  borderBottom: '2px solid #e5e7eb'
+                }}>
+                  <h3 style={{ 
+                    fontSize: '1rem', 
+                    fontWeight: '700', 
+                    color: '#2c3e50', 
+                    margin: 0,
+                  }}>
+                    {new Date().getFullYear()} Production vs Forecast
+                  </h3>
+                  <p style={{ 
+                    fontSize: '0.75rem', 
+                    color: '#6b7280', 
+                    margin: '4px 0 0 0' 
+                  }}>
+                    Monthly achievement tracking with dual-axis visualization
+                  </p>
+                </div>
+                
+                {forecastData.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '24px', color: '#9ca3af' }}>
+                    <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📊</div>
+                    <p style={{ fontSize: '0.9rem' }}>Loading forecast data...</p>
+                  </div>
+                ) : (
+                  <div className="pct-chart-container">
+                    <Bar data={forecastChartData} options={forecastChartOptions} />
+                  </div>
+                )}
               </div>
             </div>
           </div>
