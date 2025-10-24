@@ -778,13 +778,14 @@ const ProductionDashboard = () => {
                         <p>No active batches</p>
                       </div>
                     ) : (
-                      <div className="wip-stepper-grid">
+                      <div className="wip-stepper-card">
                         {deptData.map((product, index) => {
                           const totalBatches = product.stageCounts.reduce((sum, val) => sum + val, 0);
                           const color = deptColors[product.dept] || '#4f8cff';
+                          const isLast = index === deptData.length - 1;
                           
                           return (
-                            <div key={product.key} className="wip-stepper-card">
+                            <div key={product.key}>
                               <div className="wip-stepper-header" style={{ borderLeftColor: color }}>
                                 <h3 className="wip-stepper-title">{product.jenisSediaan}</h3>
                                 <div className="wip-stepper-total">
@@ -802,7 +803,7 @@ const ProductionDashboard = () => {
                                   {product.stages.map((stage, stageIndex) => {
                                     const batchCount = product.stageCounts[stageIndex] || 0;
                                     const averageDays = product.stageAverageDays[stageIndex] || 0;
-                                    const isLast = stageIndex === product.stages.length - 1;
+                                    const isLastStage = stageIndex === product.stages.length - 1;
                                     
                                     return (
                                       <div key={`stage-${stageIndex}`} className="stepper-item">
@@ -834,7 +835,7 @@ const ProductionDashboard = () => {
                                           >
                                             <span className="stepper-batch-count">{batchCount}</span>
                                           </div>
-                                          {!isLast && <div className="stepper-line"></div>}
+                                          {!isLastStage && <div className="stepper-line"></div>}
                                         </div>
                                         <div className="stepper-label">{stage}</div>
                                       </div>
@@ -842,6 +843,12 @@ const ProductionDashboard = () => {
                                   })}
                                 </div>
                               </div>
+                              {!isLast && (
+                                <div style={{
+                                  borderBottom: '1px solid #e5e7eb',
+                                  margin: '0 12px',
+                                }}></div>
+                              )}
                             </div>
                           );
                         })}
