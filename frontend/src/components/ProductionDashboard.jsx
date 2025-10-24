@@ -490,11 +490,11 @@ const ProductionDashboard = () => {
     fetchData();
   }, []);
 
-  // Create grouped bar chart data for WIP (removed - not needed for stepper view)
+  if (loading) {
+    return <DashboardLoading loading={true} text="Loading Production Dashboard..." subtext="Fetching WIP and PCT data..." />;
+  }
 
-  // WIP Bar chart options (removed - not needed for stepper view)
-
-  // Create bar chart data for PCT
+  // Create bar chart data for PCT (after loading check)
   const pctChartData = {
     labels: Object.keys(pctData),
     datasets: [
@@ -720,10 +720,6 @@ const ProductionDashboard = () => {
     },
   };
 
-  if (loading) {
-    return <DashboardLoading text="Loading Production Dashboard..." />;
-  }
-
   return (
     <div className="production-dashboard">
       <Sidebar />
@@ -885,7 +881,20 @@ const ProductionDashboard = () => {
                 </small>
               </div>
               <div className="pct-chart-container">
-                <Bar data={pctChartData} options={pctOptions} />
+                {Object.keys(pctData).length > 0 ? (
+                  <Bar data={pctChartData} options={pctOptions} />
+                ) : (
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center', 
+                    height: '100%',
+                    color: '#9ca3af',
+                    fontSize: '0.9rem'
+                  }}>
+                    Loading PCT data...
+                  </div>
+                )}
               </div>
             </div>
             <div className="pct-placeholder-card">
