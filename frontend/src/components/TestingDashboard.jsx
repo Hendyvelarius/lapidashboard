@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Chart as ChartJS, ArcElement, BarElement, CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend } from 'chart.js';
+import ChartDataLabels from 'chartjs-plugin-datalabels';
 import { Doughnut, Bar, Line } from 'react-chartjs-2';
 import DashboardLoading from './DashboardLoading';
 import Sidebar from './Sidebar';
@@ -7,7 +8,7 @@ import Modal from './Modal';
 import { apiUrl } from '../api';
 import './ProductionDashboard.css';
 
-ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend);
+ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend, ChartDataLabels);
 
 // Department colors for headers
 const deptColors = {
@@ -1005,7 +1006,18 @@ const TestingDashboard = () => {
         },
       },
       datalabels: {
-        display: false,
+        display: true,
+        anchor: 'end',
+        align: 'top',
+        formatter: function(value) {
+          return value ? `${Math.round(value)} Days` : '';
+        },
+        color: '#374151',
+        font: {
+          weight: 'bold',
+          size: 11,
+        },
+        offset: 4,
       },
     },
     scales: {
