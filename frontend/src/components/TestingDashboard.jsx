@@ -289,6 +289,7 @@ const TestingDashboard = () => {
   const [pctData, setPctData] = useState({});
   const [pctRawData, setPctRawData] = useState([]); // Store raw batch-level PCT data
   const [forecastData, setForecastData] = useState([]); // Store forecast vs production data
+  const [forecastRawData, setForecastRawData] = useState([]); // Store raw forecast data for detailed view
   const [error, setError] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedStageData, setSelectedStageData] = useState(null);
@@ -296,6 +297,8 @@ const TestingDashboard = () => {
   const [selectedTaskData, setSelectedTaskData] = useState(null);
   const [pctModalOpen, setPctModalOpen] = useState(false); // PCT chart click modal
   const [selectedPctStage, setSelectedPctStage] = useState(null); // Selected PCT stage data
+  const [targetModalOpen, setTargetModalOpen] = useState(false); // Production target detail modal
+  const [selectedTargetData, setSelectedTargetData] = useState(null); // Selected month target data
   const [isExpanded, setIsExpanded] = useState(false); // Single expansion state for both PN1 and PN2
   const [speedometerAnimated, setSpeedometerAnimated] = useState({}); // Track animation state for speedometers
 
@@ -797,6 +800,49 @@ const TestingDashboard = () => {
     setPctModalOpen(true);
   };
 
+  // Handle click on Production Target chart bar
+  const handleTargetBarClick = (monthIndex) => {
+    if (!forecastData[monthIndex] || !forecastData[monthIndex].hasData) return;
+    
+    const monthData = forecastData[monthIndex];
+    const periode = monthData.periode;
+    
+    // Get all products for this periode with their target and production details
+    const productDetails = forecastRawData
+      .filter(item => item.Periode === periode)
+      .map(item => {
+        const forecast = parseFloat(item.Forecast) || 0;
+        const stockRelease = parseFloat(item.StockReleaseAwalBulan) || 0;
+        const targetValue = (forecast * 1.3) - stockRelease;
+        const target = Math.max(0, targetValue);
+        const production = parseFloat(item.Produksi) || 0;
+        const achievement = target > 0 ? Math.round((production / target) * 100) : 0;
+        
+        return {
+          productId: item.Product_ID || 'N/A',
+          productName: item.Product_NM || 'Unknown Product',
+          forecast: Math.round(forecast),
+          stockRelease: Math.round(stockRelease),
+          target: Math.round(target),
+          production: Math.round(production),
+          achievement: achievement,
+          hasTarget: target > 0, // Flag to show if production was needed
+        };
+      })
+      .filter(item => item.hasTarget) // Only show products that needed production
+      .sort((a, b) => b.target - a.target); // Sort by target descending
+    
+    setSelectedTargetData({
+      monthName: monthData.monthName,
+      periode: periode,
+      products: productDetails,
+      totalTarget: monthData.forecast,
+      totalProduction: monthData.production,
+      overallAchievement: monthData.achievement,
+    });
+    setTargetModalOpen(true);
+  };
+
   // Process forecast data to get monthly totals for current year
   const processForecastData = (rawForecastData) => {
     if (!rawForecastData || rawForecastData.length === 0) return [];
@@ -813,18 +859,26 @@ const TestingDashboard = () => {
       // Filter data for this periode
       const monthData = rawForecastData.filter(item => item.Periode === periode);
       
-      // Sum forecast and production
-      const totalForecast = monthData.reduce((sum, item) => sum + (parseFloat(item.Forecast) || 0), 0);
+      // Calculate target using new formula:
+      // Target = sum of max(0, (Forecast * 1.3) - StockReleaseAwalBulan) for each product
+      const totalTarget = monthData.reduce((sum, item) => {
+        const forecast = parseFloat(item.Forecast) || 0;
+        const stockRelease = parseFloat(item.StockReleaseAwalBulan) || 0;
+        const targetValue = (forecast * 1.3) - stockRelease;
+        // Only count positive values (don't count if there's enough stock)
+        return sum + Math.max(0, targetValue);
+      }, 0);
+      
       const totalProduction = monthData.reduce((sum, item) => sum + (parseFloat(item.Produksi) || 0), 0);
       
       monthlyData.push({
         month: month,
         monthName: new Date(currentYear, month - 1).toLocaleString('en-US', { month: 'short' }),
         periode: periode,
-        forecast: Math.round(totalForecast),
+        forecast: Math.round(totalTarget), // This is now "Target" instead of "Forecast"
         production: Math.round(totalProduction),
         hasData: month <= currentMonth, // Only show data for past/current months
-        achievement: totalForecast > 0 ? Math.round((totalProduction / totalForecast) * 100) : 0
+        achievement: totalTarget > 0 ? Math.round((totalProduction / totalTarget) * 100) : 0
       });
     }
 
@@ -911,6 +965,9 @@ const TestingDashboard = () => {
         const forecastRawData = forecastResult || [];
         
         console.log('Raw Forecast Data:', forecastRawData);
+        
+        // Store raw forecast data for detailed modal view
+        setForecastRawData(forecastRawData);
         
         // Process forecast data to monthly totals
         const processedForecast = processForecastData(forecastRawData);
@@ -1046,7 +1103,7 @@ const TestingDashboard = () => {
     datasets: [
       {
         type: 'bar',
-        label: 'Forecast',
+        label: 'Target',
         data: forecastData.map(d => d.hasData ? d.forecast : null),
         backgroundColor: 'rgba(79, 140, 255, 0.7)',
         borderColor: '#4f8cff',
@@ -1087,6 +1144,12 @@ const TestingDashboard = () => {
   const forecastChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
+    onClick: (event, elements) => {
+      if (elements.length > 0) {
+        const elementIndex = elements[0].index;
+        handleTargetBarClick(elementIndex);
+      }
+    },
     interaction: {
       mode: 'index',
       intersect: false,
@@ -1963,6 +2026,151 @@ const TestingDashboard = () => {
                           ? 'At average duration'
                           : `${selectedPctStage.averageDays - batch.stageDays} days below average`
                         }
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+
+      {/* Production Target Details Modal */}
+      <Modal
+        open={targetModalOpen}
+        onClose={() => setTargetModalOpen(false)}
+        title={selectedTargetData ? `Production Target - ${selectedTargetData.monthName} (${selectedTargetData.periode})` : ''}
+      >
+        {selectedTargetData && (
+          <div style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+            {/* Summary Card */}
+            <div style={{
+              backgroundColor: '#f0f9ff',
+              border: '1px solid #bfdbfe',
+              borderRadius: '8px',
+              padding: '16px',
+              marginBottom: '16px',
+            }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase' }}>
+                    Total Target
+                  </div>
+                  <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#4f8cff' }}>
+                    {selectedTargetData.totalTarget.toLocaleString()}
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>units</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase' }}>
+                    Total Production
+                  </div>
+                  <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#10b981' }}>
+                    {selectedTargetData.totalProduction.toLocaleString()}
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>units</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase' }}>
+                    Achievement
+                  </div>
+                  <div style={{ 
+                    fontSize: '1.5rem', 
+                    fontWeight: '700', 
+                    color: selectedTargetData.overallAchievement >= 100 ? '#10b981' : 
+                           selectedTargetData.overallAchievement >= 80 ? '#f59e0b' : '#ef4444'
+                  }}>
+                    {selectedTargetData.overallAchievement}%
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Product List */}
+            <div style={{ marginBottom: '8px', fontSize: '0.85rem', fontWeight: '600', color: '#6b7280' }}>
+              PRODUCTS WITH PRODUCTION TARGET ({selectedTargetData.products.length} items)
+            </div>
+            
+            {selectedTargetData.products.length === 0 ? (
+              <div style={{
+                textAlign: 'center',
+                padding: '32px',
+                color: '#9ca3af',
+                fontSize: '0.9rem',
+              }}>
+                <div style={{ fontSize: '2rem', marginBottom: '8px' }}>✅</div>
+                <p>All products have sufficient stock. No production needed.</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {selectedTargetData.products.map((product, index) => {
+                  const achievementColor = product.achievement >= 100 ? '#10b981' : 
+                                          product.achievement >= 80 ? '#f59e0b' : '#ef4444';
+                  const achievementBg = product.achievement >= 100 ? '#f0fdf4' : 
+                                       product.achievement >= 80 ? '#fffbeb' : '#fef2f2';
+                  
+                  return (
+                    <div
+                      key={`${product.productId}-${index}`}
+                      style={{
+                        backgroundColor: 'white',
+                        border: '1px solid #e5e7eb',
+                        borderLeft: `4px solid ${achievementColor}`,
+                        borderRadius: '8px',
+                        padding: '12px',
+                        transition: 'all 0.2s ease',
+                      }}
+                    >
+                      <div style={{ marginBottom: '12px' }}>
+                        <div style={{ fontSize: '0.95rem', fontWeight: '600', color: '#2c3e50', marginBottom: '4px' }}>
+                          {product.productId} - {product.productName}
+                        </div>
+                        <div style={{
+                          display: 'inline-block',
+                          backgroundColor: achievementBg,
+                          color: achievementColor,
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                          fontSize: '0.75rem',
+                          fontWeight: '600',
+                        }}>
+                          {product.achievement}% Achievement
+                        </div>
+                      </div>
+                      
+                      <div style={{ 
+                        display: 'grid', 
+                        gridTemplateColumns: 'repeat(4, 1fr)', 
+                        gap: '12px',
+                        fontSize: '0.75rem',
+                        paddingTop: '12px',
+                        borderTop: '1px solid #e5e7eb',
+                      }}>
+                        <div>
+                          <div style={{ color: '#9ca3af', marginBottom: '4px' }}>Forecast</div>
+                          <div style={{ fontWeight: '600', color: '#374151' }}>
+                            {product.forecast.toLocaleString()}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ color: '#9ca3af', marginBottom: '4px' }}>Stock</div>
+                          <div style={{ fontWeight: '600', color: '#374151' }}>
+                            {product.stockRelease.toLocaleString()}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ color: '#9ca3af', marginBottom: '4px' }}>Target</div>
+                          <div style={{ fontWeight: '700', color: '#4f8cff' }}>
+                            {product.target.toLocaleString()}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ color: '#9ca3af', marginBottom: '4px' }}>Production</div>
+                          <div style={{ fontWeight: '700', color: achievementColor }}>
+                            {product.production.toLocaleString()}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   );
