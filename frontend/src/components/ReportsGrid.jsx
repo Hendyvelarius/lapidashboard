@@ -46,11 +46,6 @@ const cards = [
     title: "In Construction",
     desc: "Work in progress, coming soon.",
   },
-  {
-    icon: <FaCog size={36} color="#222" />,
-    title: "In Construction",
-    desc: "Work in progress, coming soon.",
-  },
 ];
 
 
