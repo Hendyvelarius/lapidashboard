@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router";
-import { FaChartLine, FaClipboardList, FaCog, FaBoxOpen, FaRegFileAlt, FaRegImage, FaRegPlayCircle, FaRegFolderOpen } from "react-icons/fa";
+import { FaChartLine, FaClipboardList, FaCog, FaBoxOpen, FaRegFileAlt, FaRegImage, FaRegPlayCircle, FaRegFolderOpen, FaFlask } from "react-icons/fa";
 import "../App.css";
 import Modal from "./Modal";
 
@@ -25,6 +25,11 @@ const cards = [
     icon: <FaClipboardList size={36} color="#38e6c5" />, // Production
     title: "Production",
     desc: "Informasi proses produksi secara keseluruhan.",
+  },
+  {
+    icon: <FaFlask size={36} color="#f59e0b" />,
+    title: "Testing",
+    desc: "Testing dashboard untuk eksperimen dan pengujian fitur baru.",
   },
   {
     icon: <FaRegImage size={36} color="#6a5acd" />,
@@ -67,6 +72,8 @@ export default function ReportsGrid() {
       navigate("/wip");
     } else if (card.title === "Production") {
       navigate("/production");
+    } else if (card.title === "Testing") {
+      navigate("/testing");
     }
     // Add more navigation cases for other cards here later
   };
