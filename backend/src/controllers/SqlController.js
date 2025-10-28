@@ -246,4 +246,24 @@ async function getWIPData(req, res) {
   }
 }
 
-module.exports = { getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getOrderFulfillment, getStockReport, getofsummary, getPCTBreakdown, getWIPData };
+async function getProductList(req, res) {
+  try {
+    const data = await SqlModel.getProductList();
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching Product List:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+async function getOTCProducts(req, res) {
+  try {
+    const data = await SqlModel.getOTCProducts();
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching OTC Products:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+module.exports = { getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getOrderFulfillment, getStockReport, getofsummary, getPCTBreakdown, getWIPData, getProductList, getOTCProducts };

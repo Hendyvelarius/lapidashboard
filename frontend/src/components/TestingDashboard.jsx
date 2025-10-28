@@ -290,6 +290,7 @@ const TestingDashboard = () => {
   const [pctRawData, setPctRawData] = useState([]); // Store raw batch-level PCT data
   const [forecastData, setForecastData] = useState([]); // Store forecast vs production data
   const [forecastRawData, setForecastRawData] = useState([]); // Store raw forecast data for detailed view
+  const [productCategories, setProductCategories] = useState({}); // Store product categories (Generik, OTC, ETH)
   const [error, setError] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedStageData, setSelectedStageData] = useState(null);
@@ -817,10 +818,13 @@ const TestingDashboard = () => {
         const target = Math.max(0, targetValue);
         const production = parseFloat(item.Produksi) || 0;
         const achievement = target > 0 ? Math.round((production / target) * 100) : 0;
+        const productId = item.Product_ID || 'N/A';
+        const category = productCategories[productId] || 'ETH';
         
         return {
-          productId: item.Product_ID || 'N/A',
+          productId: productId,
           productName: item.Product_NM || 'Unknown Product',
+          category: category,
           forecast: Math.round(forecast),
           stockRelease: Math.round(stockRelease),
           target: Math.round(target),
@@ -844,7 +848,7 @@ const TestingDashboard = () => {
   };
 
   // Process forecast data to get monthly totals for current year
-  const processForecastData = (rawForecastData) => {
+  const processForecastData = (rawForecastData, categories = {}) => {
     if (!rawForecastData || rawForecastData.length === 0) return [];
 
     const currentDate = new Date();
@@ -869,7 +873,21 @@ const TestingDashboard = () => {
         return sum + Math.max(0, targetValue);
       }, 0);
       
-      const totalProduction = monthData.reduce((sum, item) => sum + (parseFloat(item.Produksi) || 0), 0);
+      // Calculate production by category
+      const productionByCategory = {
+        Generik: 0,
+        OTC: 0,
+        ETH: 0
+      };
+
+      monthData.forEach(item => {
+        const production = parseFloat(item.Produksi) || 0;
+        const productId = item.Product_ID;
+        const category = categories[productId] || 'ETH'; // Default to ETH if not found
+        productionByCategory[category] += production;
+      });
+
+      const totalProduction = productionByCategory.Generik + productionByCategory.OTC + productionByCategory.ETH;
       
       monthlyData.push({
         month: month,
@@ -877,6 +895,9 @@ const TestingDashboard = () => {
         periode: periode,
         forecast: Math.round(totalTarget), // This is now "Target" instead of "Forecast"
         production: Math.round(totalProduction),
+        productionGenerik: Math.round(productionByCategory.Generik),
+        productionOTC: Math.round(productionByCategory.OTC),
+        productionETH: Math.round(productionByCategory.ETH),
         hasData: month <= currentMonth, // Only show data for past/current months
         achievement: totalTarget > 0 ? Math.round((totalProduction / totalTarget) * 100) : 0
       });
@@ -890,6 +911,43 @@ const TestingDashboard = () => {
       try {
         setLoading(true);
         setError(null);
+
+        // Fetch Product List and OTC Products for categorization
+        const [productListResponse, otcProductsResponse] = await Promise.all([
+          fetch(apiUrl('/api/productList')),
+          fetch(apiUrl('/api/otcProducts'))
+        ]);
+
+        if (!productListResponse.ok || !otcProductsResponse.ok) {
+          throw new Error('Error fetching product category data');
+        }
+
+        const productListData = await productListResponse.json();
+        const otcProductsData = await otcProductsResponse.json();
+
+        const productList = productListData.data || [];
+        const otcProducts = otcProductsData.data || [];
+
+        // Create a Set of OTC product IDs for quick lookup
+        const otcProductIds = new Set(otcProducts.map(p => p.Product_ID));
+
+        // Categorize products
+        const categories = {};
+        productList.forEach(product => {
+          const productId = product.Product_ID;
+          const productName = (product.Product_Name || '').toLowerCase();
+
+          if (otcProductIds.has(productId)) {
+            categories[productId] = 'OTC';
+          } else if (productName.includes('generik') || productName.includes('generic')) {
+            categories[productId] = 'Generik';
+          } else {
+            categories[productId] = 'ETH';
+          }
+        });
+
+        console.log('Product Categories:', categories);
+        setProductCategories(categories);
 
         // Fetch PCT Breakdown data (now batch-level details)
         const pctResponse = await fetch(apiUrl('/api/pctBreakdown'));
@@ -969,8 +1027,8 @@ const TestingDashboard = () => {
         // Store raw forecast data for detailed modal view
         setForecastRawData(forecastRawData);
         
-        // Process forecast data to monthly totals
-        const processedForecast = processForecastData(forecastRawData);
+        // Process forecast data to monthly totals with categories
+        const processedForecast = processForecastData(forecastRawData, categories);
         console.log('Processed Forecast Data:', processedForecast);
         setForecastData(processedForecast);
         
@@ -1097,46 +1155,39 @@ const TestingDashboard = () => {
     },
   };
 
-  // Create forecast vs production chart data
+  // Create forecast vs production chart data - Stacked by category
   const forecastChartData = {
     labels: forecastData.map(d => d.monthName),
     datasets: [
       {
         type: 'bar',
-        label: 'Target',
-        data: forecastData.map(d => d.hasData ? d.forecast : null),
-        backgroundColor: 'rgba(79, 140, 255, 0.7)',
-        borderColor: '#4f8cff',
-        borderWidth: 2,
-        borderRadius: 6,
-        order: 2,
+        label: 'ETH',
+        data: forecastData.map(d => d.hasData ? d.productionETH : null),
+        backgroundColor: 'rgba(16, 185, 129, 0.8)', // Green
+        borderColor: '#10b981',
+        borderWidth: 1,
+        stack: 'production',
+        order: 3, // Bottom
       },
       {
         type: 'bar',
-        label: 'Production',
-        data: forecastData.map(d => d.hasData ? d.production : null),
-        backgroundColor: 'rgba(16, 185, 129, 0.7)',
-        borderColor: '#10b981',
-        borderWidth: 2,
-        borderRadius: 6,
-        order: 3,
+        label: 'Generik',
+        data: forecastData.map(d => d.hasData ? d.productionGenerik : null),
+        backgroundColor: 'rgba(234, 179, 8, 0.8)', // Yellow
+        borderColor: '#eab308',
+        borderWidth: 1,
+        stack: 'production',
+        order: 2, // Middle
       },
       {
-        type: 'line',
-        label: 'Achievement %',
-        data: forecastData.map(d => d.hasData ? d.achievement : null),
-        borderColor: '#9333ea',
-        backgroundColor: 'rgba(147, 51, 234, 0.1)',
-        borderWidth: 3,
-        pointRadius: 5,
-        pointHoverRadius: 7,
-        pointBackgroundColor: '#9333ea',
-        pointBorderColor: '#fff',
-        pointBorderWidth: 2,
-        tension: 0.3,
-        fill: true,
-        yAxisID: 'y1',
-        order: 1,
+        type: 'bar',
+        label: 'OTC',
+        data: forecastData.map(d => d.hasData ? d.productionOTC : null),
+        backgroundColor: 'rgba(59, 130, 246, 0.8)', // Blue
+        borderColor: '#3b82f6',
+        borderWidth: 1,
+        stack: 'production',
+        order: 1, // Top
       },
     ],
   };
@@ -1184,13 +1235,16 @@ const TestingDashboard = () => {
               label += ': ';
             }
             if (context.parsed.y !== null) {
-              if (context.dataset.yAxisID === 'y1') {
-                label += context.parsed.y + '%';
-              } else {
-                label += context.parsed.y.toLocaleString() + ' units';
-              }
+              label += context.parsed.y.toLocaleString() + ' units';
             }
             return label;
+          },
+          footer: function(tooltipItems) {
+            let total = 0;
+            tooltipItems.forEach(item => {
+              total += item.parsed.y;
+            });
+            return 'Total: ' + total.toLocaleString() + ' units';
           },
         },
       },
@@ -1206,7 +1260,7 @@ const TestingDashboard = () => {
         beginAtZero: true,
         title: {
           display: true,
-          text: 'Units',
+          text: 'Production Units',
           font: {
             weight: 'bold',
             size: 11,
@@ -1219,29 +1273,6 @@ const TestingDashboard = () => {
         },
         grid: {
           color: 'rgba(0, 0, 0, 0.05)',
-        },
-      },
-      y1: {
-        type: 'linear',
-        display: true,
-        position: 'right',
-        beginAtZero: true,
-        max: 120,
-        title: {
-          display: true,
-          text: 'Achievement %',
-          font: {
-            weight: 'bold',
-            size: 11,
-          },
-        },
-        ticks: {
-          callback: function(value) {
-            return value + '%';
-          },
-        },
-        grid: {
-          drawOnChartArea: false,
         },
       },
       x: {
@@ -1257,6 +1288,78 @@ const TestingDashboard = () => {
       <Sidebar />
       <div className="production-main-content">
         <div className="production-content">
+        {/* PCT Breakdown Section */}
+        <section className="production-section">
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: '1fr 1fr', 
+            gap: '24px', 
+            marginBottom: '16px' 
+          }}>
+            <h2 className="section-title" style={{ margin: 0 }}>Product Cycle Time (PCT) Breakdown</h2>
+            <h2 className="section-title" style={{ margin: 0 }}>Production Target</h2>
+          </div>
+          {error && (
+            <div className="error-banner" style={{
+              backgroundColor: '#fee',
+              border: '1px solid #fcc',
+              borderRadius: '8px',
+              padding: '12px 16px',
+              marginBottom: '16px',
+              color: '#c33',
+            }}>
+              <strong>⚠️ Error loading data:</strong> {error}
+            </div>
+          )}
+          <div className="pct-row">
+            <div className="pct-card">
+              <div className="pct-description">
+                <p>Average days for each stage in the production process (Last 2 months)</p>
+                <small style={{ color: '#666', fontSize: '0.85rem' }}>
+                  📊 Data from completed batches with "Approve Release"
+                </small>
+              </div>
+              <div className="pct-chart-container">
+                {Object.keys(pctData).length > 0 ? (
+                  <Bar data={pctChartData} options={pctOptions} />
+                ) : (
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center', 
+                    height: '100%',
+                    color: '#9ca3af',
+                    fontSize: '0.9rem'
+                  }}>
+                    Loading PCT data...
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="pct-placeholder-card">
+              <div style={{ width: '100%' }}>
+                <div className="pct-description">
+                  <p>Monthly production tracking on yearly basis.</p>
+                  <small style={{ color: '#666', fontSize: '0.85rem' }}>
+                    📈 Click to see individual production for each product.
+                  </small>
+                </div>
+                
+                {forecastData.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '24px', color: '#9ca3af' }}>
+                    <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📊</div>
+                    <p style={{ fontSize: '0.9rem' }}>Loading forecast data...</p>
+                  </div>
+                ) : (
+                  <div className="pct-chart-container">
+                    <Bar data={forecastChartData} options={forecastChartOptions} />
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* WIP Section */}
         <section className="production-section">
           
@@ -1538,78 +1641,6 @@ const TestingDashboard = () => {
               })}
             </div>
           )}
-        </section>
-
-        {/* PCT Breakdown Section */}
-        <section className="production-section">
-          <div style={{ 
-            display: 'grid', 
-            gridTemplateColumns: '1fr 1fr', 
-            gap: '24px', 
-            marginBottom: '16px' 
-          }}>
-            <h2 className="section-title" style={{ margin: 0 }}>Product Cycle Time (PCT) Breakdown</h2>
-            <h2 className="section-title" style={{ margin: 0 }}>Production Target</h2>
-          </div>
-          {error && (
-            <div className="error-banner" style={{
-              backgroundColor: '#fee',
-              border: '1px solid #fcc',
-              borderRadius: '8px',
-              padding: '12px 16px',
-              marginBottom: '16px',
-              color: '#c33',
-            }}>
-              <strong>⚠️ Error loading data:</strong> {error}
-            </div>
-          )}
-          <div className="pct-row">
-            <div className="pct-card">
-              <div className="pct-description">
-                <p>Average days for each stage in the production process (Last 2 months)</p>
-                <small style={{ color: '#666', fontSize: '0.85rem' }}>
-                  📊 Data from completed batches with "Approve Release"
-                </small>
-              </div>
-              <div className="pct-chart-container">
-                {Object.keys(pctData).length > 0 ? (
-                  <Bar data={pctChartData} options={pctOptions} />
-                ) : (
-                  <div style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'center', 
-                    height: '100%',
-                    color: '#9ca3af',
-                    fontSize: '0.9rem'
-                  }}>
-                    Loading PCT data...
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="pct-placeholder-card">
-              <div style={{ width: '100%' }}>
-                <div className="pct-description">
-                  <p>Monthly achievement tracking with dual-axis visualization</p>
-                  <small style={{ color: '#666', fontSize: '0.85rem' }}>
-                    📈 Comparing actual production against forecasted targets
-                  </small>
-                </div>
-                
-                {forecastData.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '24px', color: '#9ca3af' }}>
-                    <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📊</div>
-                    <p style={{ fontSize: '0.9rem' }}>Loading forecast data...</p>
-                  </div>
-                ) : (
-                  <div className="pct-chart-container">
-                    <Bar data={forecastChartData} options={forecastChartOptions} />
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
         </section>
       </div>
       </div>
@@ -2123,8 +2154,24 @@ const TestingDashboard = () => {
                       }}
                     >
                       <div style={{ marginBottom: '12px' }}>
-                        <div style={{ fontSize: '0.95rem', fontWeight: '600', color: '#2c3e50', marginBottom: '4px' }}>
-                          {product.productId} - {product.productName}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                          <div style={{ fontSize: '0.95rem', fontWeight: '600', color: '#2c3e50' }}>
+                            {product.productId} - {product.productName}
+                          </div>
+                          <div style={{
+                            display: 'inline-block',
+                            backgroundColor: product.category === 'ETH' ? '#d1fae5' : 
+                                           product.category === 'Generik' ? '#fef3c7' : '#dbeafe',
+                            color: product.category === 'ETH' ? '#065f46' : 
+                                   product.category === 'Generik' ? '#92400e' : '#1e40af',
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            fontSize: '0.7rem',
+                            fontWeight: '700',
+                            textTransform: 'uppercase',
+                          }}>
+                            {product.category}
+                          </div>
                         </div>
                         <div style={{
                           display: 'inline-block',

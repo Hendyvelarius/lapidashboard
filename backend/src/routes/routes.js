@@ -44,4 +44,8 @@ router.get('/lostSales', SqlController.getLostSales);
 router.get('/ota', SqlController.getOTA);
 router.get('/material', SqlController.getMaterial);
 
+// Routing Product Categories
+router.get('/productList', SqlController.getProductList);
+router.get('/otcProducts', SqlController.getOTCProducts);
+
 module.exports = router;

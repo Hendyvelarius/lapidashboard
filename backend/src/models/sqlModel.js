@@ -482,4 +482,18 @@ async function getWIPData() {
   return result.recordset;
 }
 
-module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getWIPData};
+async function getProductList() {
+  const db = await connect();
+  const query = `SELECT mp.Product_ID, mp.Product_Name FROM m_Product mp`;
+  const result = await db.request().query(query);
+  return result.recordset;
+}
+
+async function getOTCProducts() {
+  const db = await connect();
+  const query = `SELECT Product_ID FROM m_product_otc`;
+  const result = await db.request().query(query);
+  return result.recordset;
+}
+
+module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getWIPData, getProductList, getOTCProducts};
