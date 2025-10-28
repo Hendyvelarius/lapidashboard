@@ -47,5 +47,6 @@ router.get('/material', SqlController.getMaterial);
 // Routing Product Categories
 router.get('/productList', SqlController.getProductList);
 router.get('/otcProducts', SqlController.getOTCProducts);
+router.get('/productGroupDept', SqlController.getProductGroupDept);
 
 module.exports = router;
