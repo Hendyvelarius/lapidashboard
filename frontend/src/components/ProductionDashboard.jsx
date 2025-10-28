@@ -73,21 +73,34 @@ const parseSQLDateTime = (sqlDateString) => {
 };
 
 // Helper function to calculate days in stage from batch date
-const calculateDaysInStage = (batchDateString) => {
-  if (!batchDateString) return 0;
+const calculateDaysInStage = (entries) => {
+  if (!entries || entries.length === 0) return 0;
   
-  // Parse batch date in format "2025/10/20"
-  const parts = batchDateString.split('/');
-  if (parts.length !== 3) return 0;
+  // Find the earliest StartDate from all entries in this stage
+  let earliestStartDate = null;
+  entries.forEach(entry => {
+    if (entry.StartDate) {
+      const startDate = new Date(entry.StartDate);
+      if (!earliestStartDate || startDate < earliestStartDate) {
+        earliestStartDate = startDate;
+      }
+    }
+  });
   
-  const batchDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+  if (!earliestStartDate) return 0;
+  
+  // Normalize both dates to start of day (midnight) to avoid time-of-day issues
   const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  earliestStartDate.setHours(0, 0, 0, 0);
   
   // Calculate difference in days
-  const diffTime = today - batchDate;
+  const diffTime = today - earliestStartDate;
   const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
   
-  return diffDays;
+  // Ensure we never return negative values (if start date is today or in future, return 0)
+  return Math.max(0, diffDays);
 };
 
 // Speedometer Component
@@ -688,7 +701,7 @@ const ProductionDashboard = () => {
     // Add daysInStage to each batch and sort by longest duration first
     const batchesWithDays = activeBatches.map(batch => ({
       ...batch,
-      daysInStage: calculateDaysInStage(batch.batchDate)
+      daysInStage: calculateDaysInStage(batch.entries)
     })).sort((a, b) => b.daysInStage - a.daysInStage);
 
     setSelectedStageData({
@@ -762,7 +775,7 @@ const ProductionDashboard = () => {
     // Add daysInStage to each batch and sort by longest duration first
     const batchesWithDays = activeBatches.map(batch => ({
       ...batch,
-      daysInStage: calculateDaysInStage(batch.batchDate)
+      daysInStage: calculateDaysInStage(batch.entries)
     })).sort((a, b) => b.daysInStage - a.daysInStage);
 
     setSelectedStageData({
@@ -1153,7 +1166,19 @@ const ProductionDashboard = () => {
   }, []);
 
   if (loading) {
-    return <DashboardLoading loading={true} text="Loading Production Dashboard..." subtext="Fetching WIP and PCT data..." />;
+    return (
+      <div className="dashboard-container">
+        <Sidebar />
+        <main className="content-area">
+          <DashboardLoading 
+            loading={true} 
+            text="Loading Production Dashboard..." 
+            subtext="Fetching WIP and PCT data..." 
+            coverContentArea={true}
+          />
+        </main>
+      </div>
+    );
   }
 
   // Create bar chart data for PCT (after loading check)
