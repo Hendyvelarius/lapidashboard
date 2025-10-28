@@ -478,6 +478,7 @@ const InventoryOJSlowDeadStockDetailsModal = ({ isOpen, onClose, forecastData })
     const productId = item.Product_ID;
     const period = parseInt(item.Periode);
     const sales = item.Sales || 0;
+    const forecast = item.Forecast || 0;
     const release = item.Release || 0;
     const hna = item.HNA || 0;
     
@@ -490,7 +491,7 @@ const InventoryOJSlowDeadStockDetailsModal = ({ isOpen, onClose, forecastData })
         HNA: hna
       };
     }
-    productHistory[productId][period] = { sales, release };
+    productHistory[productId][period] = { sales, forecast, release };
   });
   
   const productIds = Object.keys(productHistory);
@@ -502,10 +503,20 @@ const InventoryOJSlowDeadStockDetailsModal = ({ isOpen, onClose, forecastData })
     const history = productHistory[productId];
     const productDetail = productDetails[productId];
     
-    // Check for dead stock (0 sales for last 6 months AND stock available in earliest and current periods)
-    const hasSalesInLast6Months = last6MonthsPeriods.some(period => 
-      (history[period]?.sales || 0) > 0
-    );
+    // Check for dead stock (sales < 60% of forecast for last 6 months AND stock available in earliest and current periods)
+    const isBelowThresholdLast6Months = last6MonthsPeriods.every(period => {
+      const periodData = history[period];
+      if (!periodData) return false; // If no data for this period, not considered below threshold
+      
+      const sales = periodData.sales || 0;
+      const forecast = periodData.forecast || 0;
+      
+      // If forecast is 0, we can't determine the ratio, so skip this product
+      if (forecast === 0) return false;
+      
+      // Check if sales is less than 60% of forecast
+      return sales < (forecast * 0.6);
+    });
     
     // Check if stock was available in earliest (6 months ago) and current periods
     const earliestPeriod = last6MonthsPeriods[0]; // First period in the 6-month range
@@ -515,7 +526,7 @@ const InventoryOJSlowDeadStockDetailsModal = ({ isOpen, onClose, forecastData })
     const hasStockInCurrentPeriod = (history[currentPeriod]?.release || 0) > 0;
     const currentStock = history[currentPeriod]?.release || 0;
     
-    const isDeadStock = !hasSalesInLast6Months && hasStockInEarliestPeriod && hasStockInCurrentPeriod;
+    const isDeadStock = isBelowThresholdLast6Months && hasStockInEarliestPeriod && hasStockInCurrentPeriod;
     
     if (isDeadStock) {
       allDeadStockProducts.push({
@@ -525,10 +536,20 @@ const InventoryOJSlowDeadStockDetailsModal = ({ isOpen, onClose, forecastData })
       });
     } else {
       // Only check for slow moving if not dead stock
-      // Check for slow moving (0 sales for last 3 months AND stock available in earliest and current periods)
-      const hasSalesInLast3Months = last3MonthsPeriods.some(period => 
-        (history[period]?.sales || 0) > 0
-      );
+      // Check for slow moving (sales < 60% of forecast for last 3 months AND stock available in earliest and current periods)
+      const isBelowThresholdLast3Months = last3MonthsPeriods.every(period => {
+        const periodData = history[period];
+        if (!periodData) return false; // If no data for this period, not considered below threshold
+        
+        const sales = periodData.sales || 0;
+        const forecast = periodData.forecast || 0;
+        
+        // If forecast is 0, we can't determine the ratio, so skip this product
+        if (forecast === 0) return false;
+        
+        // Check if sales is less than 60% of forecast
+        return sales < (forecast * 0.6);
+      });
       
       // Check if stock was available in earliest (3 months ago) and current periods for slow moving
       const earliestPeriod3M = last3MonthsPeriods[0]; // First period in the 3-month range
@@ -538,7 +559,7 @@ const InventoryOJSlowDeadStockDetailsModal = ({ isOpen, onClose, forecastData })
       const hasStockInCurrentPeriod3M = (history[currentPeriod3M]?.release || 0) > 0;
       const currentStock3M = history[currentPeriod3M]?.release || 0;
       
-      const isSlowMoving = !hasSalesInLast3Months && hasStockInEarliestPeriod3M && hasStockInCurrentPeriod3M;
+      const isSlowMoving = isBelowThresholdLast3Months && hasStockInEarliestPeriod3M && hasStockInCurrentPeriod3M;
       
       if (isSlowMoving) {
         allSlowMovingProducts.push({
@@ -4245,13 +4266,14 @@ function SummaryDashboard() {
       const productId = item.Product_ID;
       const period = parseInt(item.Periode);
       const sales = item.Sales || 0;
+      const forecast = item.Forecast || 0;
       const release = item.Release || 0;
       const hna = item.HNA || 0;
       
       if (!productHistory[productId]) {
         productHistory[productId] = { hna };
       }
-      productHistory[productId][period] = { sales, release };
+      productHistory[productId][period] = { sales, forecast, release };
     });
     
     const productIds = Object.keys(productHistory);
@@ -4263,10 +4285,20 @@ function SummaryDashboard() {
       const history = productHistory[productId];
       const unitPrice = history.hna || 0;
       
-      // Check for dead stock (0 sales for last 6 months AND stock available in earliest and current periods)
-      const hasSalesInLast6Months = last6MonthsPeriods.some(period => 
-        (history[period]?.sales || 0) > 0
-      );
+      // Check for dead stock (sales < 60% of forecast for last 6 months AND stock available in earliest and current periods)
+      const isBelowThresholdLast6Months = last6MonthsPeriods.every(period => {
+        const periodData = history[period];
+        if (!periodData) return false; // If no data for this period, not considered below threshold
+        
+        const sales = periodData.sales || 0;
+        const forecast = periodData.forecast || 0;
+        
+        // If forecast is 0, we can't determine the ratio, so skip this product
+        if (forecast === 0) return false;
+        
+        // Check if sales is less than 60% of forecast
+        return sales < (forecast * 0.6);
+      });
       
       // Check if stock was available in earliest (6 months ago) and current periods
       const earliestPeriod = last6MonthsPeriods[0]; // First period in the 6-month range
@@ -4276,16 +4308,26 @@ function SummaryDashboard() {
       const hasStockInCurrentPeriod = (history[currentPeriod]?.release || 0) > 0;
       const currentStock = history[currentPeriod]?.release || 0;
       
-      const isDeadStock = !hasSalesInLast6Months && hasStockInEarliestPeriod && hasStockInCurrentPeriod;
+      const isDeadStock = isBelowThresholdLast6Months && hasStockInEarliestPeriod && hasStockInCurrentPeriod;
       
       if (isDeadStock) {
         deadStockValue += currentStock * unitPrice;
       } else {
         // Only check for slow moving if not dead stock
-        // Check for slow moving (0 sales for last 3 months AND stock available in earliest and current periods)
-        const hasSalesInLast3Months = last3MonthsPeriods.some(period => 
-          (history[period]?.sales || 0) > 0
-        );
+        // Check for slow moving (sales < 60% of forecast for last 3 months AND stock available in earliest and current periods)
+        const isBelowThresholdLast3Months = last3MonthsPeriods.every(period => {
+          const periodData = history[period];
+          if (!periodData) return false; // If no data for this period, not considered below threshold
+          
+          const sales = periodData.sales || 0;
+          const forecast = periodData.forecast || 0;
+          
+          // If forecast is 0, we can't determine the ratio, so skip this product
+          if (forecast === 0) return false;
+          
+          // Check if sales is less than 60% of forecast
+          return sales < (forecast * 0.6);
+        });
         
         // Check if stock was available in earliest (3 months ago) and current periods for slow moving
         const earliestPeriod3M = last3MonthsPeriods[0]; // First period in the 3-month range
@@ -4295,7 +4337,7 @@ function SummaryDashboard() {
         const hasStockInCurrentPeriod3M = (history[currentPeriod3M]?.release || 0) > 0;
         const currentStock3M = history[currentPeriod3M]?.release || 0;
         
-        const isSlowMoving = !hasSalesInLast3Months && hasStockInEarliestPeriod3M && hasStockInCurrentPeriod3M;
+        const isSlowMoving = isBelowThresholdLast3Months && hasStockInEarliestPeriod3M && hasStockInCurrentPeriod3M;
         
         if (isSlowMoving) {
           slowMovingValue += currentStock3M * unitPrice;
