@@ -28,8 +28,8 @@ const cards = [
   },
   {
     icon: <FaFlask size={36} color="#f59e0b" />,
-    title: "Testing",
-    desc: "Testing dashboard untuk eksperimen dan pengujian fitur baru.",
+    title: "In Construction",
+    desc: "Work in progress, coming soon.",
   },
   {
     icon: <FaRegImage size={36} color="#6a5acd" />,
@@ -67,8 +67,6 @@ export default function ReportsGrid() {
       navigate("/wip");
     } else if (card.title === "Production") {
       navigate("/production");
-    } else if (card.title === "Testing") {
-      navigate("/testing");
     }
     // Add more navigation cases for other cards here later
   };
