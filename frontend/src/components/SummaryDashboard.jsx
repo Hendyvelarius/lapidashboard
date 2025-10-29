@@ -3062,6 +3062,7 @@ function SummaryDashboard() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
   const [lastFetchTime, setLastFetchTime] = useState(null);
   const [salesChartType, setSalesChartType] = useState('Monthly'); // 'Weekly', 'Daily', or 'Monthly'
   const [salesDropdownOpen, setSalesDropdownOpen] = useState(false);
@@ -3262,35 +3263,20 @@ function SummaryDashboard() {
       const timestamp = Date.now();
       saveDataToCache(processedData, rawData);
       setLastFetchTime(timestamp);
+      setError(null); // Clear any previous errors on successful fetch
       
     } catch (error) {
       console.error('❌ Error fetching summary data:', error);
-      // Fallback to mock data on error
-      setData({
-        sales: processSalesData([], []),
-        inventory: processInventoryData([]),
-        stockOut: processStockOutData([], []),
-        coverage: processCoverageData([]),
-        coverageFokus: processCoverageFokusData([]),
-        coverageNonFokus: processCoverageNonFokusData([]),
-        whOccupancy: processWHOccupancyData([]),
-        orderFulfillment: {
-          turunPpi: 78,
-          potongStock: 65,
-          proses: 88,
-          kemas: 92,
-          dokumen: 76,
-          rilisQc: 89,
-          rilisQa: 84
-        },
-        materialAvailability: processMaterialAvailabilityData([]),
-        inventoryOJ: processInventoryOJData([]),
-        inventoryBB: processInventoryBBData([]),
-        inventoryBK: processInventoryBKData([]),
-        inventoryBBBK: processInventoryBBBKData([]),
-        pct: { average: 5.2, longest: 12.8, percentage: 40.6 },
-        ota: processOTAData([]),
-        wip: processWIPData([])
+      
+      // Determine if this is a timeout error
+      const isTimeout = error.name === 'TypeError' || 
+                       error.message?.toLowerCase().includes('timeout') ||
+                       error.message?.toLowerCase().includes('failed to fetch');
+      
+      setError({
+        type: isTimeout ? 'timeout' : 'general',
+        message: error.message || 'An error occurred while loading data',
+        timestamp: Date.now()
       });
     } finally {
       setLoading(false);
@@ -4844,6 +4830,177 @@ function SummaryDashboard() {
       }
     }
   };
+
+  if (loading) {
+    return (
+      <div className="dashboard-container">
+        <Sidebar />
+        <main className="content-area">
+          <DashboardLoading 
+            loading={true} 
+            text="Loading Summary Dashboard..." 
+            subtext="Sedang memuat data ringkasan..." 
+            coverContentArea={true}
+          />
+        </main>
+      </div>
+    );
+  }
+
+  // Show error page if there's an error
+  if (error) {
+    return (
+      <div className="dashboard-container">
+        <Sidebar />
+        <main className="content-area">
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            minHeight: '80vh',
+            padding: '40px 20px',
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            borderRadius: '16px',
+            margin: '20px',
+            boxShadow: '0 10px 40px rgba(0, 0, 0, 0.1)'
+          }}>
+            {/* Error Icon */}
+            <div style={{
+              fontSize: '80px',
+              marginBottom: '24px',
+              animation: 'pulse 2s infinite'
+            }}>
+              ⏱️
+            </div>
+
+            {/* Error Title */}
+            <h1 style={{
+              fontSize: '2.5rem',
+              fontWeight: '700',
+              color: 'white',
+              marginBottom: '16px',
+              textAlign: 'center',
+              textShadow: '0 2px 10px rgba(0, 0, 0, 0.2)'
+            }}>
+              Request Timed Out
+            </h1>
+
+            {/* Error Message */}
+            <p style={{
+              fontSize: '1.125rem',
+              color: 'rgba(255, 255, 255, 0.9)',
+              marginBottom: '12px',
+              textAlign: 'center',
+              maxWidth: '600px',
+              lineHeight: '1.6'
+            }}>
+              We sincerely apologize for the inconvenience. The server is currently experiencing high load and was unable to process your request in time.
+            </p>
+
+            <p style={{
+              fontSize: '0.95rem',
+              color: 'rgba(255, 255, 255, 0.75)',
+              marginBottom: '32px',
+              textAlign: 'center',
+              maxWidth: '500px'
+            }}>
+              Please try refreshing the page. If the problem persists, please contact the system administrator.
+            </p>
+
+            {/* Error Details (for debugging) */}
+            {error.message && (
+              <div style={{
+                background: 'rgba(255, 255, 255, 0.1)',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                borderRadius: '8px',
+                padding: '12px 20px',
+                marginBottom: '32px',
+                maxWidth: '600px',
+                width: '100%'
+              }}>
+                <p style={{
+                  fontSize: '0.85rem',
+                  color: 'rgba(255, 255, 255, 0.9)',
+                  fontFamily: 'monospace',
+                  margin: 0,
+                  wordBreak: 'break-word'
+                }}>
+                  <strong>Technical Details:</strong> {error.message}
+                </p>
+              </div>
+            )}
+
+            {/* Refresh Button */}
+            <button
+              onClick={() => {
+                setError(null);
+                fetchAllData(true);
+              }}
+              style={{
+                background: 'white',
+                color: '#667eea',
+                border: 'none',
+                borderRadius: '12px',
+                padding: '16px 48px',
+                fontSize: '1.125rem',
+                fontWeight: '600',
+                cursor: 'pointer',
+                boxShadow: '0 4px 15px rgba(0, 0, 0, 0.2)',
+                transition: 'all 0.3s ease',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.transform = 'translateY(-2px)';
+                e.target.style.boxShadow = '0 6px 20px rgba(0, 0, 0, 0.3)';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.transform = 'translateY(0)';
+                e.target.style.boxShadow = '0 4px 15px rgba(0, 0, 0, 0.2)';
+              }}
+            >
+              🔄 Refresh Page
+            </button>
+
+            {/* Additional Info */}
+            <div style={{
+              marginTop: '40px',
+              padding: '16px 24px',
+              background: 'rgba(255, 255, 255, 0.05)',
+              borderRadius: '8px',
+              border: '1px solid rgba(255, 255, 255, 0.1)'
+            }}>
+              <p style={{
+                fontSize: '0.85rem',
+                color: 'rgba(255, 255, 255, 0.7)',
+                margin: 0,
+                textAlign: 'center'
+              }}>
+                💡 Tip: If this error occurs frequently, the server may be under heavy load during peak hours.
+                <br />
+                Consider accessing the dashboard during off-peak times for better performance.
+              </p>
+            </div>
+
+            {/* Animation Keyframes */}
+            <style>{`
+              @keyframes pulse {
+                0%, 100% {
+                  opacity: 1;
+                  transform: scale(1);
+                }
+                50% {
+                  opacity: 0.7;
+                  transform: scale(1.05);
+                }
+              }
+            `}</style>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="dashboard-container">

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Chart as ChartJS, ArcElement, BarElement, CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend } from 'chart.js';
 import ChartDataLabels from 'chartjs-plugin-datalabels';
 import { Doughnut, Bar, Line } from 'react-chartjs-2';
+import * as XLSX from 'xlsx';
 import DashboardLoading from './DashboardLoading';
 import Sidebar from './Sidebar';
 import Modal from './Modal';
@@ -10,6 +11,321 @@ import './ProductionDashboard.css';
 
 // Don't register ChartDataLabels globally - it will be added per-chart basis
 ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend);
+
+// Animated Donut Chart with Callout Labels Component
+const AnimatedDonutWithCallouts = ({ data, onSliceClick, batchCount }) => {
+  const [animated, setAnimated] = useState(false);
+  
+  useEffect(() => {
+    // Trigger animation after mount
+    const timer = setTimeout(() => setAnimated(true), 100);
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (!data || Object.keys(data).length === 0) {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        height: '100%',
+        color: '#9ca3af',
+        fontSize: '0.9rem'
+      }}>
+        Loading PCT stage data...
+      </div>
+    );
+  }
+
+  const stageNames = Object.keys(data);
+  const stageValues = Object.values(data);
+  const total = stageValues.reduce((sum, val) => sum + val, 0);
+  
+  // Colors for each stage
+  const colors = [
+    { bg: 'rgba(79, 140, 255, 0.8)', border: '#4f8cff' },     // Timbang - Blue
+    { bg: 'rgba(147, 51, 234, 0.8)', border: '#9333ea' },      // Proses - Purple
+    { bg: 'rgba(56, 230, 197, 0.8)', border: '#38e6c5' },      // QC - Teal
+    { bg: 'rgba(255, 179, 71, 0.8)', border: '#ffb347' },      // Mikro - Orange
+    { bg: 'rgba(229, 115, 115, 0.8)', border: '#e57373' },     // QA - Red
+  ];
+
+  // Calculate slice data
+  let currentAngle = -90; // Start at top
+  const slices = stageNames.map((name, index) => {
+    const value = stageValues[index];
+    const percentage = (value / total) * 100;
+    const sweepAngle = (percentage / 100) * 360;
+    const startAngle = currentAngle;
+    const endAngle = currentAngle + sweepAngle;
+    const midAngle = startAngle + sweepAngle / 2;
+    
+    currentAngle = endAngle;
+    
+    return {
+      name,
+      value,
+      percentage,
+      startAngle,
+      endAngle,
+      midAngle,
+      color: colors[index] || colors[0]
+    };
+  });
+
+  // Chart dimensions
+  const size = 300; // Compact size
+  const center = size / 2;
+  const outerRadius = 70;
+  const innerRadius = 49; // 70% cutout
+  const labelRadius = outerRadius + 35; // Closer to donut
+
+  // Helper to convert polar to cartesian
+  const polarToCartesian = (angle, radius) => {
+    const rads = (angle * Math.PI) / 180;
+    return {
+      x: center + radius * Math.cos(rads),
+      y: center + radius * Math.sin(rads)
+    };
+  };
+
+  // Smart label positioning - avoid far right extensions
+  const getSmartLabelPosition = (midAngle) => {
+    // Since we start at -90° (top), normalize the angle
+    // -90° to 90° is right side, 90° to 270° (or -90° to -270°) is left side
+    
+    // Right side: angles from -90° to 90°
+    if (midAngle >= -90 && midAngle <= 90) {
+      // Far right (near horizontal): 30° to 60° - use compact
+      if (midAngle >= 30 && midAngle <= 60) {
+        return {
+          side: 'right-compact',
+          textAnchor: 'start',
+          lineExtension: 15
+        };
+      }
+      // Normal right side
+      return {
+        side: 'right',
+        textAnchor: 'start',
+        lineExtension: 20
+      };
+    }
+    // Left side: angles from 90° to 270° or -270° to -90°
+    else {
+      // Far left (near horizontal): 120° to 150° or -240° to -210°
+      if ((midAngle >= 120 && midAngle <= 150) || (midAngle >= -240 && midAngle <= -210)) {
+        return {
+          side: 'left-compact',
+          textAnchor: 'end',
+          lineExtension: 15
+        };
+      }
+      // Normal left side
+      return {
+        side: 'left',
+        textAnchor: 'end',
+        lineExtension: 20
+      };
+    }
+  };
+
+  // Create SVG path for donut slice
+  const createSlicePath = (slice) => {
+    const start = polarToCartesian(slice.startAngle, outerRadius);
+    const end = polarToCartesian(slice.endAngle, outerRadius);
+    const startInner = polarToCartesian(slice.startAngle, innerRadius);
+    const endInner = polarToCartesian(slice.endAngle, innerRadius);
+    
+    const largeArc = slice.sweepAngle > 180 ? 1 : 0;
+    
+    return `
+      M ${start.x} ${start.y}
+      A ${outerRadius} ${outerRadius} 0 ${largeArc} 1 ${end.x} ${end.y}
+      L ${endInner.x} ${endInner.y}
+      A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${startInner.x} ${startInner.y}
+      Z
+    `;
+  };
+
+  return (
+    <div style={{ position: 'relative', width: '100%', height: '300px', overflow: 'visible' }}>
+      <svg 
+        width={size} 
+        height={size} 
+        style={{ 
+          position: 'absolute', 
+          left: 'calc(50% - 20px)', // Shifted 20px to the left
+          top: '50%',
+          transform: 'translate(-50%, -50%)',
+          overflow: 'visible'
+        }}
+      >
+        {/* Draw donut slices */}
+        {slices.map((slice, index) => (
+          <g key={index}>
+            {/* Slice */}
+            <path
+              d={createSlicePath(slice)}
+              fill={slice.color.bg}
+              stroke={slice.color.border}
+              strokeWidth="2"
+              style={{
+                cursor: 'pointer',
+                transition: 'all 0.3s ease',
+                opacity: animated ? 1 : 0,
+                transform: animated ? 'scale(1)' : 'scale(0)',
+                transformOrigin: `${center}px ${center}px`,
+                transitionDelay: `${index * 0.1}s`
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.filter = 'brightness(1.1)';
+                e.target.style.transform = 'scale(1.05)';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.filter = 'brightness(1)';
+                e.target.style.transform = 'scale(1)';
+              }}
+              onClick={() => onSliceClick && onSliceClick(slice.name)}
+            />
+            
+            {/* Leader line */}
+            {(() => {
+              const midPoint = polarToCartesian(slice.midAngle, outerRadius + 5);
+              const labelPoint = polarToCartesian(slice.midAngle, labelRadius);
+              const labelPos = getSmartLabelPosition(slice.midAngle);
+              
+              const horizontalEnd = {
+                x: labelPoint.x + (labelPos.textAnchor === 'start' ? labelPos.lineExtension : -labelPos.lineExtension),
+                y: labelPoint.y
+              };
+              
+              return (
+                <>
+                  {/* Curved line from slice to label */}
+                  <path
+                    d={`M ${midPoint.x} ${midPoint.y} L ${labelPoint.x} ${labelPoint.y} L ${horizontalEnd.x} ${horizontalEnd.y}`}
+                    stroke={slice.color.border}
+                    strokeWidth="1.5"
+                    fill="none"
+                    style={{
+                      strokeDasharray: animated ? 'none' : '1000',
+                      strokeDashoffset: animated ? '0' : '1000',
+                      transition: 'stroke-dashoffset 0.8s ease',
+                      transitionDelay: `${0.5 + index * 0.1}s`
+                    }}
+                  />
+                  
+                  {/* End point circle */}
+                  <circle
+                    cx={horizontalEnd.x}
+                    cy={horizontalEnd.y}
+                    r="3"
+                    fill={slice.color.border}
+                    style={{
+                      opacity: animated ? 1 : 0,
+                      transition: 'opacity 0.3s ease',
+                      transitionDelay: `${0.8 + index * 0.1}s`
+                    }}
+                  />
+                  
+                  {/* Label text */}
+                  <text
+                    x={horizontalEnd.x + (labelPos.textAnchor === 'start' ? 8 : -8)}
+                    y={horizontalEnd.y - 8}
+                    textAnchor={labelPos.textAnchor}
+                    style={{
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      fill: '#374151',
+                      opacity: animated ? 1 : 0,
+                      transition: 'opacity 0.3s ease',
+                      transitionDelay: `${0.8 + index * 0.1}s`
+                    }}
+                  >
+                    {slice.name}
+                  </text>
+                  
+                  {/* Value text */}
+                  <text
+                    x={horizontalEnd.x + (labelPos.textAnchor === 'start' ? 8 : -8)}
+                    y={horizontalEnd.y + 5}
+                    textAnchor={labelPos.textAnchor}
+                    style={{
+                      fontSize: '13px',
+                      fontWeight: '700',
+                      fill: slice.color.border,
+                      opacity: animated ? 1 : 0,
+                      transition: 'opacity 0.3s ease',
+                      transitionDelay: `${0.8 + index * 0.1}s`
+                    }}
+                  >
+                    {slice.value}d
+                  </text>
+                  
+                  {/* Percentage text */}
+                  <text
+                    x={horizontalEnd.x + (labelPos.textAnchor === 'start' ? 8 : -8)}
+                    y={horizontalEnd.y + 18}
+                    textAnchor={labelPos.textAnchor}
+                    style={{
+                      fontSize: '11px',
+                      fill: '#9ca3af',
+                      opacity: animated ? 1 : 0,
+                      transition: 'opacity 0.3s ease',
+                      transitionDelay: `${0.8 + index * 0.1}s`
+                    }}
+                  >
+                    ({slice.percentage.toFixed(1)}%)
+                  </text>
+                </>
+              );
+            })()}
+          </g>
+        ))}
+      </svg>
+      
+      {/* Center text */}
+      <div style={{
+        position: 'absolute',
+        top: '50%',
+        left: 'calc(50% - 20px)', // Shifted 20px to the left to match donut
+        transform: 'translate(-50%, -50%)',
+        textAlign: 'center',
+        pointerEvents: 'none',
+        opacity: animated ? 1 : 0,
+        transition: 'opacity 0.5s ease',
+        transitionDelay: '0.3s'
+      }}>
+        <div style={{ 
+          fontSize: '1.75rem', 
+          fontWeight: 'bold', 
+          color: '#374151',
+          lineHeight: '1'
+        }}>
+          {total}
+        </div>
+        <div style={{ 
+          fontSize: '0.7rem', 
+          color: '#6b7280',
+          marginTop: '4px'
+        }}>
+          Total Days
+        </div>
+        {batchCount !== undefined && (
+          <div style={{ 
+            fontSize: '0.65rem', 
+            color: '#9ca3af',
+            marginTop: '4px',
+            fontWeight: '500'
+          }}>
+            {batchCount} batches
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 // Department colors for headers
 const deptColors = {
@@ -301,7 +617,7 @@ const Speedometer = ({ label, value, maxValue = 50, color = '#4f8cff', animated 
           {label}
         </div>
         <div style={{
-          fontSize: '0.65rem',
+          fontSize: '1rem',
           color: value > 0 ? '#6b7280' : '#9ca3af',
           fontWeight: '600',
           marginTop: '2px',
@@ -335,6 +651,12 @@ const ProductionDashboard = () => {
   const [selectedTargetData, setSelectedTargetData] = useState(null); // Selected month target data
   const [isExpanded, setIsExpanded] = useState(false); // Single expansion state for both PN1 and PN2
   const [speedometerAnimated, setSpeedometerAnimated] = useState({}); // Track animation state for speedometers
+  const [lastRefreshTime, setLastRefreshTime] = useState(null); // Track last data refresh time
+  const [exportModalOpen, setExportModalOpen] = useState(false); // WIP Excel export modal
+  const [exportSettings, setExportSettings] = useState({
+    line: 'both', // 'PN1', 'PN2', or 'both'
+    stage: 'All' // 'Timbang', 'Proses', 'Kemas Primer', 'Kemas Sekunder', 'QC', 'Mikro', 'QA', or 'All'
+  });
 
   // Process raw WIP data according to business rules
   const processWIPData = (rawData) => {
@@ -717,6 +1039,187 @@ const ProductionDashboard = () => {
   // Toggle expansion (both PN1 and PN2 together)
   const toggleExpansion = () => {
     setIsExpanded(prev => !prev);
+  };
+
+  // Manual refresh function
+  const handleManualRefresh = async () => {
+    window.location.reload();
+  };
+
+  // Handle WIP Excel Export
+  const handleExportWIP = () => {
+    const { line, stage } = exportSettings;
+    
+    // Define stage mappings for Proses stages
+    const prosesStages = ['Mixing', 'Filling', 'Granulasi', 'Cetak', 'Coating'];
+    const validStages = ['Timbang', 'Mixing', 'Filling', 'Granulasi', 'Cetak', 'Coating', 'Kemas Primer', 'Kemas Sekunder', 'QC', 'Mikro', 'QA'];
+    
+    // Step 1: Filter out batches that have completed "Approve Realese"
+    const batchesWithApproveRelease = new Set();
+    rawWipData.forEach(entry => {
+      if (entry.nama_tahapan === 'Approve Realese' && entry.EndDate) {
+        batchesWithApproveRelease.add(entry.Batch_No);
+      }
+    });
+
+    const activeBatches = rawWipData.filter(entry => 
+      !batchesWithApproveRelease.has(entry.Batch_No) && 
+      validStages.includes(entry.tahapan_group) // Only include valid stages
+    );
+
+    // Step 2: Group entries by batch and stage to determine current stages
+    const batchStageMap = {};
+    
+    activeBatches.forEach(entry => {
+      const batchNo = entry.Batch_No;
+      const dept = entry.Group_Dept;
+      const tahapanGroup = entry.tahapan_group;
+      
+      const key = `${batchNo}|${tahapanGroup}`;
+      
+      if (!batchStageMap[key]) {
+        batchStageMap[key] = {
+          batchNo: batchNo,
+          productName: entry.Product_Name,
+          dept: dept,
+          stage: tahapanGroup,
+          batchDate: entry.Batch_Date,
+          steps: [],
+        };
+      }
+      
+      batchStageMap[key].steps.push({
+        startDate: entry.StartDate,
+        endDate: entry.EndDate,
+      });
+    });
+    
+    // Step 3: Determine which batch-stage combinations are "in progress"
+    const batchesInProgress = [];
+    const currentDate = new Date();
+    
+    Object.values(batchStageMap).forEach(batchStage => {
+      const { steps } = batchStage;
+      
+      // Check if at least one step has StartDate
+      const hasStartedStep = steps.some(step => step.startDate);
+      
+      // Check if ALL steps have EndDate (all completed)
+      const allStepsCompleted = steps.every(step => step.endDate);
+      
+      // Batch is in this stage if: at least one step started AND not all steps completed
+      if (hasStartedStep && !allStepsCompleted) {
+        // Find the earliest StartDate among steps that have started
+        const startDates = steps
+          .filter(step => step.startDate)
+          .map(step => parseSQLDateTime(step.startDate))
+          .filter(date => date !== null);
+        
+        let daysInStage = 0;
+        if (startDates.length > 0) {
+          const earliestStartDate = new Date(Math.min(...startDates));
+          daysInStage = Math.floor((currentDate - earliestStartDate) / (1000 * 60 * 60 * 24));
+        }
+        
+        batchesInProgress.push({
+          batchNo: batchStage.batchNo,
+          productName: batchStage.productName,
+          dept: batchStage.dept,
+          currentStage: batchStage.stage,
+          daysInStage: daysInStage,
+          batchDate: batchStage.batchDate,
+        });
+      }
+    });
+    
+    // Step 4: Filter by line (department)
+    let excelData = [...batchesInProgress];
+    if (line !== 'both') {
+      excelData = excelData.filter(item => item.dept === line);
+    }
+    
+    // Step 5: Filter by stage
+    if (stage !== 'All') {
+      if (stage === 'Proses') {
+        // If user selected "Proses", include all Proses-related stages
+        excelData = excelData.filter(item => prosesStages.includes(item.currentStage));
+        // Keep the specific stage names (Mixing, Filling, etc.)
+      } else {
+        // Filter for specific stage
+        excelData = excelData.filter(item => item.currentStage === stage);
+      }
+    } else {
+      // If exporting "All", rename Proses stages to "Proses"
+      excelData = excelData.map(item => ({
+        ...item,
+        currentStage: prosesStages.includes(item.currentStage) ? 'Proses' : item.currentStage
+      }));
+    }
+    
+    // Step 6: Prepare final Excel data
+    const finalExcelData = excelData.map(item => {
+      const row = {
+        'Batch No': item.batchNo || '',
+        'Product Name': item.productName || '',
+        'Stage': item.currentStage || '',
+        'Days in Stage': item.daysInStage || 0,
+        'Batch Date': item.batchDate || '',
+      };
+      
+      // Only add Line column if both lines are selected
+      if (line === 'both') {
+        row['Line'] = item.dept || '';
+      }
+      
+      return row;
+    });
+    
+    // Create workbook and worksheet
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(finalExcelData);
+    
+    // Set column widths
+    const colWidths = [
+      { wch: 15 }, // Batch No
+      { wch: 35 }, // Product Name
+      { wch: 18 }, // Stage
+      { wch: 15 }, // Days in Stage
+      { wch: 15 }, // Batch Date
+    ];
+    
+    if (line === 'both') {
+      colWidths.push({ wch: 10 }); // Line
+    }
+    
+    ws['!cols'] = colWidths;
+    
+    // Style the header row
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let C = range.s.c; C <= range.e.c; ++C) {
+      const address = XLSX.utils.encode_col(C) + "1";
+      if (!ws[address]) continue;
+      ws[address].s = {
+        font: { bold: true, color: { rgb: "FFFFFF" } },
+        fill: { fgColor: { rgb: "4F8CFF" } },
+        alignment: { horizontal: "center", vertical: "center" }
+      };
+    }
+    
+    // Add worksheet to workbook
+    XLSX.utils.book_append_sheet(wb, ws, "WIP Data");
+    
+    // Generate filename
+    const today = new Date();
+    const dateStr = today.toLocaleDateString('en-GB').replace(/\//g, '-'); // DD-MM-YYYY
+    const lineName = line === 'both' ? 'PN1 & PN2' : line;
+    const stageName = stage;
+    const filename = `Data WIP ${lineName} ${stageName} ${dateStr}.xlsx`;
+    
+    // Download file
+    XLSX.writeFile(wb, filename);
+    
+    // Close modal
+    setExportModalOpen(false);
   };
 
   // Handle stage circle click to show batch details
@@ -1159,10 +1662,19 @@ const ProductionDashboard = () => {
         setProcessedWipData([]);
         
         setLoading(false);
+        setLastRefreshTime(new Date()); // Set refresh time after data is loaded
       }
     };
 
     fetchData();
+
+    // Set up auto-refresh every 1 hour (3600000 ms)
+    const refreshInterval = setInterval(() => {
+      fetchData();
+    }, 3600000);
+
+    // Cleanup interval on component unmount
+    return () => clearInterval(refreshInterval);
   }, []);
 
   if (loading) {
@@ -1269,31 +1781,43 @@ const ProductionDashboard = () => {
     },
   };
 
-  // Create donut chart data for PCT department distribution
-  const pctDeptChartData = {
-    labels: Object.keys(pctDeptData.departments || {}),
+  // Create donut chart data for PCT stage breakdown (average days per stage)
+  const pctStageChartData = {
+    labels: Object.keys(pctData),
     datasets: [
       {
-        data: Object.values(pctDeptData.departments || {}),
+        data: Object.values(pctData),
         backgroundColor: [
-          'rgba(79, 140, 255, 0.8)',  // PN1 - Blue
-          'rgba(147, 51, 234, 0.8)',   // PN2 - Purple
-          'rgba(56, 230, 197, 0.8)',   // PC - Teal
+          'rgba(79, 140, 255, 0.8)',   // Timbang - Blue
+          'rgba(147, 51, 234, 0.8)',    // Proses - Purple
+          'rgba(56, 230, 197, 0.8)',    // QC - Teal
+          'rgba(255, 179, 71, 0.8)',    // Mikro - Orange
+          'rgba(229, 115, 115, 0.8)',   // QA - Red
         ],
         borderColor: [
           '#4f8cff',
           '#9333ea',
           '#38e6c5',
+          '#ffb347',
+          '#e57373',
         ],
         borderWidth: 2,
       },
     ],
   };
 
-  const pctDeptOptions = {
+  const pctStageOptions = {
     responsive: true,
     maintainAspectRatio: false,
     cutout: '70%',
+    onClick: (event, elements) => {
+      if (elements.length > 0) {
+        const elementIndex = elements[0].index;
+        const stageNames = Object.keys(pctData);
+        const clickedStage = stageNames[elementIndex];
+        handlePctBarClick(clickedStage);
+      }
+    },
     plugins: {
       legend: {
         display: true,
@@ -1306,12 +1830,12 @@ const ProductionDashboard = () => {
           generateLabels: function(chart) {
             const data = chart.data;
             if (data.labels.length && data.datasets.length) {
+              const total = data.datasets[0].data.reduce((a, b) => a + b, 0);
               return data.labels.map((label, i) => {
                 const value = data.datasets[0].data[i];
-                const total = data.datasets[0].data.reduce((a, b) => a + b, 0);
-                const percentage = ((value / total) * 100).toFixed(1);
+                const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
                 return {
-                  text: `${label}: ${value} batches (${percentage}%)`,
+                  text: `${label}: ${value}d (${percentage}%)`,
                   fillStyle: data.datasets[0].backgroundColor[i],
                   strokeStyle: data.datasets[0].borderColor[i],
                   lineWidth: data.datasets[0].borderWidth,
@@ -1330,8 +1854,12 @@ const ProductionDashboard = () => {
             const label = context.label || '';
             const value = context.parsed;
             const total = context.dataset.data.reduce((a, b) => a + b, 0);
-            const percentage = ((value / total) * 100).toFixed(1);
-            return `${label}: ${value} batches (${percentage}%)`;
+            const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+            const batchCount = pctRawData.filter(batch => {
+              const stageKey = `${label}_Days`;
+              return batch[stageKey] !== null && batch[stageKey] !== undefined;
+            }).length;
+            return `${label}: ${value} days avg (${percentage}% of total, ${batchCount} batches)`;
           },
         },
       },
@@ -1477,13 +2005,116 @@ const ProductionDashboard = () => {
         {/* PCT Breakdown Section */}
         <section className="production-section">
           <div style={{ 
-            display: 'grid', 
-            gridTemplateColumns: '1fr 1fr', 
-            gap: '24px', 
-            marginBottom: '16px' 
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '16px',
+            paddingBottom: '12px',
+            borderBottom: '3px solid #3b82f6'
           }}>
-            <h2 className="section-title" style={{ margin: 0 }}>Production Target</h2>
-            <h2 className="section-title" style={{ margin: 0 }}>Product Cycle Time (PCT) Breakdown</h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <h2 className="section-title" style={{ margin: 0 }}>Production Dashboard</h2>
+              {/* Date and Time Widget */}
+              <div style={{
+                padding: '6px 12px',
+                backgroundColor: '#f3f4f6',
+                borderRadius: '6px',
+                fontSize: '0.8rem',
+                color: '#4b5563',
+                fontWeight: '500',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                border: '1px solid #e5e7eb'
+              }}>
+                <span>📅</span>
+                <span>{new Date().toLocaleDateString('en-US', { 
+                  month: 'short', 
+                  day: 'numeric', 
+                  year: 'numeric' 
+                })}</span>
+                <span style={{ color: '#d1d5db' }}>|</span>
+                <span>🕐</span>
+                <span>{new Date().toLocaleTimeString('en-US', { 
+                  hour: '2-digit', 
+                  minute: '2-digit',
+                  hour12: false 
+                })}</span>
+              </div>
+              
+              {/* Manual Refresh Button */}
+              <button
+                onClick={handleManualRefresh}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#3b82f6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '0.85rem',
+                  fontWeight: '500',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.2s ease',
+                }}
+                onMouseEnter={(e) => e.target.style.backgroundColor = '#2563eb'}
+                onMouseLeave={(e) => e.target.style.backgroundColor = '#3b82f6'}
+              >
+                <span>🔄</span>
+                Refresh
+              </button>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              {/* WIP Excel Button */}
+              <button
+                onClick={() => setExportModalOpen(true)}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#10b981',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '0.85rem',
+                  fontWeight: '500',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.2s ease',
+                }}
+                onMouseEnter={(e) => e.target.style.backgroundColor = '#059669'}
+                onMouseLeave={(e) => e.target.style.backgroundColor = '#10b981'}
+              >
+                <span>📊</span>
+                WIP Excel
+              </button>
+
+              {/* PowerPoint Button */}
+              <button
+                onClick={() => {/* TODO: Implement export */}}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#f97316',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '0.85rem',
+                  fontWeight: '500',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.2s ease',
+                }}
+                onMouseEnter={(e) => e.target.style.backgroundColor = '#ea580c'}
+                onMouseLeave={(e) => e.target.style.backgroundColor = '#f97316'}
+              >
+                <span>📑</span>
+                PowerPoint
+              </button>
+            </div>
           </div>
           {error && (
             <div className="error-banner" style={{
@@ -1501,7 +2132,8 @@ const ProductionDashboard = () => {
             <div className="pct-placeholder-card">
               <div style={{ width: '100%' }}>
                 <div className="pct-description">
-                  <p>Monthly production tracking on yearly basis.</p>
+                  <h3 style={{ margin: '0 0 8px 0', fontSize: '1.1rem', color: '#2c3e50' }}>Production Output</h3>
+                  <p style={{ margin: '4px 0' }}>Monthly production tracking on yearly basis.</p>
                   <small style={{ color: '#666', fontSize: '0.85rem' }}>
                     � Click to see individual production for each product.
                   </small>
@@ -1521,10 +2153,22 @@ const ProductionDashboard = () => {
             </div>
             <div className="pct-card">
               <div className="pct-description">
-                <p>Average days for each stage in the production process (Last 2 months)</p>
+                <p style={{ margin: '0 0 4px 0' }}>Average days for each stage in the production process (Last 2 months)</p>
                 <small style={{ color: '#666', fontSize: '0.85rem' }}>
                   📊 Data from completed batches with "Approve Release"
                 </small>
+                {/* PCT Breakdown title - positioned absolutely to not affect height */}
+                <h3 style={{ 
+                  position: 'absolute',
+                  right: '10px',
+                  top: '0',
+                  margin: '0', 
+                  fontSize: '1.1rem', 
+                  color: '#2c3e50',
+                  fontWeight: '600'
+                }}>
+                  PCT Breakdown
+                </h3>
               </div>
               <div style={{ 
                 display: 'grid', 
@@ -1550,7 +2194,7 @@ const ProductionDashboard = () => {
                   )}
                 </div>
                 
-                {/* Donut Chart - Department Distribution */}
+                {/* Donut Chart - PCT Stage Breakdown with Animated Callouts */}
                 <div style={{ 
                   display: 'flex', 
                   flexDirection: 'column', 
@@ -1559,58 +2203,14 @@ const ProductionDashboard = () => {
                   position: 'relative',
                   height: '100%'
                 }}>
-                  {pctDeptData.totalBatches > 0 ? (
-                    <>
-                      <div style={{ position: 'relative', width: '100%', height: '280px' }}>
-                        <Doughnut data={pctDeptChartData} options={pctDeptOptions} />
-                        {/* Center text in donut hole */}
-                        <div style={{
-                          position: 'absolute',
-                          top: '50%',
-                          left: '50%',
-                          transform: 'translate(-50%, -50%)',
-                          textAlign: 'center',
-                          pointerEvents: 'none',
-                          marginTop: '-30px' // Adjust for legend at bottom
-                        }}>
-                          <div style={{ 
-                            fontSize: '2rem', 
-                            fontWeight: 'bold', 
-                            color: '#374151',
-                            lineHeight: '1'
-                          }}>
-                            {pctDeptData.avgTotalPct}
-                          </div>
-                          <div style={{ 
-                            fontSize: '0.75rem', 
-                            color: '#6b7280',
-                            marginTop: '4px'
-                          }}>
-                            Avg Days
-                          </div>
-                          <div style={{ 
-                            fontSize: '0.85rem', 
-                            color: '#9ca3af',
-                            marginTop: '6px',
-                            fontWeight: '500'
-                          }}>
-                            {pctDeptData.totalBatches} batches
-                          </div>
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <div style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'center', 
-                      height: '100%',
-                      color: '#9ca3af',
-                      fontSize: '0.9rem'
-                    }}>
-                      Loading department data...
-                    </div>
-                  )}
+                  <AnimatedDonutWithCallouts 
+                    data={pctData}
+                    batchCount={pctRawData.length}
+                    onSliceClick={(stageName) => {
+                      // When clicking a stage, show all batches for that stage
+                      handlePctBarClick(stageName);
+                    }}
+                  />
                 </div>
               </div>
             </div>
@@ -1839,7 +2439,7 @@ const ProductionDashboard = () => {
                                         return (
                                           <div key={`stage-${stageIndex}`} className="stepper-item">
                                             <div style={{
-                                              fontSize: '0.75rem',
+                                              fontSize: '0.85rem',
                                               color: batchCount > 0 ? '#6b7280' : '#9ca3af',
                                               fontWeight: '600',
                                               marginBottom: '4px',
@@ -2483,6 +3083,152 @@ const ProductionDashboard = () => {
             )}
           </div>
         )}
+      </Modal>
+
+      {/* WIP Excel Export Modal */}
+      <Modal
+        open={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        title="Export WIP Data to Excel"
+      >
+        <div style={{ padding: '8px' }}>
+          <p style={{ marginBottom: '20px', color: '#6b7280', fontSize: '0.9rem' }}>
+            Select the production line and stage to export
+          </p>
+          
+          {/* Production Line Selection */}
+          <div style={{ marginBottom: '24px' }}>
+            <label style={{ 
+              display: 'block', 
+              marginBottom: '8px', 
+              fontWeight: '600', 
+              color: '#374151',
+              fontSize: '0.9rem'
+            }}>
+              Production Line
+            </label>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              {['PN1', 'PN2', 'both'].map((option) => (
+                <button
+                  key={option}
+                  onClick={() => setExportSettings({ ...exportSettings, line: option })}
+                  style={{
+                    flex: 1,
+                    padding: '10px 16px',
+                    backgroundColor: exportSettings.line === option ? '#3b82f6' : '#f3f4f6',
+                    color: exportSettings.line === option ? 'white' : '#374151',
+                    border: exportSettings.line === option ? '2px solid #2563eb' : '1px solid #e5e7eb',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '0.85rem',
+                    fontWeight: '600',
+                    transition: 'all 0.2s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (exportSettings.line !== option) {
+                      e.target.style.backgroundColor = '#e5e7eb';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (exportSettings.line !== option) {
+                      e.target.style.backgroundColor = '#f3f4f6';
+                    }
+                  }}
+                >
+                  {option === 'both' ? 'PN1 & PN2' : option}
+                </button>
+              ))}
+            </div>
+          </div>
+          
+          {/* Stage Selection */}
+          <div style={{ marginBottom: '24px' }}>
+            <label style={{ 
+              display: 'block', 
+              marginBottom: '8px', 
+              fontWeight: '600', 
+              color: '#374151',
+              fontSize: '0.9rem'
+            }}>
+              Stage
+            </label>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+              {['Timbang', 'Proses', 'Kemas Primer', 'Kemas Sekunder', 'QC', 'Mikro', 'QA', 'All'].map((stageOption) => (
+                <button
+                  key={stageOption}
+                  onClick={() => setExportSettings({ ...exportSettings, stage: stageOption })}
+                  style={{
+                    padding: '10px 16px',
+                    backgroundColor: exportSettings.stage === stageOption ? '#10b981' : '#f3f4f6',
+                    color: exportSettings.stage === stageOption ? 'white' : '#374151',
+                    border: exportSettings.stage === stageOption ? '2px solid #059669' : '1px solid #e5e7eb',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '0.85rem',
+                    fontWeight: '600',
+                    transition: 'all 0.2s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (exportSettings.stage !== stageOption) {
+                      e.target.style.backgroundColor = '#e5e7eb';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (exportSettings.stage !== stageOption) {
+                      e.target.style.backgroundColor = '#f3f4f6';
+                    }
+                  }}
+                >
+                  {stageOption}
+                </button>
+              ))}
+            </div>
+          </div>
+          
+          {/* Export Button */}
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
+            <button
+              onClick={() => setExportModalOpen(false)}
+              style={{
+                padding: '10px 24px',
+                backgroundColor: '#f3f4f6',
+                color: '#374151',
+                border: '1px solid #e5e7eb',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '0.9rem',
+                fontWeight: '600',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => e.target.style.backgroundColor = '#e5e7eb'}
+              onMouseLeave={(e) => e.target.style.backgroundColor = '#f3f4f6'}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleExportWIP}
+              style={{
+                padding: '10px 24px',
+                backgroundColor: '#10b981',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '0.9rem',
+                fontWeight: '600',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => e.target.style.backgroundColor = '#059669'}
+              onMouseLeave={(e) => e.target.style.backgroundColor = '#10b981'}
+            >
+              <span>📊</span>
+              Export to Excel
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

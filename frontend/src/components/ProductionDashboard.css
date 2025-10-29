@@ -30,9 +30,9 @@
   font-size: 1.25rem;
   font-weight: 700;
   color: #2c3e50;
-  margin-bottom: 0.75rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 3px solid #4f8cff;
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
   display: inline-block;
 }
 
@@ -224,6 +224,7 @@
 
 .pct-description {
   margin-bottom: 0.75rem;
+  position: relative;
 }
 
 .pct-description p {
