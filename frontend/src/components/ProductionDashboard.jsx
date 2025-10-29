@@ -1193,13 +1193,19 @@ const ProductionDashboard = () => {
     
     ws['!cols'] = colWidths;
     
+    // Add AutoFilter to enable sorting and filtering
+    if (finalExcelData.length > 0) {
+      const lastCol = line === 'both' ? 'F' : 'E';
+      ws['!autofilter'] = { ref: `A1:${lastCol}${finalExcelData.length + 1}` };
+    }
+    
     // Style the header row
     const range = XLSX.utils.decode_range(ws['!ref']);
     for (let C = range.s.c; C <= range.e.c; ++C) {
       const address = XLSX.utils.encode_col(C) + "1";
       if (!ws[address]) continue;
       ws[address].s = {
-        font: { bold: true, color: { rgb: "FFFFFF" } },
+        font: { bold: true, sz: 14, color: { rgb: "FFFFFF" } },
         fill: { fgColor: { rgb: "4F8CFF" } },
         alignment: { horizontal: "center", vertical: "center" }
       };
