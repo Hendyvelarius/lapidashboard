@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Chart as ChartJS, ArcElement, BarElement, CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend } from 'chart.js';
 import ChartDataLabels from 'chartjs-plugin-datalabels';
 import { Doughnut, Bar, Line } from 'react-chartjs-2';
 import * as XLSX from 'xlsx';
+import pptxgen from 'pptxgenjs';
+import html2canvas from 'html2canvas';
 import DashboardLoading from './DashboardLoading';
 import Sidebar from './Sidebar';
 import Modal from './Modal';
@@ -658,6 +660,13 @@ const ProductionDashboard = () => {
     stage: 'All' // 'Timbang', 'Proses', 'Kemas Primer', 'Kemas Sekunder', 'QC', 'Mikro', 'QA', or 'All'
   });
 
+  // Chart refs for PowerPoint export
+  const forecastChartRef = useRef(null);
+  const pctBarChartRef = useRef(null);
+  const pctDonutRef = useRef(null);
+  const wipPN1ChartRef = useRef(null);
+  const wipPN2ChartRef = useRef(null);
+
   // Process raw WIP data according to business rules
   const processWIPData = (rawData) => {
     if (!rawData || rawData.length === 0) return [];
@@ -1226,6 +1235,323 @@ const ProductionDashboard = () => {
     
     // Close modal
     setExportModalOpen(false);
+  };
+
+  // Handle PowerPoint Export
+  const handleExportPowerPoint = async () => {
+    const pptx = new pptxgen();
+    
+    // Set presentation properties
+    pptx.author = 'LAPI Dashboard';
+    pptx.company = 'LAPI';
+    pptx.subject = 'Production Dashboard Report';
+    pptx.title = 'Production Dashboard';
+    
+    const today = new Date();
+    const dateStr = today.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    
+    // Slide 1: Title Slide
+    const slide1 = pptx.addSlide();
+    slide1.background = { color: '4F8CFF' };
+    slide1.addText('Production Dashboard Report', {
+      x: 0.5, y: 2.0, w: 9, h: 1.5,
+      fontSize: 44, bold: true, color: 'FFFFFF',
+      align: 'center', valign: 'middle'
+    });
+    slide1.addText(dateStr, {
+      x: 0.5, y: 3.8, w: 9, h: 0.5,
+      fontSize: 24, color: 'FFFFFF',
+      align: 'center', valign: 'middle'
+    });
+    
+    // Slide 2: Production Output
+    const slide2 = pptx.addSlide();
+    slide2.addText('Production Output', {
+      x: 0.5, y: 0.3, w: 9, h: 0.5,
+      fontSize: 28, bold: true, color: '2C3E50'
+    });
+    slide2.addText('Monthly production tracking on yearly basis', {
+      x: 0.5, y: 0.85, w: 9, h: 0.3,
+      fontSize: 12, color: '666666'
+    });
+    
+    // Add forecast chart if available - 3:1 ratio, positioned higher
+    if (forecastChartRef.current) {
+      const chartImage = forecastChartRef.current.toBase64Image();
+      slide2.addImage({
+        data: chartImage,
+        x: 1.25, y: 1.2, w: 7.5, h: 2.5
+      });
+    }
+    
+    // Add production breakdown table by category - split into two tables
+    const forecastTableData1 = [
+      [
+        { text: 'Month', options: { bold: true, fill: '4F8CFF', color: 'FFFFFF', fontSize: 9 } },
+        { text: 'Total', options: { bold: true, fill: '4F8CFF', color: 'FFFFFF', fontSize: 9 } },
+        { text: 'OTC', options: { bold: true, fill: '4F8CFF', color: 'FFFFFF', fontSize: 9 } },
+        { text: 'Generik', options: { bold: true, fill: '4F8CFF', color: 'FFFFFF', fontSize: 9 } },
+        { text: 'ETH', options: { bold: true, fill: '4F8CFF', color: 'FFFFFF', fontSize: 9 } },
+      ]
+    ];
+    
+    const forecastTableData2 = [
+      [
+        { text: 'Month', options: { bold: true, fill: '4F8CFF', color: 'FFFFFF', fontSize: 9 } },
+        { text: 'Total', options: { bold: true, fill: '4F8CFF', color: 'FFFFFF', fontSize: 9 } },
+        { text: 'OTC', options: { bold: true, fill: '4F8CFF', color: 'FFFFFF', fontSize: 9 } },
+        { text: 'Generik', options: { bold: true, fill: '4F8CFF', color: 'FFFFFF', fontSize: 9 } },
+        { text: 'ETH', options: { bold: true, fill: '4F8CFF', color: 'FFFFFF', fontSize: 9 } },
+      ]
+    ];
+    
+    forecastData.forEach((item, index) => {
+      if (item.hasData) {
+        const rowData = [
+          { text: item.monthName, options: { fontSize: 8 } },
+          { text: item.production.toString(), options: { fontSize: 8 } },
+          { text: item.productionOTC.toString(), options: { fontSize: 8 } },
+          { text: item.productionGenerik.toString(), options: { fontSize: 8 } },
+          { text: item.productionETH.toString(), options: { fontSize: 8 } },
+        ];
+        
+        // Split: Jan-Jun (months 1-6) and Jul-Dec (months 7-12)
+        if (item.month <= 6) {
+          forecastTableData1.push(rowData);
+        } else {
+          forecastTableData2.push(rowData);
+        }
+      }
+    });
+    
+    // First table (Jan-Jun) - left side
+    slide2.addTable(forecastTableData1, {
+      x: 0.75, y: 3.9, w: 4.25, h: 1.3,
+      fontSize: 8,
+      border: { pt: 1, color: 'CCCCCC' },
+      align: 'center',
+      valign: 'middle',
+      rowH: 0.18,
+      colW: [0.6, 0.8, 0.8, 1.05, 1.0]
+    });
+    
+    // Second table (Jul-Dec) - right side
+    slide2.addTable(forecastTableData2, {
+      x: 5.25, y: 3.9, w: 4.25, h: 1.3,
+      fontSize: 8,
+      border: { pt: 1, color: 'CCCCCC' },
+      align: 'center',
+      valign: 'middle',
+      rowH: 0.18,
+      colW: [0.6, 0.8, 0.8, 1.05, 1.0]
+    });
+    
+    // Slide 3: PCT Breakdown
+    const slide3 = pptx.addSlide();
+    slide3.addText('PCT Breakdown', {
+      x: 0.5, y: 0.3, w: 9, h: 0.5,
+      fontSize: 28, bold: true, color: '2C3E50'
+    });
+    slide3.addText('Average days for each stage in the production process (Last 2 months)', {
+      x: 0.5, y: 0.85, w: 9, h: 0.3,
+      fontSize: 12, color: '666666'
+    });
+    
+    // Add PCT donut chart - create a Chart.js donut for export
+    if (Object.keys(pctData).length > 0) {
+      try {
+        // Create a temporary canvas for donut chart
+        const canvas = document.createElement('canvas');
+        canvas.width = 800;
+        canvas.height = 600;
+        const ctx = canvas.getContext('2d');
+        
+        const stageNames = Object.keys(pctData);
+        const stageValues = Object.values(pctData);
+        const total = stageValues.reduce((sum, val) => sum + val, 0);
+        
+        // Colors matching the dashboard
+        const colors = [
+          'rgba(79, 140, 255, 0.8)',   // Timbang - Blue
+          'rgba(147, 51, 234, 0.8)',    // Proses - Purple
+          'rgba(56, 230, 197, 0.8)',    // QC - Teal
+          'rgba(255, 179, 71, 0.8)',    // Mikro - Orange
+          'rgba(229, 115, 115, 0.8)',   // QA - Red
+        ];
+        
+        const chartData = {
+          labels: stageNames.map((name, idx) => {
+            const value = stageValues[idx];
+            const percentage = ((value / total) * 100).toFixed(1);
+            return `${name}: ${value} Days AVG - ${percentage}%`;
+          }),
+          datasets: [{
+            data: stageValues,
+            backgroundColor: colors,
+            borderWidth: 2,
+            borderColor: '#ffffff'
+          }]
+        };
+        
+        const tempChart = new ChartJS(ctx, {
+          type: 'doughnut',
+          data: chartData,
+          options: {
+            responsive: false,
+            maintainAspectRatio: true,
+            aspectRatio: 1.3,
+            layout: {
+              padding: {
+                left: 20,
+                right: 20,
+                top: 40,
+                bottom: 20
+              }
+            },
+            plugins: {
+              legend: {
+                display: true,
+                position: 'right',
+                labels: {
+                  font: { size: 14 },
+                  padding: 15,
+                  boxWidth: 20,
+                  boxHeight: 20
+                }
+              },
+              title: {
+                display: true,
+                text: `${pctRawData.length} batches`,
+                font: { size: 18, weight: 'bold' },
+                padding: { bottom: 20 }
+              }
+            },
+            cutout: '65%',
+            circumference: 360,
+            rotation: 0
+          }
+        });
+        
+        // Wait for chart to fully render
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Convert to image
+        const chartImage = canvas.toDataURL('image/png');
+        slide3.addImage({
+          data: chartImage,
+          x: 2.0, y: 1.3, w: 5.5, h: 4.0
+        });
+        
+        // Cleanup
+        tempChart.destroy();
+      } catch (error) {
+        console.error('Error creating donut chart for PowerPoint:', error);
+      }
+    }
+    
+    // Slide 4: WIP Status PN1
+    const slide4 = pptx.addSlide();
+    slide4.addText('WIP Status - PN1', {
+      x: 0.5, y: 0.3, w: 9, h: 0.5,
+      fontSize: 28, bold: true, color: '2C3E50'
+    });
+    
+    const pn1Data = overallDeptData.find(dept => dept.dept === 'PN1');
+    if (pn1Data) {
+      // Create a professional table with stage widgets
+      const tableData = [
+        [
+          { text: 'Stage', options: { bold: true, fill: '10b981', color: 'FFFFFF', fontSize: 14, valign: 'middle', align: 'center' } },
+          { text: 'Batches', options: { bold: true, fill: '10b981', color: 'FFFFFF', fontSize: 14, valign: 'middle', align: 'center' } },
+          { text: 'Average Days', options: { bold: true, fill: '10b981', color: 'FFFFFF', fontSize: 14, valign: 'middle', align: 'center' } },
+        ]
+      ];
+      
+      pn1Data.stages.forEach((stage, idx) => {
+        tableData.push([
+          { text: stage, options: { fontSize: 13, bold: true, color: '374151', valign: 'middle' } },
+          { text: pn1Data.stageCounts[idx].toString(), options: { fontSize: 24, bold: true, color: '10b981', valign: 'middle', align: 'center' } },
+          { text: `${pn1Data.stageAverageDays[idx]} days`, options: { fontSize: 13, color: '6b7280', valign: 'middle', align: 'center' } },
+        ]);
+      });
+      
+      // Add total row
+      const totalBatches = pn1Data.stageCounts.reduce((sum, count) => sum + count, 0);
+      tableData.push([
+        { text: 'TOTAL', options: { fontSize: 14, bold: true, color: 'FFFFFF', fill: '059669', valign: 'middle' } },
+        { text: totalBatches.toString(), options: { fontSize: 24, bold: true, color: 'FFFFFF', fill: '059669', valign: 'middle', align: 'center' } },
+        { text: '', options: { fill: '059669' } },
+      ]);
+      
+      slide4.addTable(tableData, {
+        x: 1.5, y: 1.0, w: 7.0, h: 3.2,
+        border: { pt: 1, color: 'CCCCCC' },
+        fill: { color: 'FFFFFF' },
+        rowH: [0.4, 0.38, 0.38, 0.38, 0.38, 0.38, 0.38, 0.38, 0.42],
+        colW: [3.0, 2.0, 2.0]
+      });
+    } else {
+      slide4.addText('No WIP data available for PN1', {
+        x: 2.5, y: 2.5, w: 5, h: 1,
+        fontSize: 18, color: '999999',
+        align: 'center', valign: 'middle'
+      });
+    }
+    
+    // Slide 5: WIP Status PN2
+    const slide5 = pptx.addSlide();
+    slide5.addText('WIP Status - PN2', {
+      x: 0.5, y: 0.3, w: 9, h: 0.5,
+      fontSize: 28, bold: true, color: '2C3E50'
+    });
+    
+    const pn2Data = overallDeptData.find(dept => dept.dept === 'PN2');
+    if (pn2Data) {
+      // Create a professional table with stage widgets
+      const tableData = [
+        [
+          { text: 'Stage', options: { bold: true, fill: 'f59e0b', color: 'FFFFFF', fontSize: 14, valign: 'middle', align: 'center' } },
+          { text: 'Batches', options: { bold: true, fill: 'f59e0b', color: 'FFFFFF', fontSize: 14, valign: 'middle', align: 'center' } },
+          { text: 'Average Days', options: { bold: true, fill: 'f59e0b', color: 'FFFFFF', fontSize: 14, valign: 'middle', align: 'center' } },
+        ]
+      ];
+      
+      pn2Data.stages.forEach((stage, idx) => {
+        tableData.push([
+          { text: stage, options: { fontSize: 13, bold: true, color: '374151', valign: 'middle' } },
+          { text: pn2Data.stageCounts[idx].toString(), options: { fontSize: 24, bold: true, color: 'f59e0b', valign: 'middle', align: 'center' } },
+          { text: `${pn2Data.stageAverageDays[idx]} days`, options: { fontSize: 13, color: '6b7280', valign: 'middle', align: 'center' } },
+        ]);
+      });
+      
+      // Add total row
+      const totalBatches = pn2Data.stageCounts.reduce((sum, count) => sum + count, 0);
+      tableData.push([
+        { text: 'TOTAL', options: { fontSize: 14, bold: true, color: 'FFFFFF', fill: 'd97706', valign: 'middle' } },
+        { text: totalBatches.toString(), options: { fontSize: 24, bold: true, color: 'FFFFFF', fill: 'd97706', valign: 'middle', align: 'center' } },
+        { text: '', options: { fill: 'd97706' } },
+      ]);
+      
+      slide5.addTable(tableData, {
+        x: 1.5, y: 1.0, w: 7.0, h: 3.2,
+        border: { pt: 1, color: 'CCCCCC' },
+        fill: { color: 'FFFFFF' },
+        rowH: [0.4, 0.38, 0.38, 0.38, 0.38, 0.38, 0.38, 0.38, 0.42],
+        colW: [3.0, 2.0, 2.0]
+      });
+    } else {
+      slide5.addText('No WIP data available for PN2', {
+        x: 2.5, y: 2.5, w: 5, h: 1,
+        fontSize: 18, color: '999999',
+        align: 'center', valign: 'middle'
+      });
+    }
+    
+    // Generate filename and save
+    const pptDateStr = today.toLocaleDateString('en-GB').replace(/\//g, '-');
+    const filename = `Production Dashboard ${pptDateStr}.pptx`;
+    
+    await pptx.writeFile({ fileName: filename });
   };
 
   // Handle stage circle click to show batch details
@@ -2099,7 +2425,7 @@ const ProductionDashboard = () => {
 
               {/* PowerPoint Button */}
               <button
-                onClick={() => {/* TODO: Implement export */}}
+                onClick={handleExportPowerPoint}
                 style={{
                   padding: '8px 16px',
                   backgroundColor: '#f97316',
@@ -2152,7 +2478,7 @@ const ProductionDashboard = () => {
                   </div>
                 ) : (
                   <div className="pct-chart-container">
-                    <Bar data={forecastChartData} options={forecastChartOptions} />
+                    <Bar ref={forecastChartRef} data={forecastChartData} options={forecastChartOptions} />
                   </div>
                 )}
               </div>
@@ -2166,7 +2492,7 @@ const ProductionDashboard = () => {
                 {/* PCT Breakdown title - positioned absolutely to not affect height */}
                 <h3 style={{ 
                   position: 'absolute',
-                  right: '10px',
+                  right: '50px',
                   top: '0',
                   margin: '0', 
                   fontSize: '1.1rem', 
@@ -2178,14 +2504,14 @@ const ProductionDashboard = () => {
               </div>
               <div style={{ 
                 display: 'grid', 
-                gridTemplateColumns: '1.2fr 1fr', 
+                gridTemplateColumns: '1.1fr 1fr', 
                 gap: '20px',
                 height: 'calc(100% - 70px)' // Account for description height
               }}>
                 {/* Bar Chart - Average Days */}
                 <div className="pct-chart-container" style={{ height: '100%' }}>
                   {Object.keys(pctData).length > 0 ? (
-                    <Bar data={pctChartData} options={pctOptions} plugins={[ChartDataLabels]} />
+                    <Bar ref={pctBarChartRef} data={pctChartData} options={pctOptions} plugins={[ChartDataLabels]} />
                   ) : (
                     <div style={{ 
                       display: 'flex', 
@@ -2201,14 +2527,17 @@ const ProductionDashboard = () => {
                 </div>
                 
                 {/* Donut Chart - PCT Stage Breakdown with Animated Callouts */}
-                <div style={{ 
-                  display: 'flex', 
-                  flexDirection: 'column', 
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  position: 'relative',
-                  height: '100%'
-                }}>
+                <div 
+                  ref={pctDonutRef}
+                  style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    position: 'relative',
+                    height: '100%'
+                  }}
+                >
                   <AnimatedDonutWithCallouts 
                     data={pctData}
                     batchCount={pctRawData.length}
