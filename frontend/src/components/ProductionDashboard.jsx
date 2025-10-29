@@ -1053,16 +1053,236 @@ const ProductionDashboard = () => {
 
   // Manual refresh function
   const handleManualRefresh = async () => {
-    window.location.reload();
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Fetch Product List and OTC Products for categorization
+      const [productListResponse, otcProductsResponse] = await Promise.all([
+        fetch(apiUrl('/api/productList')),
+        fetch(apiUrl('/api/otcProducts'))
+      ]);
+
+      if (!productListResponse.ok || !otcProductsResponse.ok) {
+        throw new Error('Error fetching product category data');
+      }
+
+      const productListData = await productListResponse.json();
+      const otcProductsData = await otcProductsResponse.json();
+
+      const productList = productListData.data || [];
+      const otcProducts = otcProductsData.data || [];
+
+      // Create a Set of OTC product IDs for quick lookup
+      const otcProductIds = new Set(otcProducts.map(p => p.Product_ID));
+
+      // Categorize products
+      const categories = {};
+      productList.forEach(product => {
+        const productId = product.Product_ID;
+        const productName = (product.Product_Name || '').toLowerCase();
+
+        if (otcProductIds.has(productId)) {
+          categories[productId] = 'OTC';
+        } else if (productName.includes('generik') || productName.includes('generic')) {
+          categories[productId] = 'Generik';
+        } else {
+          categories[productId] = 'ETH';
+        }
+      });
+
+      setProductCategories(categories);
+
+      // Fetch Product Group Dept data
+      const groupDeptResponse = await fetch(apiUrl('/api/productGroupDept'));
+      if (!groupDeptResponse.ok) {
+        throw new Error(`Group Dept API error! status: ${groupDeptResponse.status}`);
+      }
+      
+      const groupDeptResult = await groupDeptResponse.json();
+      const groupDeptData = groupDeptResult.data || [];
+      
+      // Create a mapping of Product_ID to Group_Dept
+      const productDeptMap = {};
+      groupDeptData.forEach(item => {
+        productDeptMap[item.Group_ProductID] = item.Group_Dept;
+      });
+
+      // Fetch PCT Breakdown data
+      const pctResponse = await fetch(apiUrl('/api/pctBreakdown'));
+      if (!pctResponse.ok) {
+        throw new Error(`PCT API error! status: ${pctResponse.status}`);
+      }
+      
+      const pctResult = await pctResponse.json();
+      const pctBatchData = pctResult.data || [];
+      
+      setPctRawData(pctBatchData);
+      
+      // Calculate average total days from Total_Days field
+      const totalDaysValues = pctBatchData
+        .map(batch => batch.Total_Days)
+        .filter(val => val !== null && val !== undefined && !isNaN(val));
+      
+      const calculatedAvgTotalDays = totalDaysValues.length > 0
+        ? Math.round(totalDaysValues.reduce((sum, val) => sum + val, 0) / totalDaysValues.length)
+        : 0;
+      
+      setAvgTotalDays(calculatedAvgTotalDays);
+      
+      // Calculate PCT stage averages
+      if (pctBatchData.length > 0) {
+        const stages = ['Timbang', 'Proses', 'QC', 'Mikro', 'QA'];
+        const pctBreakdown = {};
+        
+        stages.forEach(stage => {
+          const stageKey = `${stage}_Days`;
+          const values = pctBatchData
+            .map(batch => batch[stageKey])
+            .filter(val => val !== null && val !== undefined && !isNaN(val));
+          
+          if (values.length > 0) {
+            const avg = values.reduce((sum, val) => sum + val, 0) / values.length;
+            pctBreakdown[stage] = Math.round(avg);
+          } else {
+            pctBreakdown[stage] = 0;
+          }
+        });
+        
+        setPctData(pctBreakdown);
+        
+        // Calculate department distribution
+        const deptCounts = {};
+        let totalBatches = 0;
+        let totalPctDays = 0;
+        
+        pctBatchData.forEach(batch => {
+          const dept = productDeptMap[batch.Product_ID] || 'Unknown';
+          
+          if (!deptCounts[dept]) {
+            deptCounts[dept] = 0;
+          }
+          deptCounts[dept]++;
+          totalBatches++;
+          
+          const batchTotal = (batch.Timbang_Days || 0) + 
+                           (batch.Proses_Days || 0) + 
+                           (batch.QC_Days || 0) + 
+                           (batch.Mikro_Days || 0) + 
+                           (batch.QA_Days || 0);
+          totalPctDays += batchTotal;
+        });
+        
+        const avgTotalPct = totalBatches > 0 ? Math.round(totalPctDays / totalBatches) : 0;
+        
+        setPctDeptData({
+          departments: deptCounts,
+          totalBatches,
+          avgTotalPct
+        });
+      } else {
+        setPctData({
+          Timbang: 0,
+          Proses: 0,
+          QC: 0,
+          Mikro: 0,
+          QA: 0,
+        });
+        setPctDeptData({
+          departments: {},
+          totalBatches: 0,
+          avgTotalPct: 0
+        });
+      }
+
+      // Fetch WIP data
+      const wipResponse = await fetch(apiUrl('/api/wipData'));
+      if (!wipResponse.ok) {
+        throw new Error(`WIP API error! status: ${wipResponse.status}`);
+      }
+
+      const wipResult = await wipResponse.json();
+      let wipRawData = wipResult.data || [];
+      
+      // Fetch released batches from t_dnc_product
+      const releasedBatchesResponse = await fetch(apiUrl('/api/releasedBatches'));
+      if (!releasedBatchesResponse.ok) {
+        throw new Error(`Released Batches API error! status: ${releasedBatchesResponse.status}`);
+      }
+      
+      const releasedBatchesResult = await releasedBatchesResponse.json();
+      const releasedBatches = releasedBatchesResult.data || [];
+      
+      const releasedBatchSet = new Set(releasedBatches.map(rb => rb.DNc_BatchNo));
+      
+      // Filter out released batches
+      wipRawData = wipRawData.filter(entry => !releasedBatchSet.has(entry.Batch_No));
+      
+      setRawWipData(wipRawData);
+
+      // Process WIP data
+      const processed = processWIPData(wipRawData);
+      setProcessedWipData(processed);
+
+      // Process overall department data
+      const overallDept = processOverallDeptData(wipRawData);
+      setOverallDeptData(overallDept);
+
+      // Fetch Forecast data
+      const forecastResponse = await fetch(apiUrl('/api/forecast'));
+      if (!forecastResponse.ok) {
+        throw new Error(`Forecast API error! status: ${forecastResponse.status}`);
+      }
+
+      const forecastResult = await forecastResponse.json();
+      const forecastRawData = forecastResult || [];
+      
+      setForecastRawData(forecastRawData);
+      
+      // Process forecast data
+      const processedForecast = processForecastData(forecastRawData, categories);
+      setForecastData(processedForecast);
+      
+      setLoading(false);
+      setLastRefreshTime(new Date());
+      
+      // Trigger speedometer animation
+      setTimeout(() => {
+        const animState = {};
+        overallDept.forEach(dept => {
+          animState[dept.dept] = true;
+        });
+        setSpeedometerAnimated(animState);
+      }, 100);
+    } catch (err) {
+      console.error('Error refreshing data:', err);
+      setError(err.message);
+      setLoading(false);
+    }
   };
 
   // Handle WIP Excel Export
   const handleExportWIP = () => {
     const { line, stage } = exportSettings;
     
-    // Define stage mappings for Proses stages
-    const prosesStages = ['Mixing', 'Filling', 'Granulasi', 'Cetak', 'Coating'];
-    const validStages = ['Timbang', 'Mixing', 'Filling', 'Granulasi', 'Cetak', 'Coating', 'Kemas Primer', 'Kemas Sekunder', 'QC', 'Mikro', 'QA'];
+    // Define stage mappings matching the WIP speedometer logic
+    const stageMapping = {
+      'Timbang': 'Timbang',
+      'Mixing': 'Proses',
+      'Filling': 'Proses',
+      'Granulasi': 'Proses',
+      'Cetak': 'Proses',
+      'Coating': 'Proses',
+      'Kemas Primer': 'Kemas Primer',
+      'Kemas Sekunder': 'Kemas Sekunder',
+      'QC': 'QC',
+      'Mikro': 'Mikro',
+      'QA': 'QA',
+    };
+    
+    // Proses stages - all stages that map to "Proses"
+    const prosesStages = Object.keys(stageMapping).filter(key => stageMapping[key] === 'Proses');
+    const validStages = Object.keys(stageMapping); // All mapped stages are valid
     
     // Step 1: Filter out batches that have completed "Approve Realese"
     const batchesWithApproveRelease = new Set();
@@ -1072,10 +1292,12 @@ const ProductionDashboard = () => {
       }
     });
 
-    const activeBatches = rawWipData.filter(entry => 
-      !batchesWithApproveRelease.has(entry.Batch_No) && 
-      validStages.includes(entry.tahapan_group) // Only include valid stages
-    );
+    const activeBatches = rawWipData.filter(entry => {
+      const tahapanGroup = entry.tahapan_group || 'Other';
+      return !batchesWithApproveRelease.has(entry.Batch_No) && 
+             tahapanGroup !== 'Other' && // Skip "Other" stages
+             validStages.includes(tahapanGroup); // Only include mapped stages
+    });
 
     // Step 2: Group entries by batch and stage to determine current stages
     const batchStageMap = {};
@@ -1085,16 +1307,25 @@ const ProductionDashboard = () => {
       const dept = entry.Group_Dept;
       const tahapanGroup = entry.tahapan_group;
       
-      const key = `${batchNo}|${tahapanGroup}`;
+      // Map to condensed stage for grouping (matching speedometer logic)
+      const condensedStage = stageMapping[tahapanGroup];
+      if (!condensedStage) {
+        return; // Skip if not in mapping
+      }
+      
+      // Use condensed stage in key to group Proses substages together
+      const key = `${batchNo}|${condensedStage}`;
       
       if (!batchStageMap[key]) {
         batchStageMap[key] = {
           batchNo: batchNo,
           productName: entry.Product_Name,
           dept: dept,
-          stage: tahapanGroup,
+          stage: condensedStage, // Use condensed stage name
+          originalStage: tahapanGroup, // Keep original for display
           batchDate: entry.Batch_Date,
           steps: [],
+          originalStages: new Set(), // Track which substages are involved
         };
       }
       
@@ -1102,6 +1333,8 @@ const ProductionDashboard = () => {
         startDate: entry.StartDate,
         endDate: entry.EndDate,
       });
+      
+      batchStageMap[key].originalStages.add(tahapanGroup);
     });
     
     // Step 3: Determine which batch-stage combinations are "in progress"
@@ -1126,16 +1359,23 @@ const ProductionDashboard = () => {
           .filter(date => date !== null);
         
         let daysInStage = 0;
+        let earliestStartDate = null;
+        let startDateFormatted = '';
+        
         if (startDates.length > 0) {
-          const earliestStartDate = new Date(Math.min(...startDates));
+          earliestStartDate = new Date(Math.min(...startDates));
           daysInStage = Math.floor((currentDate - earliestStartDate) / (1000 * 60 * 60 * 24));
+          // Format start date as DD/MM/YYYY
+          startDateFormatted = earliestStartDate.toLocaleDateString('en-GB');
         }
         
         batchesInProgress.push({
           batchNo: batchStage.batchNo,
           productName: batchStage.productName,
           dept: batchStage.dept,
-          currentStage: batchStage.stage,
+          currentStage: batchStage.stage, // This is now the condensed stage (e.g., "Proses")
+          originalStages: Array.from(batchStage.originalStages).join(', '), // Show all substages involved
+          startDate: startDateFormatted,
           daysInStage: daysInStage,
           batchDate: batchStage.batchDate,
         });
@@ -1150,20 +1390,8 @@ const ProductionDashboard = () => {
     
     // Step 5: Filter by stage
     if (stage !== 'All') {
-      if (stage === 'Proses') {
-        // If user selected "Proses", include all Proses-related stages
-        excelData = excelData.filter(item => prosesStages.includes(item.currentStage));
-        // Keep the specific stage names (Mixing, Filling, etc.)
-      } else {
-        // Filter for specific stage
-        excelData = excelData.filter(item => item.currentStage === stage);
-      }
-    } else {
-      // If exporting "All", rename Proses stages to "Proses"
-      excelData = excelData.map(item => ({
-        ...item,
-        currentStage: prosesStages.includes(item.currentStage) ? 'Proses' : item.currentStage
-      }));
+      // Now currentStage is already condensed (Proses, Timbang, etc.)
+      excelData = excelData.filter(item => item.currentStage === stage);
     }
     
     // Step 6: Prepare final Excel data
@@ -1172,9 +1400,16 @@ const ProductionDashboard = () => {
         'Batch No': item.batchNo || '',
         'Product Name': item.productName || '',
         'Stage': item.currentStage || '',
-        'Days in Stage': item.daysInStage || 0,
-        'Batch Date': item.batchDate || '',
       };
+      
+      // Only add Substages column for Proses-only export
+      if (stage === 'Proses') {
+        row['Substages'] = item.originalStages || '';
+      }
+      
+      row['Start Date'] = item.startDate || '';
+      row['Days in Stage'] = item.daysInStage || 0;
+      row['Batch Date'] = item.batchDate || '';
       
       // Only add Line column if both lines are selected
       if (line === 'both') {
@@ -1188,14 +1423,21 @@ const ProductionDashboard = () => {
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(finalExcelData);
     
-    // Set column widths
+    // Set column widths dynamically based on whether Substages column is included
     const colWidths = [
       { wch: 15 }, // Batch No
       { wch: 35 }, // Product Name
       { wch: 18 }, // Stage
-      { wch: 15 }, // Days in Stage
-      { wch: 15 }, // Batch Date
     ];
+    
+    // Add Substages column width only if showing Proses exclusively
+    if (stage === 'Proses') {
+      colWidths.push({ wch: 30 }); // Substages
+    }
+    
+    colWidths.push({ wch: 15 }); // Start Date
+    colWidths.push({ wch: 15 }); // Days in Stage
+    colWidths.push({ wch: 15 }); // Batch Date
     
     if (line === 'both') {
       colWidths.push({ wch: 10 }); // Line
@@ -1205,7 +1447,12 @@ const ProductionDashboard = () => {
     
     // Add AutoFilter to enable sorting and filtering
     if (finalExcelData.length > 0) {
-      const lastCol = line === 'both' ? 'F' : 'E';
+      // Calculate last column based on what's included
+      let lastColIndex = 6; // Base: Batch No, Product Name, Stage, Start Date, Days, Batch Date (6 columns)
+      if (stage === 'Proses') lastColIndex++; // Add Substages
+      if (line === 'both') lastColIndex++; // Add Line
+      
+      const lastCol = String.fromCharCode(64 + lastColIndex); // Convert to letter (A=1, B=2, etc.)
       ws['!autofilter'] = { ref: `A1:${lastCol}${finalExcelData.length + 1}` };
     }
     
@@ -1947,9 +2194,26 @@ const ProductionDashboard = () => {
         }
 
         const wipResult = await wipResponse.json();
-        const wipRawData = wipResult.data || [];
+        let wipRawData = wipResult.data || [];
         
-        console.log('Raw WIP Data:', wipRawData);
+        // Fetch released batches from t_dnc_product
+        const releasedBatchesResponse = await fetch(apiUrl('/api/releasedBatches'));
+        if (!releasedBatchesResponse.ok) {
+          throw new Error(`Released Batches API error! status: ${releasedBatchesResponse.status}`);
+        }
+        
+        const releasedBatchesResult = await releasedBatchesResponse.json();
+        const releasedBatches = releasedBatchesResult.data || [];
+        
+        // Create a Set of released batch numbers for quick lookup
+        const releasedBatchSet = new Set(releasedBatches.map(rb => rb.DNc_BatchNo));
+        
+        console.log('Released Batches Count:', releasedBatchSet.size);
+        
+        // Filter out batches that exist in t_dnc_product (already released)
+        wipRawData = wipRawData.filter(entry => !releasedBatchSet.has(entry.Batch_No));
+        
+        console.log('Raw WIP Data (after filtering released):', wipRawData);
         setRawWipData(wipRawData);
 
         // Process WIP data

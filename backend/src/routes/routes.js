@@ -48,5 +48,6 @@ router.get('/material', SqlController.getMaterial);
 router.get('/productList', SqlController.getProductList);
 router.get('/otcProducts', SqlController.getOTCProducts);
 router.get('/productGroupDept', SqlController.getProductGroupDept);
+router.get('/releasedBatches', SqlController.getReleasedBatches);
 
 module.exports = router;
