@@ -386,6 +386,11 @@ async function getPCTBreakdown() {
       fa.Batch_Date,
       fa.Product_ID,
       fa.Product_Name,
+      -- Total days from earliest StartDate to Approve Realese EndDate
+      DATEDIFF(DAY,
+        MIN(fa.StartDate),
+        MAX(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%approve%realese%' THEN fa.EndDate END)
+      ) AS Total_Days,
       -- Timbang stage
       DATEDIFF(DAY,
         MIN(CASE WHEN fa.tahapan_group = 'Timbang' THEN fa.StartDate END),

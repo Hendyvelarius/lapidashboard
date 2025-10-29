@@ -15,7 +15,7 @@ import './ProductionDashboard.css';
 ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend);
 
 // Animated Donut Chart with Callout Labels Component
-const AnimatedDonutWithCallouts = ({ data, onSliceClick, batchCount }) => {
+const AnimatedDonutWithCallouts = ({ data, onSliceClick, batchCount, averageTotalDays }) => {
   const [animated, setAnimated] = useState(false);
   
   useEffect(() => {
@@ -305,7 +305,7 @@ const AnimatedDonutWithCallouts = ({ data, onSliceClick, batchCount }) => {
           color: '#374151',
           lineHeight: '1'
         }}>
-          {total}
+          {averageTotalDays !== undefined ? averageTotalDays : total}
         </div>
         <div style={{ 
           fontSize: '0.7rem', 
@@ -639,6 +639,7 @@ const ProductionDashboard = () => {
   const [pctData, setPctData] = useState({});
   const [pctRawData, setPctRawData] = useState([]); // Store raw batch-level PCT data
   const [pctDeptData, setPctDeptData] = useState({}); // Store PCT department distribution
+  const [avgTotalDays, setAvgTotalDays] = useState(0); // Average total days from start to finish (for display only)
   const [forecastData, setForecastData] = useState([]); // Store forecast vs production data
   const [forecastRawData, setForecastRawData] = useState([]); // Store raw forecast data for detailed view
   const [productCategories, setProductCategories] = useState({}); // Store product categories (Generik, OTC, ETH)
@@ -1858,6 +1859,17 @@ const ProductionDashboard = () => {
         // Store raw batch data
         setPctRawData(pctBatchData);
         
+        // Calculate average total days from Total_Days field (for center display)
+        const totalDaysValues = pctBatchData
+          .map(batch => batch.Total_Days)
+          .filter(val => val !== null && val !== undefined && !isNaN(val));
+        
+        const calculatedAvgTotalDays = totalDaysValues.length > 0
+          ? Math.round(totalDaysValues.reduce((sum, val) => sum + val, 0) / totalDaysValues.length)
+          : 0;
+        
+        setAvgTotalDays(calculatedAvgTotalDays);
+        
         // Calculate averages for the chart AND department distribution
         if (pctBatchData.length > 0) {
           const stages = ['Timbang', 'Proses', 'QC', 'Mikro', 'QA'];
@@ -2541,6 +2553,7 @@ const ProductionDashboard = () => {
                   <AnimatedDonutWithCallouts 
                     data={pctData}
                     batchCount={pctRawData.length}
+                    averageTotalDays={avgTotalDays}
                     onSliceClick={(stageName) => {
                       // When clicking a stage, show all batches for that stage
                       handlePctBarClick(stageName);
