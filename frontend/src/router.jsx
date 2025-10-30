@@ -26,7 +26,7 @@ export default function AppRouter() {
           <Routes>
             <Route path="/" element={<ProtectedRoute><LandingPage /></ProtectedRoute>} />
             <Route path="/beta" element={<ProtectedRoute><App /></ProtectedRoute>} />
-            <Route path="/eDashboard" element={<ProtectedRoute><SummaryDashboard /></ProtectedRoute>} />
+            <Route path="/eDashboard" element={<ProtectedRoute><LandingPage /></ProtectedRoute>} />
             <Route path="/summary" element={<ProtectedRoute><SummaryDashboard /></ProtectedRoute>} />
             <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
         <Route path="/reports" element={<Reports />} />
