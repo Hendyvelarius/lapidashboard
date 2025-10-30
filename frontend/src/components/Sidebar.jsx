@@ -9,7 +9,8 @@ import {
   LogOut,
   BarChart,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Home
 } from 'lucide-react'
 
 import { Link, useLocation } from 'react-router';
@@ -84,8 +85,16 @@ function Sidebar() {
         {!sidebarMinimized && <div className="sidebar-section-title">MENU UTAMA</div>}
         <nav className="sidebar-nav">
           <Link 
+            to="/" 
+            className={`sidebar-btn${location.pathname === '/' ? ' active' : ''}`}
+            title={sidebarMinimized ? 'Home' : ''}
+          > 
+            <Home size={20} />
+            {!sidebarMinimized && <span>Home</span>}
+          </Link>
+          <Link 
             to="/summary" 
-            className={`sidebar-btn${location.pathname === '/summary' || location.pathname === '/' ? ' active' : ''}`}
+            className={`sidebar-btn${location.pathname === '/summary' || location.pathname === '/eDashboard' ? ' active' : ''}`}
             title={sidebarMinimized ? 'Summary' : ''}
           > 
             <BarChart size={20} />

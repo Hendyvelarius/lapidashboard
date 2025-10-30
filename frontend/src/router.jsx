@@ -9,6 +9,7 @@ import WIPReportPage from "./components/WIPReportPage";
 import StockForecastDashboard from "./components/StockForecastDashboard";
 import SummaryDashboard from "./components/SummaryDashboard";
 import ProductionDashboard from "./components/ProductionDashboard";
+import LandingPage from "./components/LandingPage";
 
 // Component to handle auth token from URL
 function AuthHandler({ children }) {
@@ -23,7 +24,7 @@ export default function AppRouter() {
       <AuthProvider>
         <AuthHandler>
           <Routes>
-            <Route path="/" element={<ProtectedRoute><SummaryDashboard /></ProtectedRoute>} />
+            <Route path="/" element={<ProtectedRoute><LandingPage /></ProtectedRoute>} />
             <Route path="/beta" element={<ProtectedRoute><App /></ProtectedRoute>} />
             <Route path="/eDashboard" element={<ProtectedRoute><SummaryDashboard /></ProtectedRoute>} />
             <Route path="/summary" element={<ProtectedRoute><SummaryDashboard /></ProtectedRoute>} />
