@@ -355,24 +355,61 @@ const getStagePriority = (stageName) => {
   return stagePriority[stageName] || 999;
 };
 
-// Helper function to get color based on batch count (queue intensity)
-const getQueueColor = (batchCount) => {
+// Helper function to get stage thresholds based on department and stage
+const getStageThresholds = (dept, stageName) => {
+  const thresholds = {
+    'PN1': {
+      'Timbang': { min: 6, med: 11, max: 14 },
+      'Proses': { min: 5, med: 10, max: 15 },
+      'Kemas Primer': { min: 2, med: 4, max: 6 },
+      'Kemas Sekunder': { min: 3, med: 5, max: 7 },
+      'QC': { min: 2, med: 6, max: 14 },
+      'Mikro': { min: 4, med: 13, max: 27 },
+      'QA': { min: 5, med: 10, max: 15 },
+    },
+    'PN2': {
+      'Timbang': { min: 6, med: 11, max: 14 },
+      'Proses': { min: 36, med: 46, max: 56 },
+      'Kemas Primer': { min: 12, med: 16, max: 20 },
+      'Kemas Sekunder': { min: 9, med: 14, max: 19 },
+      'QC': { min: 2, med: 6, max: 14 },
+      'Mikro': { min: 4, med: 13, max: 27 },
+      'QA': { min: 5, med: 10, max: 15 },
+    }
+  };
+  
+  // Return thresholds for the specific dept and stage, or default values
+  return thresholds[dept]?.[stageName] || { min: 5, med: 10, max: 15 };
+};
+
+// Helper function to get color based on batch count with custom thresholds
+const getQueueColor = (batchCount, dept, stageName) => {
   if (batchCount === 0) {
-    return '#10b981'; // Green - good, no queue
-  } else if (batchCount <= 5) {
+    return '#10b981'; // Dark green - no queue
+  }
+  
+  const thresholds = getStageThresholds(dept, stageName);
+  const { min, med, max } = thresholds;
+  
+  // Calculate midpoints for color transitions
+  const minMidpoint = min / 2; // Midpoint between 0 and min (dark green to lime green)
+  const medMidpoint = (min + med) / 2; // Midpoint between min and med (lime to yellow)
+  const maxMidpoint = (med + max) / 2; // Midpoint between med and max (yellow to light red)
+  
+  if (batchCount <= minMidpoint) {
     return '#22c55e'; // Light green - minimal queue
-  } else if (batchCount <= 10) {
-    return '#84cc16'; // Yellow-green - moderate queue
-  } else if (batchCount <= 15) {
-    return '#eab308'; // Yellow - building up
-  } else if (batchCount <= 20) {
-    return '#f59e0b'; // Orange - getting concerning
-  } else if (batchCount <= 25) {
-    return '#f97316'; // Deep orange - high queue
-  } else if (batchCount <= 30) {
-    return '#ef4444'; // Red - very high queue
+  } else if (batchCount <= min) {
+    return '#84cc16'; // Lime green - approaching min threshold
+  } else if (batchCount <= medMidpoint) {
+    return '#eab308'; // Yellow - between min and med
+  } else if (batchCount <= med) {
+    return '#f59e0b'; // Orange - approaching med threshold
+  } else if (batchCount <= maxMidpoint) {
+    return '#f97316'; // Deep orange - between med and max
+  } else if (batchCount <= max) {
+    return '#ef4444'; // Light red - approaching max threshold
   } else {
-    return '#dc2626'; // Deep red - critical queue
+    return '#dc2626'; // Deep red - exceeds max threshold (critical)
   }
 };
 
@@ -422,46 +459,70 @@ const calculateDaysInStage = (entries) => {
 };
 
 // Speedometer Component
-const Speedometer = ({ label, value, maxValue = 50, color = '#4f8cff', animated = false, avgDays = 0 }) => {
-  // Calculate needle angle based on value
-  const needleAngle = Math.min((value / maxValue) * 180, 180) - 90; // -90 to 90 degrees
+const Speedometer = ({ label, value, maxValue = 50, color = '#4f8cff', animated = false, avgDays = 0, dept = 'PN1', stageName = 'Timbang' }) => {
+  // Get custom thresholds for this dept and stage (for determining the needle color)
+  const thresholds = getStageThresholds(dept, stageName);
+  const { min, med, max } = thresholds;
   
-  // Define color thresholds matching the getQueueColor function
-  const colorThresholds = [
-    { max: 5, color: '#22c55e', label: '0-5' },      // Light green
-    { max: 10, color: '#84cc16', label: '6-10' },    // Yellow-green
-    { max: 15, color: '#eab308', label: '11-15' },   // Yellow
-    { max: 20, color: '#f59e0b', label: '16-20' },   // Orange
-    { max: 25, color: '#f97316', label: '21-25' },   // Deep orange
-    { max: 30, color: '#ef4444', label: '26-30' },   // Red
-    { max: 50, color: '#dc2626', label: '31+' },     // Deep red
+  // Determine needle color based on actual value and custom thresholds
+  const needleColor = value > 0 ? getQueueColor(value, dept, stageName) : '#9ca3af';
+  
+  // Calculate needle position to align with the fixed visual zones
+  // Visual zones: 0-20% green, 20-40% yellow, 40-60% orange, 60-100% red
+  // Map thresholds to visual positions:
+  // - min maps to ~20% of gauge (36° on 180° scale = -90 + 36 = -54°)
+  // - med maps to ~40% of gauge (72° on 180° scale = -90 + 72 = -18°)  
+  // - max maps to ~60% of gauge (108° on 180° scale = -90 + 108 = 18°)
+  
+  let needleAngle;
+  if (value === 0) {
+    needleAngle = -90; // Start position
+  } else if (value <= min) {
+    // Map 0 to min across first 20% of gauge (green zone: -90° to -54°)
+    needleAngle = -90 + (value / min) * 36;
+  } else if (value <= med) {
+    // Map min to med across next 20% of gauge (yellow zone: -54° to -18°)
+    const ratio = (value - min) / (med - min);
+    needleAngle = -54 + ratio * 36;
+  } else if (value <= max) {
+    // Map med to max across next 20% of gauge (orange zone: -18° to 18°)
+    const ratio = (value - med) / (max - med);
+    needleAngle = -18 + ratio * 36;
+  } else {
+    // Beyond max: map across remaining 40% (red zone: 18° to 90°)
+    // Cap at 2x max to prevent needle going off-scale
+    const excess = Math.min(value - max, max);
+    const ratio = excess / max;
+    needleAngle = 18 + ratio * 72;
+  }
+  
+  // Fixed visual segments - evenly distributed for consistent appearance
+  // Greenish zone: 20% (0-10 on a 50 scale)
+  // Yellowish zone: 20% (10-20 on a 50 scale)
+  // Orange zone: 20% (20-30 on a 50 scale)
+  // Red/Critical zone: 40% (30-50 on a 50 scale)
+  const fixedSegments = [
+    { size: maxValue * 0.10, color: '#22c55e', label: 'Optimal' },           // 10% - Light green
+    { size: maxValue * 0.10, color: '#84cc16', label: 'Good' },              // 10% - Lime green
+    { size: maxValue * 0.10, color: '#eab308', label: 'Moderate' },          // 10% - Yellow
+    { size: maxValue * 0.10, color: '#f59e0b', label: 'Elevated' },          // 10% - Orange
+    { size: maxValue * 0.10, color: '#f97316', label: 'High' },              // 10% - Deep orange
+    { size: maxValue * 0.10, color: '#ef4444', label: 'Very High' },         // 10% - Light red
+    { size: maxValue * 0.40, color: '#dc2626', label: 'Critical' },          // 40% - Deep red
   ];
   
-  // Build segments for the gauge based on color thresholds
+  // Build segments for the gauge
   const segments = [];
   const segmentLabels = [];
   const segmentColors = [];
   const segmentBorders = [];
   
-  colorThresholds.forEach((threshold, index) => {
-    const prevMax = index === 0 ? 0 : colorThresholds[index - 1].max;
-    const segmentSize = threshold.max - prevMax;
-    
-    segments.push(segmentSize);
-    segmentLabels.push(threshold.label);
-    segmentColors.push(threshold.color);
-    segmentBorders.push(threshold.color);
+  fixedSegments.forEach((segment) => {
+    segments.push(segment.size);
+    segmentLabels.push(segment.label);
+    segmentColors.push(segment.color);
+    segmentBorders.push(segment.color);
   });
-  
-  // Add empty/remaining segment
-  const totalSegments = segments.reduce((sum, val) => sum + val, 0);
-  const emptySegment = Math.max(0, maxValue - totalSegments);
-  if (emptySegment > 0) {
-    segments.push(emptySegment);
-    segmentLabels.push('Empty');
-    segmentColors.push('rgba(229, 231, 235, 0.2)');
-    segmentBorders.push('#e5e7eb');
-  }
   
   // Create gauge data
   const gaugeData = {
@@ -490,10 +551,7 @@ const Speedometer = ({ label, value, maxValue = 50, color = '#4f8cff', animated 
         enabled: true,
         callbacks: {
           label: function(context) {
-            if (context.label === 'Empty') {
-              return 'Available capacity';
-            }
-            return `${context.label} batches range`;
+            return `${context.label} range`;
           },
         },
       },
@@ -553,7 +611,7 @@ const Speedometer = ({ label, value, maxValue = 50, color = '#4f8cff', animated 
               left: '50%',
               width: '3px',
               height: '48px',
-              backgroundColor: value > 0 ? color : '#9ca3af',
+              backgroundColor: needleColor,
               transformOrigin: 'bottom center',
               transform: animated 
                 ? `translateX(-50%) rotate(${needleAngle}deg)`
@@ -561,7 +619,7 @@ const Speedometer = ({ label, value, maxValue = 50, color = '#4f8cff', animated 
               transition: animated ? 'transform 1.2s cubic-bezier(0.34, 1.56, 0.64, 1)' : 'none',
               borderRadius: '2px 2px 0 0',
               zIndex: 10,
-              boxShadow: value > 0 ? `0 0 6px ${color}` : 'none',
+              boxShadow: value > 0 ? `0 0 6px ${needleColor}` : 'none',
             }}
           />
           
@@ -573,7 +631,7 @@ const Speedometer = ({ label, value, maxValue = 50, color = '#4f8cff', animated 
               left: '50%',
               width: '12px',
               height: '12px',
-              backgroundColor: value > 0 ? color : '#9ca3af',
+              backgroundColor: needleColor,
               borderRadius: '50%',
               transform: 'translateX(-50%)',
               zIndex: 11,
@@ -594,7 +652,7 @@ const Speedometer = ({ label, value, maxValue = 50, color = '#4f8cff', animated 
             <div style={{
               fontSize: '2rem',
               fontWeight: '700',
-              color: value > 0 ? color : '#9ca3af',
+              color: needleColor,
               lineHeight: '1',
             }}>
               {value}
@@ -2974,6 +3032,8 @@ const ProductionDashboard = () => {
                                 color={deptColor}
                                 animated={speedometerAnimated[deptData.dept] || false}
                                 avgDays={deptData.stageAverageDays[index]}
+                                dept={deptData.dept}
+                                stageName={stage}
                               />
                             </div>
                           ))}
@@ -3005,6 +3065,8 @@ const ProductionDashboard = () => {
                                     color={deptColor}
                                     animated={speedometerAnimated[deptData.dept] || false}
                                     avgDays={deptData.stageAverageDays[actualIndex]}
+                                    dept={deptData.dept}
+                                    stageName={stage}
                                   />
                                 </div>
                               </div>
@@ -3090,7 +3152,7 @@ const ProductionDashboard = () => {
                                               <div 
                                                 className="stepper-circle" 
                                                 style={{ 
-                                                  backgroundColor: getQueueColor(batchCount),
+                                                  backgroundColor: getQueueColor(batchCount, product.dept, stage),
                                                   opacity: batchCount > 0 ? 1 : 0.3,
                                                   cursor: batchCount > 0 ? 'pointer' : 'default',
                                                 }}
