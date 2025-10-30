@@ -1394,11 +1394,14 @@ const ProductionDashboard = () => {
       excelData = excelData.filter(item => item.currentStage === stage);
     }
     
-    // Step 6: Prepare final Excel data
+    // Step 6: Sort by Days in Stage (descending - highest first)
+    excelData.sort((a, b) => (b.daysInStage || 0) - (a.daysInStage || 0));
+    
+    // Step 7: Prepare final Excel data with reordered columns
     const finalExcelData = excelData.map(item => {
       const row = {
-        'Batch No': item.batchNo || '',
         'Product Name': item.productName || '',
+        'Batch No': item.batchNo || '',
         'Stage': item.currentStage || '',
       };
       
@@ -1425,8 +1428,8 @@ const ProductionDashboard = () => {
     
     // Set column widths dynamically based on whether Substages column is included
     const colWidths = [
+      { wch: 35 }, // Product Name (moved first)
       { wch: 15 }, // Batch No
-      { wch: 35 }, // Product Name
       { wch: 18 }, // Stage
     ];
     
@@ -1448,7 +1451,7 @@ const ProductionDashboard = () => {
     // Add AutoFilter to enable sorting and filtering
     if (finalExcelData.length > 0) {
       // Calculate last column based on what's included
-      let lastColIndex = 6; // Base: Batch No, Product Name, Stage, Start Date, Days, Batch Date (6 columns)
+      let lastColIndex = 6; // Base: Product Name, Batch No, Stage, Start Date, Days, Batch Date (6 columns)
       if (stage === 'Proses') lastColIndex++; // Add Substages
       if (line === 'both') lastColIndex++; // Add Line
       
@@ -1555,12 +1558,23 @@ const ProductionDashboard = () => {
     
     forecastData.forEach((item, index) => {
       if (item.hasData) {
+        // Calculate total production for this month
+        const total = item.production;
+        
+        // Calculate percentages
+        const otcPercentage = total > 0 ? ((item.productionOTC / total) * 100).toFixed(1) : 0;
+        const generikPercentage = total > 0 ? ((item.productionGenerik / total) * 100).toFixed(1) : 0;
+        const ethPercentage = total > 0 ? ((item.productionETH / total) * 100).toFixed(1) : 0;
+        
+        // Format numbers with thousand separators (dot separator for international format)
+        const formatNumber = (num) => num.toLocaleString('id-ID');
+        
         const rowData = [
           { text: item.monthName, options: { fontSize: 8 } },
-          { text: item.production.toString(), options: { fontSize: 8 } },
-          { text: item.productionOTC.toString(), options: { fontSize: 8 } },
-          { text: item.productionGenerik.toString(), options: { fontSize: 8 } },
-          { text: item.productionETH.toString(), options: { fontSize: 8 } },
+          { text: formatNumber(item.production), options: { fontSize: 8 } },
+          { text: `${formatNumber(item.productionOTC)} (${otcPercentage}%)`, options: { fontSize: 8 } },
+          { text: `${formatNumber(item.productionGenerik)} (${generikPercentage}%)`, options: { fontSize: 8 } },
+          { text: `${formatNumber(item.productionETH)} (${ethPercentage}%)`, options: { fontSize: 8 } },
         ];
         
         // Split: Jan-Jun (months 1-6) and Jul-Dec (months 7-12)
@@ -1574,24 +1588,24 @@ const ProductionDashboard = () => {
     
     // First table (Jan-Jun) - left side
     slide2.addTable(forecastTableData1, {
-      x: 0.75, y: 3.9, w: 4.25, h: 1.3,
+      x: 0.7, y: 3.9, w: 4.5, h: 1.3,
       fontSize: 8,
       border: { pt: 1, color: 'CCCCCC' },
       align: 'center',
       valign: 'middle',
       rowH: 0.18,
-      colW: [0.6, 0.8, 0.8, 1.05, 1.0]
+      colW: [0.65, 0.65, 1.05, 1.05, 1.1]
     });
     
     // Second table (Jul-Dec) - right side
     slide2.addTable(forecastTableData2, {
-      x: 5.25, y: 3.9, w: 4.25, h: 1.3,
+      x: 5.3, y: 3.9, w: 4.5, h: 1.3,
       fontSize: 8,
       border: { pt: 1, color: 'CCCCCC' },
       align: 'center',
       valign: 'middle',
       rowH: 0.18,
-      colW: [0.6, 0.8, 0.8, 1.05, 1.0]
+      colW: [0.65, 0.65, 1.05, 1.05, 1.1]
     });
     
     // Slide 3: PCT Breakdown
@@ -1600,7 +1614,7 @@ const ProductionDashboard = () => {
       x: 0.5, y: 0.3, w: 9, h: 0.5,
       fontSize: 28, bold: true, color: '2C3E50'
     });
-    slide3.addText('Average days for each stage in the production process (Last 2 months)', {
+    slide3.addText('Average days for each stage in the production process (Month-to-date)', {
       x: 0.5, y: 0.85, w: 9, h: 0.3,
       fontSize: 12, color: '666666'
     });
@@ -2557,7 +2571,19 @@ const ProductionDashboard = () => {
               label += ': ';
             }
             if (context.parsed.y !== null) {
-              label += context.parsed.y.toLocaleString() + ' units';
+              // Calculate total for this month (sum of all datasets at this index)
+              let monthTotal = 0;
+              context.chart.data.datasets.forEach(dataset => {
+                const value = dataset.data[context.dataIndex];
+                if (value !== null && value !== undefined) {
+                  monthTotal += value;
+                }
+              });
+              
+              // Calculate percentage contribution
+              const percentage = monthTotal > 0 ? ((context.parsed.y / monthTotal) * 100).toFixed(1) : 0;
+              
+              label += context.parsed.y.toLocaleString() + ' units (' + percentage + '%)';
             }
             return label;
           },
@@ -2761,9 +2787,9 @@ const ProductionDashboard = () => {
             </div>
             <div className="pct-card">
               <div className="pct-description">
-                <p style={{ margin: '0 0 4px 0' }}>Average days for each stage in the production process (Last 2 months)</p>
+                <p style={{ margin: '0 0 4px 0' }}>Average days for each stage in the production process (Month-to-date)</p>
                 <small style={{ color: '#666', fontSize: '0.85rem' }}>
-                  📊 Data from completed batches with "Approve Release"
+                  📊 Batches completed with "Approve Release" this month
                 </small>
                 {/* PCT Breakdown title - positioned absolutely to not affect height */}
                 <h3 style={{ 

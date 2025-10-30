@@ -370,15 +370,16 @@ async function getPCTBreakdown() {
         ap.Batch_Date LIKE '[1-2][0-9][0-9][0-9]/[0-1][0-9]/[0-3][0-9]'
         AND LEN(ap.Batch_Date) = 10
         AND ISDATE(ap.Batch_Date) = 1
-        AND CONVERT(date, ap.Batch_Date, 111) >= DATEADD(month, -2, GETDATE())
         AND mp.Product_Name NOT LIKE '%granulat%'
     ),
-    -- Get only batches that have completed "Approve Realese" with EndDate
+    -- Get only batches that have completed "Approve Realese" with EndDate THIS MONTH (month-to-date)
     CompletedBatches AS (
       SELECT DISTINCT Batch_No
       FROM FilteredAlur
       WHERE LOWER(nama_tahapan) LIKE '%approve%realese%'
         AND EndDate IS NOT NULL
+        AND YEAR(EndDate) = YEAR(GETDATE())
+        AND MONTH(EndDate) = MONTH(GETDATE())
     )
     -- Return batch-level details with stage durations
     SELECT 
