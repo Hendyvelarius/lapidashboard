@@ -338,16 +338,17 @@ const deptColors = {
 // Stage priority order (lower number = displayed first)
 const stagePriority = {
   'Timbang': 1,
-  'Mixing': 2,
-  'Granulasi': 3,
-  'Cetak': 4,
-  'Filling': 5,
-  'Coating': 6,
-  'Kemas Primer': 7,
-  'Kemas Sekunder': 8,
-  'QC': 9,
-  'Mikro': 10,
-  'QA': 11,
+  'Terima Bahan': 2,
+  'Mixing': 3,
+  'Granulasi': 4,
+  'Cetak': 5,
+  'Filling': 6,
+  'Coating': 7,
+  'Kemas Primer': 8,
+  'Kemas Sekunder': 9,
+  'QC': 10,
+  'Mikro': 11,
+  'QA': 12,
 };
 
 // Helper function to get stage priority (default to 999 for unknown stages)
@@ -899,6 +900,7 @@ const ProductionDashboard = () => {
     // Define condensed stage mappings
     const stageMapping = {
       'Timbang': 'Timbang',
+      'Terima Bahan': 'Proses',
       'Mixing': 'Proses',
       'Filling': 'Proses',
       'Granulasi': 'Proses',
@@ -1057,7 +1059,7 @@ const ProductionDashboard = () => {
     // Map condensed stage back to original stages
     const stageMapping = {
       'Timbang': ['Timbang'],
-      'Proses': ['Mixing', 'Filling', 'Granulasi', 'Cetak', 'Coating'],
+      'Proses': ['Terima Bahan', 'Mixing', 'Filling', 'Granulasi', 'Cetak', 'Coating'],
       'Kemas Primer': ['Kemas Primer'],
       'Kemas Sekunder': ['Kemas Sekunder'],
       'QC': ['QC'],
@@ -1363,6 +1365,7 @@ const ProductionDashboard = () => {
     // Define stage mappings matching the WIP speedometer logic
     const stageMapping = {
       'Timbang': 'Timbang',
+      'Terima Bahan': 'Proses',
       'Mixing': 'Proses',
       'Filling': 'Proses',
       'Granulasi': 'Proses',
