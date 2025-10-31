@@ -372,11 +372,11 @@ async function getPCTBreakdown() {
         AND ISDATE(ap.Batch_Date) = 1
         AND mp.Product_Name NOT LIKE '%granulat%'
     ),
-    -- Get only batches that have completed "Approve Realese" with EndDate THIS MONTH (month-to-date)
+    -- Get only batches that have completed "Tempel Label Realese" with EndDate THIS MONTH (month-to-date)
     CompletedBatches AS (
       SELECT DISTINCT Batch_No
       FROM FilteredAlur
-      WHERE LOWER(nama_tahapan) LIKE '%approve%realese%'
+      WHERE LOWER(nama_tahapan) LIKE '%tempel%label%realese%'
         AND EndDate IS NOT NULL
         AND YEAR(EndDate) = YEAR(GETDATE())
         AND MONTH(EndDate) = MONTH(GETDATE())
@@ -387,10 +387,10 @@ async function getPCTBreakdown() {
       fa.Batch_Date,
       fa.Product_ID,
       fa.Product_Name,
-      -- Total days from earliest StartDate to Approve Realese EndDate
+      -- Total days from earliest StartDate to Tempel Label Realese EndDate
       DATEDIFF(DAY,
         MIN(fa.StartDate),
-        MAX(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%approve%realese%' THEN fa.EndDate END)
+        MAX(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%tempel%label%realese%' THEN fa.EndDate END)
       ) AS Total_Days,
       -- Timbang stage
       DATEDIFF(DAY,

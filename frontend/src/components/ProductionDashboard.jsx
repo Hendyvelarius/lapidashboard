@@ -730,16 +730,16 @@ const ProductionDashboard = () => {
   const processWIPData = (rawData) => {
     if (!rawData || rawData.length === 0) return [];
 
-    // Step 1: Filter out batches that have completed "Approve Realese" (yes, with typo)
-    const batchesWithApproveRelease = new Set();
+    // Step 1: Filter out batches that have completed "Tempel Label Realese"
+    const batchesWithTempelLabelRelease = new Set();
     rawData.forEach(entry => {
-      if (entry.nama_tahapan === 'Approve Realese' && entry.EndDate) {
-        batchesWithApproveRelease.add(entry.Batch_No);
+      if (entry.nama_tahapan === 'Tempel Label Realese' && entry.EndDate) {
+        batchesWithTempelLabelRelease.add(entry.Batch_No);
       }
     });
 
     const activeBatches = rawData.filter(entry => 
-      !batchesWithApproveRelease.has(entry.Batch_No)
+      !batchesWithTempelLabelRelease.has(entry.Batch_No)
     );
 
     // Step 2: Group by Group_Dept and Jenis_Sediaan
@@ -894,15 +894,15 @@ const ProductionDashboard = () => {
     const condensedStageOrder = ['Timbang', 'Proses', 'Kemas Primer', 'Kemas Sekunder', 'QC', 'Mikro', 'QA'];
 
     // Filter out completed batches
-    const batchesWithApproveRelease = new Set();
+    const batchesWithTempelLabelRelease = new Set();
     rawData.forEach(entry => {
-      if (entry.nama_tahapan === 'Approve Realese' && entry.EndDate) {
-        batchesWithApproveRelease.add(entry.Batch_No);
+      if (entry.nama_tahapan === 'Tempel Label Realese' && entry.EndDate) {
+        batchesWithTempelLabelRelease.add(entry.Batch_No);
       }
     });
 
     const activeBatches = rawData.filter(entry => 
-      !batchesWithApproveRelease.has(entry.Batch_No)
+      !batchesWithTempelLabelRelease.has(entry.Batch_No)
     );
 
     // Group by department only
@@ -1039,10 +1039,10 @@ const ProductionDashboard = () => {
     const originalStages = stageMapping[condensedStageName] || [];
 
     // Filter raw data for this dept and any of the original stages
-    const batchesWithApproveRelease = new Set();
+    const batchesWithTempelLabelRelease = new Set();
     rawWipData.forEach(entry => {
-      if (entry.nama_tahapan === 'Approve Realese' && entry.EndDate) {
-        batchesWithApproveRelease.add(entry.Batch_No);
+      if (entry.nama_tahapan === 'Tempel Label Realese' && entry.EndDate) {
+        batchesWithTempelLabelRelease.add(entry.Batch_No);
       }
     });
 
@@ -1053,7 +1053,7 @@ const ProductionDashboard = () => {
       return entryDept === dept 
         && originalStages.includes(entryTahapanGroup)
         && entryTahapanGroup !== 'Other'
-        && !batchesWithApproveRelease.has(entry.Batch_No);
+        && !batchesWithTempelLabelRelease.has(entry.Batch_No);
     });
 
     // Group by Batch_No
@@ -1342,17 +1342,17 @@ const ProductionDashboard = () => {
     const prosesStages = Object.keys(stageMapping).filter(key => stageMapping[key] === 'Proses');
     const validStages = Object.keys(stageMapping); // All mapped stages are valid
     
-    // Step 1: Filter out batches that have completed "Approve Realese"
-    const batchesWithApproveRelease = new Set();
+    // Step 1: Filter out batches that have completed "Tempel Label Realese"
+    const batchesWithTempelLabelRelease = new Set();
     rawWipData.forEach(entry => {
-      if (entry.nama_tahapan === 'Approve Realese' && entry.EndDate) {
-        batchesWithApproveRelease.add(entry.Batch_No);
+      if (entry.nama_tahapan === 'Tempel Label Realese' && entry.EndDate) {
+        batchesWithTempelLabelRelease.add(entry.Batch_No);
       }
     });
 
     const activeBatches = rawWipData.filter(entry => {
       const tahapanGroup = entry.tahapan_group || 'Other';
-      return !batchesWithApproveRelease.has(entry.Batch_No) && 
+      return !batchesWithTempelLabelRelease.has(entry.Batch_No) && 
              tahapanGroup !== 'Other' && // Skip "Other" stages
              validStages.includes(tahapanGroup); // Only include mapped stages
     });
@@ -1877,10 +1877,10 @@ const ProductionDashboard = () => {
   // Handle stage circle click to show batch details
   const handleStageClick = (dept, jenisSediaan, stageName) => {
     // Filter raw data for this specific dept, jenisSediaan, and stage
-    const batchesWithApproveRelease = new Set();
+    const batchesWithTempelLabelRelease = new Set();
     rawWipData.forEach(entry => {
-      if (entry.nama_tahapan === 'Approve Realese' && entry.EndDate) {
-        batchesWithApproveRelease.add(entry.Batch_No);
+      if (entry.nama_tahapan === 'Tempel Label Realese' && entry.EndDate) {
+        batchesWithTempelLabelRelease.add(entry.Batch_No);
       }
     });
 
@@ -1893,7 +1893,7 @@ const ProductionDashboard = () => {
         && entryJenisSediaan === jenisSediaan 
         && entryTahapanGroup === stageName
         && entryTahapanGroup !== 'Other'
-        && !batchesWithApproveRelease.has(entry.Batch_No);
+        && !batchesWithTempelLabelRelease.has(entry.Batch_No);
     });
 
     // Group by Batch_No to get unique batches with their details
