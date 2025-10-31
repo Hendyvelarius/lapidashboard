@@ -470,20 +470,54 @@ async function getPCTBreakdown() {
 
 async function getWIPData() {
   const db = await connect();
-  const query = `select a.Product_ID, a.Batch_No, a.Batch_Date, a.nama_tahapan, a.kode_tahapan, a.StartDate, a.EndDate, urutan,  grp.tahapan_group,
- Product_Name, gp.Group_Dept, sediaan.Jenis_Sediaan
- --into #tmpData
+  const query = `
+ select a.Product_ID, a.Batch_No, a.Batch_Date, a.nama_tahapan, a.kode_tahapan, a.StartDate, a.EndDate, urutan,  grp.tahapan_group,
+ Product_Name, gp.Group_Dept, sediaan.Jenis_Sediaan, Prev_Step, Display
+ into #tmpData
  from t_alur_proses a 
- left join t_dnc_product b on a.Batch_No=b.DNc_BatchNo and a.Product_ID = b.DNc_ProductID and a.Batch_Date =b.DNC_BatchDate
+ left join (select Product_ID, Batch_No, Batch_Date from t_alur_proses where nama_tahapan like '%tempel%label' and EndDate is not null) xy on xy.Product_ID=a.Product_ID and xy.Batch_No = a.Batch_No and xy.Batch_Date=a.Batch_Date
+ left join (select * from t_dnc_product where isnull(DNC_TempelLabel,'')<>'') b on a.Batch_No=b.DNc_BatchNo and a.Product_ID = b.DNc_ProductID --and a.Batch_Date =b.DNC_BatchDate
  join (select distinct Batch_No, Batch_Date, Product_ID from t_rfid_batch_card where isActive=1 and Batch_Status='Open') c on c.Product_ID = a.Product_ID and c.Batch_Date=a.Batch_Date and c.Batch_No = a.Batch_No
  left join m_tahapan_group grp on a.kode_tahapan= grp.kode_tahapan
  join m_product prod on a.Product_ID = prod.Product_ID
- join m_product_pn_group gp on gp.Group_ProductID = a.Product_ID and replace(Group_Periode,' ','') = CONVERT(varchar(6), getdate(),112)
- join m_product_sediaan_produksi sediaan on sediaan.Product_ID=a.Product_ID
+ left join m_product_pn_group gp on gp.Group_ProductID = a.Product_ID and replace(Group_Periode,' ','') = CONVERT(varchar(6), getdate(),112)
+ left join m_product_sediaan_produksi sediaan on sediaan.Product_ID=a.Product_ID
+ left join (
+			select distinct Batch_No, Batch_Date, Product_ID, EndDate from t_alur_proses where ltrim(rtrim(nama_tahapan)) like 'Timbang BB'
+            and EndDate is not null
+            ) d on d.Batch_Date=a.Batch_Date and d.Batch_No=a.Batch_No and d.Product_ID=a.Product_ID
+        left join (
+			select distinct Batch_No, Batch_Date, Product_ID, EndDate from t_alur_proses where ltrim(rtrim(nama_tahapan)) like 'Terima Bahan Baku'
+            and EndDate is not null
+            ) mulaiProd on mulaiProd.Batch_Date=a.Batch_Date and mulaiProd.Batch_No=a.Batch_No and mulaiProd.Product_ID=a.Product_ID    
  where
- b.DNc_BatchNo is null
- and CONVERT(nvarchar(6), a.Batch_Date, 112) between  CONVERT(nvarchar(6), dateadd(month,-12,GETDATE()), 112) and CONVERT(nvarchar(6), GETDATE(), 112)`;
-  
+  --a.Batch_No='FP025' and
+ b.DNc_BatchNo is null and
+ CONVERT(nvarchar(6), a.Batch_Date, 112) between  CONVERT(nvarchar(6), dateadd(month,-12,GETDATE()), 112) and CONVERT(nvarchar(6), GETDATE(), 112)
+and (prod.Product_Name  not like '%Granulat%') 
+and not (a.Batch_No ='CY3A01' or a.Batch_No ='BI063' or a.Batch_No ='PI3L01')
+and xy.Product_ID is null
+and (d.Batch_No is not null or mulaiProd.Batch_No is not null)
+--select * from #tmpData
+
+-- pastikan kolomnya ada dulu
+ALTER TABLE #tmpData ADD IdleStartDate DATETIME NULL;
+
+-- update IdleStartDate berdasarkan prev step
+UPDATE a
+SET a.IdleStartDate = (
+    SELECT MIN(b.EndDate)
+    FROM #tmpData b
+    INNER JOIN split(a.Prev_Step, ';') AS ps
+        ON LTRIM(RTRIM(ps.items)) = ltrim(rtrim(b.nama_tahapan))
+    WHERE a.Product_ID = b.Product_ID
+      AND a.Batch_No = b.Batch_No
+)
+FROM #tmpData a;
+select * from #tmpData;
+DROP TABLE #tmpData;
+`;
+
   const result = await db.request().query(query);
   return result.recordset;
 }

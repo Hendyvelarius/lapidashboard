@@ -431,31 +431,51 @@ const parseSQLDateTime = (sqlDateString) => {
 const calculateDaysInStage = (entries) => {
   if (!entries || entries.length === 0) return 0;
   
-  // Find the earliest StartDate from all entries in this stage
-  let earliestStartDate = null;
+  // Always use the earliest IdleStartDate for calculating days in stage
+  let earliestIdleDate = null;
   entries.forEach(entry => {
-    if (entry.StartDate) {
-      const startDate = new Date(entry.StartDate);
-      if (!earliestStartDate || startDate < earliestStartDate) {
-        earliestStartDate = startDate;
+    if (entry.IdleStartDate) {
+      const idleDate = new Date(entry.IdleStartDate);
+      if (!earliestIdleDate || idleDate < earliestIdleDate) {
+        earliestIdleDate = idleDate;
       }
     }
   });
   
-  if (!earliestStartDate) return 0;
+  if (!earliestIdleDate) return 0;
   
   // Normalize both dates to start of day (midnight) to avoid time-of-day issues
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   
-  earliestStartDate.setHours(0, 0, 0, 0);
+  earliestIdleDate.setHours(0, 0, 0, 0);
   
   // Calculate difference in days
-  const diffTime = today - earliestStartDate;
+  const diffTime = today - earliestIdleDate;
   const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
   
   // Ensure we never return negative values (if start date is today or in future, return 0)
   return Math.max(0, diffDays);
+};
+
+// Get earliest IdleStartDate from entries and format it
+const getEarliestIdleStartDate = (entries) => {
+  if (!entries || entries.length === 0) return '';
+  
+  let earliestIdleDate = null;
+  entries.forEach(entry => {
+    if (entry.IdleStartDate) {
+      const idleDate = new Date(entry.IdleStartDate);
+      if (!earliestIdleDate || idleDate < earliestIdleDate) {
+        earliestIdleDate = idleDate;
+      }
+    }
+  });
+  
+  if (!earliestIdleDate) return '';
+  
+  // Format as DD/MM/YYYY
+  return earliestIdleDate.toLocaleDateString('en-GB');
 };
 
 // Speedometer Component
@@ -967,20 +987,29 @@ const ProductionDashboard = () => {
           const entries = batchEntries[batchNo];
           const hasStartDate = entries.some(e => e.StartDate);
           const hasMissingEndDate = entries.some(e => !e.EndDate);
+          const hasDisplayFlag = entries.some(e => e.Display === '1' || e.Display === 1);
 
-          if (hasStartDate && hasMissingEndDate) {
+          // Include batch if:
+          // 1. It has StartDate AND missing EndDate (traditional in-progress), OR
+          // 2. It has Display = '1' (scheduled/planned)
+          if ((hasStartDate && hasMissingEndDate) || hasDisplayFlag) {
             stage.batchesInProgress.add(batchNo);
             
-            const startDates = entries
-              .filter(e => e.StartDate)
-              .map(e => parseSQLDateTime(e.StartDate))
-              .filter(date => date !== null);
-            
-            if (startDates.length > 0) {
-              const oldestStartDate = new Date(Math.min(...startDates));
-              const durationInDays = Math.floor((currentDate - oldestStartDate) / (1000 * 60 * 60 * 24));
-              batchDurations.push(durationInDays);
+            // Only calculate duration if there's an actual StartDate
+            if (hasStartDate) {
+              const startDates = entries
+                .filter(e => e.StartDate)
+                .map(e => parseSQLDateTime(e.StartDate))
+                .filter(date => date !== null);
+              
+              if (startDates.length > 0) {
+                const oldestStartDate = new Date(Math.min(...startDates));
+                const durationInDays = Math.floor((currentDate - oldestStartDate) / (1000 * 60 * 60 * 24));
+                batchDurations.push(durationInDays);
+              }
             }
+            // If Display = '1' but no StartDate, we don't add to batchDurations
+            // This will show "Not Started" in the UI
           }
         });
 
@@ -1070,7 +1099,8 @@ const ProductionDashboard = () => {
           entries: [],
           hasStartDate: false,
           hasMissingEndDate: false,
-          tasksInProgress: 0,
+          hasDisplayFlag: false,
+          tasksCompleted: 0,
           totalTasks: 0,
         };
       }
@@ -1079,19 +1109,26 @@ const ProductionDashboard = () => {
       if (entry.StartDate) batchDetails[batchNo].hasStartDate = true;
       if (!entry.EndDate) {
         batchDetails[batchNo].hasMissingEndDate = true;
-        batchDetails[batchNo].tasksInProgress++;
+      }
+      if (entry.EndDate) {
+        batchDetails[batchNo].tasksCompleted++;
+      }
+      if (entry.Display === '1' || entry.Display === 1) {
+        batchDetails[batchNo].hasDisplayFlag = true;
       }
     });
 
-    // Filter to only show batches in progress
+    // Filter to only show batches in progress or scheduled (Display = '1')
     const activeBatches = Object.values(batchDetails).filter(
-      batch => batch.hasStartDate && batch.hasMissingEndDate
+      batch => (batch.hasStartDate && batch.hasMissingEndDate) || batch.hasDisplayFlag
     );
 
     // Add daysInStage to each batch and sort by longest duration first
+    // For Display='1' batches, days will be calculated from IdleStartDate
     const batchesWithDays = activeBatches.map(batch => ({
       ...batch,
-      daysInStage: calculateDaysInStage(batch.entries)
+      daysInStage: calculateDaysInStage(batch.entries),
+      stageStart: getEarliestIdleStartDate(batch.entries)
     })).sort((a, b) => b.daysInStage - a.daysInStage);
 
     setSelectedStageData({
@@ -1384,15 +1421,23 @@ const ProductionDashboard = () => {
           batchDate: entry.Batch_Date,
           steps: [],
           originalStages: new Set(), // Track which substages are involved
+          hasDisplayFlag: false,
         };
       }
       
       batchStageMap[key].steps.push({
         startDate: entry.StartDate,
         endDate: entry.EndDate,
+        display: entry.Display,
+        idleStartDate: entry.IdleStartDate,
       });
       
       batchStageMap[key].originalStages.add(tahapanGroup);
+      
+      // Track if any entry has Display = '1'
+      if (entry.Display === '1' || entry.Display === 1) {
+        batchStageMap[key].hasDisplayFlag = true;
+      }
     });
     
     // Step 3: Determine which batch-stage combinations are "in progress"
@@ -1400,7 +1445,7 @@ const ProductionDashboard = () => {
     const currentDate = new Date();
     
     Object.values(batchStageMap).forEach(batchStage => {
-      const { steps } = batchStage;
+      const { steps, hasDisplayFlag } = batchStage;
       
       // Check if at least one step has StartDate
       const hasStartedStep = steps.some(step => step.startDate);
@@ -1408,23 +1453,24 @@ const ProductionDashboard = () => {
       // Check if ALL steps have EndDate (all completed)
       const allStepsCompleted = steps.every(step => step.endDate);
       
-      // Batch is in this stage if: at least one step started AND not all steps completed
-      if (hasStartedStep && !allStepsCompleted) {
-        // Find the earliest StartDate among steps that have started
-        const startDates = steps
-          .filter(step => step.startDate)
-          .map(step => parseSQLDateTime(step.startDate))
-          .filter(date => date !== null);
-        
+      // Batch is in this stage if:
+      // 1. (at least one step started AND not all steps completed), OR
+      // 2. Has Display = '1'
+      if ((hasStartedStep && !allStepsCompleted) || hasDisplayFlag) {
         let daysInStage = 0;
-        let earliestStartDate = null;
+        let earliestIdleDate = null;
         let startDateFormatted = '';
         
-        if (startDates.length > 0) {
-          earliestStartDate = new Date(Math.min(...startDates));
-          daysInStage = Math.floor((currentDate - earliestStartDate) / (1000 * 60 * 60 * 24));
-          // Format start date as DD/MM/YYYY
-          startDateFormatted = earliestStartDate.toLocaleDateString('en-GB');
+        // Always use earliest IdleStartDate for calculating days
+        const idleDates = steps
+          .filter(step => step.idleStartDate)
+          .map(step => parseSQLDateTime(step.idleStartDate))
+          .filter(date => date !== null);
+        
+        if (idleDates.length > 0) {
+          earliestIdleDate = new Date(Math.min(...idleDates));
+          daysInStage = Math.floor((currentDate - earliestIdleDate) / (1000 * 60 * 60 * 24));
+          startDateFormatted = earliestIdleDate.toLocaleDateString('en-GB');
         }
         
         batchesInProgress.push({
@@ -1469,7 +1515,7 @@ const ProductionDashboard = () => {
       }
       
       row['Start Date'] = item.startDate || '';
-      row['Days in Stage'] = item.daysInStage || 0;
+      row['Days in Stage'] = item.daysInStage;
       row['Batch Date'] = item.batchDate || '';
       
       // Only add Line column if both lines are selected
@@ -1909,7 +1955,8 @@ const ProductionDashboard = () => {
           entries: [],
           hasStartDate: false,
           hasMissingEndDate: false,
-          tasksInProgress: 0,
+          hasDisplayFlag: false,
+          tasksCompleted: 0,
           totalTasks: 0,
         };
       }
@@ -1918,19 +1965,27 @@ const ProductionDashboard = () => {
       if (entry.StartDate) batchDetails[batchNo].hasStartDate = true;
       if (!entry.EndDate) {
         batchDetails[batchNo].hasMissingEndDate = true;
-        batchDetails[batchNo].tasksInProgress++;
+      }
+      if (entry.EndDate) {
+        batchDetails[batchNo].tasksCompleted++;
+      }
+      // Track if any entry has Display = '1'
+      if (entry.Display === '1' || entry.Display === 1) {
+        batchDetails[batchNo].hasDisplayFlag = true;
       }
     });
 
-    // Filter to only show batches that are actually in progress (has StartDate and missing EndDate)
+    // Filter to show batches that are in progress OR have Display='1'
     const activeBatches = Object.values(batchDetails).filter(
-      batch => batch.hasStartDate && batch.hasMissingEndDate
+      batch => (batch.hasStartDate && batch.hasMissingEndDate) || batch.hasDisplayFlag
     );
 
     // Add daysInStage to each batch and sort by longest duration first
+    // For Display='1' batches, days will be calculated from IdleStartDate
     const batchesWithDays = activeBatches.map(batch => ({
       ...batch,
-      daysInStage: calculateDaysInStage(batch.entries)
+      daysInStage: calculateDaysInStage(batch.entries),
+      stageStart: getEarliestIdleStartDate(batch.entries)
     })).sort((a, b) => b.daysInStage - a.daysInStage);
 
     setSelectedStageData({
@@ -3244,7 +3299,7 @@ const ProductionDashboard = () => {
                           Batch No: {batch.batchNo}
                         </div>
                         <div style={{ fontSize: '0.85rem', color: '#6c757d', marginBottom: '4px' }}>
-                          Batch Date: {batch.batchDate}
+                          Stage Start: {batch.stageStart || 'N/A'}
                         </div>
                         <div style={{ 
                           fontSize: '0.85rem', 
@@ -3333,7 +3388,7 @@ const ProductionDashboard = () => {
                     >
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <div style={{ color: '#6c757d' }}>
-                          <strong style={{ color: selectedStageData.color }}>{batch.tasksInProgress}/{batch.totalTasks}</strong> task{batch.totalTasks > 1 ? 's' : ''} in progress
+                          <strong style={{ color: selectedStageData.color }}>{batch.tasksCompleted}/{batch.totalTasks}</strong> task{batch.totalTasks > 1 ? 's' : ''} completed
                         </div>
                         <div style={{ fontSize: '0.9rem', color: selectedStageData.color }}>
                           👁️ View Details
