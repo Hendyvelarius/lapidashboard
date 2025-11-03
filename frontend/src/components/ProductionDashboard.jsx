@@ -429,10 +429,58 @@ const parseSQLDateTime = (sqlDateString) => {
 };
 
 // Helper function to calculate days in stage from batch date
-const calculateDaysInStage = (entries) => {
+const calculateDaysInStage = (entries, stageName = '') => {
   if (!entries || entries.length === 0) return 0;
   
-  // Always use the earliest IdleStartDate for calculating days in stage
+  // Special logic for QA stage
+  if (stageName === 'QA') {
+    const requiredQASteps = [
+      'Cek Dokumen PC oleh QA',
+      'Cek Dokumen PN oleh QA',
+      'Cek Dokumen MC oleh QA',
+      'Cek Dokumen QC oleh QA'
+    ];
+    
+    // Find all the required QA steps that have IdleStartDate
+    const qaStepsWithIdleDate = entries.filter(entry => 
+      requiredQASteps.includes(entry.nama_tahapan) && entry.IdleStartDate
+    );
+    
+    // Check if all 4 required steps have IdleStartDate
+    const allRequiredStepsStarted = requiredQASteps.every(stepName =>
+      qaStepsWithIdleDate.some(entry => entry.nama_tahapan === stepName)
+    );
+    
+    // If not all 4 steps have started, return null (will show "Not Started")
+    if (!allRequiredStepsStarted) {
+      return null;
+    }
+    
+    // Find the LATEST IdleStartDate among the 4 required steps
+    let latestIdleDate = null;
+    qaStepsWithIdleDate.forEach(entry => {
+      if (requiredQASteps.includes(entry.nama_tahapan)) {
+        const idleDate = new Date(entry.IdleStartDate);
+        if (!latestIdleDate || idleDate > latestIdleDate) {
+          latestIdleDate = idleDate;
+        }
+      }
+    });
+    
+    if (!latestIdleDate) return null;
+    
+    // Calculate days from the latest IdleStartDate to today
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    latestIdleDate.setHours(0, 0, 0, 0);
+    
+    const diffTime = today - latestIdleDate;
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    
+    return Math.max(0, diffDays);
+  }
+  
+  // Default logic for all other stages - use earliest IdleStartDate
   let earliestIdleDate = null;
   entries.forEach(entry => {
     if (entry.IdleStartDate) {
@@ -1129,9 +1177,15 @@ const ProductionDashboard = () => {
     // For Display='1' batches, days will be calculated from IdleStartDate
     const batchesWithDays = activeBatches.map(batch => ({
       ...batch,
-      daysInStage: calculateDaysInStage(batch.entries),
+      daysInStage: calculateDaysInStage(batch.entries, condensedStageName),
       stageStart: getEarliestIdleStartDate(batch.entries)
-    })).sort((a, b) => b.daysInStage - a.daysInStage);
+    })).sort((a, b) => {
+      // Handle null values (Not Started) - sort them to the end
+      if (a.daysInStage === null && b.daysInStage === null) return 0;
+      if (a.daysInStage === null) return 1;
+      if (b.daysInStage === null) return -1;
+      return b.daysInStage - a.daysInStage;
+    });
 
     setSelectedStageData({
       dept,
@@ -1433,6 +1487,7 @@ const ProductionDashboard = () => {
         endDate: entry.EndDate,
         display: entry.Display,
         idleStartDate: entry.IdleStartDate,
+        nama_tahapan: entry.nama_tahapan, // Include task name for QA logic
       });
       
       batchStageMap[key].originalStages.add(tahapanGroup);
@@ -1448,7 +1503,7 @@ const ProductionDashboard = () => {
     const currentDate = new Date();
     
     Object.values(batchStageMap).forEach(batchStage => {
-      const { steps, hasDisplayFlag } = batchStage;
+      const { steps, hasDisplayFlag, stage } = batchStage;
       
       // Check if at least one step has StartDate
       const hasStartedStep = steps.some(step => step.startDate);
@@ -1460,19 +1515,24 @@ const ProductionDashboard = () => {
       // 1. (at least one step started AND not all steps completed), OR
       // 2. Has Display = '1'
       if ((hasStartedStep && !allStepsCompleted) || hasDisplayFlag) {
-        let daysInStage = 0;
-        let earliestIdleDate = null;
-        let startDateFormatted = '';
+        // Convert steps to entries format for calculateDaysInStage
+        const entries = steps.map(step => ({
+          IdleStartDate: step.idleStartDate,
+          nama_tahapan: step.nama_tahapan,
+        }));
         
-        // Always use earliest IdleStartDate for calculating days
+        // Use the calculateDaysInStage function (handles QA special logic)
+        const daysInStage = calculateDaysInStage(entries, stage);
+        
+        // Get the earliest IdleStartDate for start date display
+        let startDateFormatted = '';
         const idleDates = steps
           .filter(step => step.idleStartDate)
           .map(step => parseSQLDateTime(step.idleStartDate))
           .filter(date => date !== null);
         
         if (idleDates.length > 0) {
-          earliestIdleDate = new Date(Math.min(...idleDates));
-          daysInStage = Math.floor((currentDate - earliestIdleDate) / (1000 * 60 * 60 * 24));
+          const earliestIdleDate = new Date(Math.min(...idleDates));
           startDateFormatted = earliestIdleDate.toLocaleDateString('en-GB');
         }
         
@@ -1518,7 +1578,7 @@ const ProductionDashboard = () => {
       }
       
       row['Start Date'] = item.startDate || '';
-      row['Days in Stage'] = item.daysInStage;
+      row['Days in Stage'] = item.daysInStage !== null ? item.daysInStage : 'Not Started';
       row['Batch Date'] = item.batchDate || '';
       
       // Only add Line column if both lines are selected
@@ -1987,9 +2047,15 @@ const ProductionDashboard = () => {
     // For Display='1' batches, days will be calculated from IdleStartDate
     const batchesWithDays = activeBatches.map(batch => ({
       ...batch,
-      daysInStage: calculateDaysInStage(batch.entries),
+      daysInStage: calculateDaysInStage(batch.entries, stageName),
       stageStart: getEarliestIdleStartDate(batch.entries)
-    })).sort((a, b) => b.daysInStage - a.daysInStage);
+    })).sort((a, b) => {
+      // Handle null values (Not Started) - sort them to the end
+      if (a.daysInStage === null && b.daysInStage === null) return 0;
+      if (a.daysInStage === null) return 1;
+      if (b.daysInStage === null) return -1;
+      return b.daysInStage - a.daysInStage;
+    });
 
     setSelectedStageData({
       dept,
@@ -3309,7 +3375,7 @@ const ProductionDashboard = () => {
                           color: '#e67e22',
                           fontWeight: '600',
                         }}>
-                          Days in Stage: {batch.daysInStage} {batch.daysInStage === 1 ? 'day' : 'days'}
+                          Days in Stage: {batch.daysInStage !== null ? `${batch.daysInStage} ${batch.daysInStage === 1 ? 'day' : 'days'}` : 'Not Started'}
                         </div>
                         {batch.jenisSediaan && selectedStageData.jenisSediaan === 'All Products' && (
                           <div style={{ 

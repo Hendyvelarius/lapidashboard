@@ -2,44 +2,28 @@ import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import UnauthorizedPage from './UnauthorizedPage';
 import DashboardLoading from './DashboardLoading';
+import { checkPageAccess } from '../config/AccessSettings';
 
-const ProtectedRoute = ({ children }) => {
+const ProtectedRoute = ({ children, pageName = 'default' }) => {
   const { isAuthenticated, isLoading, user } = useAuth();
 
   if (isLoading) {
     return <DashboardLoading />;
   }
 
+  // First, check if user is authenticated (logged in)
+  // This applies to ALL pages - even if a page doesn't require specific permissions,
+  // users must still be logged in to access the application
   if (!isAuthenticated) {
-    return <UnauthorizedPage />;
+    return <UnauthorizedPage message="Silakan login terlebih dahulu untuk mengakses aplikasi." />;
   }
 
-  /*   
-  CONTOH DATA USER:
-    Inisial_Name: "ABC"
-    Jabatan: "IT Application Development & Implementation Supervisor"
-    Job_LevelID: "5"
-    Nama: "Budi Santoso"
-    Pk_ID: "0000000134"
-    emp_DeptID: "NT"
-    emp_JobLevelID: "SPV"
-    log_NIK: "ABC"
-  */
+  // Then check page-specific access using the new settings
+  const accessCheck = checkPageAccess(pageName, user);
 
-  // Department-based authorization check
-  const allowedDepartments = ['PL', 'NT'];
-  const userDepartment = user?.emp_DeptID;
-  
-  // User ID check for specific users (checking multiple possible ID field names)
-  const userId = user?.log_NIK;
-  const allowedUserIds = ['JDV'];
-  
-  // Check if user has access (either by department OR by specific user ID)
-  const hasDepartmentAccess = userDepartment && allowedDepartments.includes(userDepartment);
-  const hasUserIdAccess = userId && allowedUserIds.includes(userId);
-  
-  if (!hasDepartmentAccess && !hasUserIdAccess) {
-    return <UnauthorizedPage message="Kamu belum memiliki izin untuk mengakses aplikasi ini." />;
+  // If user doesn't have access to this specific page
+  if (!accessCheck.hasAccess) {
+    return <UnauthorizedPage message={`Akses ditolak: ${accessCheck.reason}`} />;
   }
 
   return children;

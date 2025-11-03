@@ -100,6 +100,7 @@ function Sidebar() {
             <BarChart size={20} />
             {!sidebarMinimized && <span>Summary</span>}
           </Link>
+          {/* Beta Dashboard - Hidden but kept for future use
           <Link 
             to="/beta" 
             className={`sidebar-btn${location.pathname === '/beta' ? ' active' : ''}`}
@@ -108,6 +109,7 @@ function Sidebar() {
             <LayoutDashboard size={20} />
             {!sidebarMinimized && <span>Beta</span>}
           </Link>
+          */}
           <Link 
             to="/reports" 
             className={`sidebar-btn${location.pathname === '/reports' ? ' active' : ''}`}

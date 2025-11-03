@@ -24,16 +24,15 @@ export default function AppRouter() {
       <AuthProvider>
         <AuthHandler>
           <Routes>
-            <Route path="/" element={<ProtectedRoute><LandingPage /></ProtectedRoute>} />
-            <Route path="/beta" element={<ProtectedRoute><App /></ProtectedRoute>} />
-            <Route path="/eDashboard" element={<ProtectedRoute><LandingPage /></ProtectedRoute>} />
-            <Route path="/summary" element={<ProtectedRoute><SummaryDashboard /></ProtectedRoute>} />
-            <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
-        <Route path="/reports" element={<Reports />} />
+            <Route path="/" element={<ProtectedRoute pageName="home"><LandingPage /></ProtectedRoute>} />
+            {/* <Route path="/beta" element={<ProtectedRoute pageName="beta"><App /></ProtectedRoute>} /> */}
+            <Route path="/eDashboard" element={<ProtectedRoute pageName="home"><LandingPage /></ProtectedRoute>} />
+            <Route path="/summary" element={<ProtectedRoute pageName="summary"><SummaryDashboard /></ProtectedRoute>} />
+            <Route path="/reports" element={<ProtectedRoute pageName="reports"><Reports /></ProtectedRoute>} />
         <Route
           path="/reports/pcttahunan"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute pageName="pct-reports">
               <PCTReportPage
                 title="Product Cycle Time (PCT) Tahunan"
                 apiEndpoint="/api/pctAverage"
@@ -64,7 +63,7 @@ export default function AppRouter() {
         <Route
           path="/reports/pct-monthly"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute pageName="pct-reports">
               <PCTReportPage
                 title="Product Cycle Time (PCT) Monthly"
                 apiEndpoint="/api/pct"
@@ -96,9 +95,9 @@ export default function AppRouter() {
             </ProtectedRoute>
           }
         />
-        <Route path="/wip" element={<ProtectedRoute><WIPReportPage /></ProtectedRoute>} />
-        <Route path="/production" element={<ProtectedRoute><ProductionDashboard /></ProtectedRoute>} />
-        <Route path="/stock-forecast" element={<ProtectedRoute><StockForecastDashboard /></ProtectedRoute>} />
+        <Route path="/wip" element={<ProtectedRoute pageName="wip"><WIPReportPage /></ProtectedRoute>} />
+        <Route path="/production" element={<ProtectedRoute pageName="production"><ProductionDashboard /></ProtectedRoute>} />
+        <Route path="/stock-forecast" element={<ProtectedRoute pageName="stock-forecast"><StockForecastDashboard /></ProtectedRoute>} />
       </Routes>
       </AuthHandler>
       </AuthProvider>
