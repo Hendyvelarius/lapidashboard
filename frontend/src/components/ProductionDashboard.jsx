@@ -1220,9 +1220,36 @@ const ProductionDashboard = () => {
     });
 
     // Filter to only show batches in progress or scheduled (Display = '1')
-    const activeBatches = Object.values(batchDetails).filter(
-      batch => (batch.hasStartDate && batch.hasMissingEndDate) || batch.hasDisplayFlag
-    );
+    const activeBatches = Object.values(batchDetails).filter(batch => {
+      // Basic filter: batch must be in progress or scheduled
+      const isInProgress = (batch.hasStartDate && batch.hasMissingEndDate) || batch.hasDisplayFlag;
+      
+      if (!isInProgress) return false;
+      
+      // Special check for QA stage - only include if all 4 required steps have started
+      if (condensedStageName === 'QA') {
+        const requiredQASteps = [
+          'Cek Dokumen PC oleh QA',
+          'Cek Dokumen PN oleh QA',
+          'Cek Dokumen MC oleh QA',
+          'Cek Dokumen QC oleh QA'
+        ];
+        
+        // Check if all 4 required steps have IdleStartDate
+        const qaStepsWithIdleDate = batch.entries.filter(entry => 
+          requiredQASteps.includes(entry.nama_tahapan) && entry.IdleStartDate
+        );
+        
+        const allRequiredStepsStarted = requiredQASteps.every(stepName =>
+          qaStepsWithIdleDate.some(entry => entry.nama_tahapan === stepName)
+        );
+        
+        // Only include in QA if all 4 steps have started
+        return allRequiredStepsStarted;
+      }
+      
+      return true;
+    });
 
     // Add daysInStage to each batch and sort by longest duration first
     // For Display='1' batches, days will be calculated from IdleStartDate
