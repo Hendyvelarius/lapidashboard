@@ -397,3 +397,13 @@
     font-size: 2rem;
   }
 }
+
+/* Vignette fade-in animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

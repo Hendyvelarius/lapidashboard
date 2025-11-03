@@ -767,6 +767,9 @@ const ProductionDashboard = () => {
   const [pctRawData, setPctRawData] = useState([]); // Store raw batch-level PCT data
   const [pctDeptData, setPctDeptData] = useState({}); // Store PCT department distribution
   const [avgTotalDays, setAvgTotalDays] = useState(0); // Average total days from start to finish (for display only)
+  const [pctPeriod, setPctPeriod] = useState('MTD'); // 'MTD' or 'YTD' for PCT breakdown
+  const [showPctVignette, setShowPctVignette] = useState(false); // Show vignette when switching from empty MTD to YTD
+  const [isInitialLoad, setIsInitialLoad] = useState(true); // Track if this is the first load
   const [forecastData, setForecastData] = useState([]); // Store forecast vs production data
   const [forecastRawData, setForecastRawData] = useState([]); // Store raw forecast data for detailed view
   const [productCategories, setProductCategories] = useState({}); // Store product categories (Generik, OTC, ETH)
@@ -872,6 +875,30 @@ const ProductionDashboard = () => {
           const entries = batchEntries[batchNo];
           const hasStartDate = entries.some(e => e.StartDate);
           const hasMissingEndDate = entries.some(e => !e.EndDate);
+
+          // Special check for QA stage - only include if all 4 required steps have started
+          if (stageName === 'QA') {
+            const requiredQASteps = [
+              'Cek Dokumen PC oleh QA',
+              'Cek Dokumen PN oleh QA',
+              'Cek Dokumen MC oleh QA',
+              'Cek Dokumen QC oleh QA'
+            ];
+            
+            // Check if all 4 required steps have IdleStartDate
+            const qaStepsWithIdleDate = entries.filter(entry => 
+              requiredQASteps.includes(entry.nama_tahapan) && entry.IdleStartDate
+            );
+            
+            const allRequiredStepsStarted = requiredQASteps.every(stepName =>
+              qaStepsWithIdleDate.some(entry => entry.nama_tahapan === stepName)
+            );
+            
+            // Only include in QA stage if all 4 steps have started
+            if (!allRequiredStepsStarted) {
+              return; // Skip this batch for QA count
+            }
+          }
 
           if (hasStartDate && hasMissingEndDate) {
             stage.batchesInProgress.add(batchNo);
@@ -1038,6 +1065,30 @@ const ProductionDashboard = () => {
           const hasStartDate = entries.some(e => e.StartDate);
           const hasMissingEndDate = entries.some(e => !e.EndDate);
           const hasDisplayFlag = entries.some(e => e.Display === '1' || e.Display === 1);
+
+          // Special check for QA stage - only include if all 4 required steps have started
+          if (stageName === 'QA') {
+            const requiredQASteps = [
+              'Cek Dokumen PC oleh QA',
+              'Cek Dokumen PN oleh QA',
+              'Cek Dokumen MC oleh QA',
+              'Cek Dokumen QC oleh QA'
+            ];
+            
+            // Check if all 4 required steps have IdleStartDate
+            const qaStepsWithIdleDate = entries.filter(entry => 
+              requiredQASteps.includes(entry.nama_tahapan) && entry.IdleStartDate
+            );
+            
+            const allRequiredStepsStarted = requiredQASteps.every(stepName =>
+              qaStepsWithIdleDate.some(entry => entry.nama_tahapan === stepName)
+            );
+            
+            // Only include in QA stage if all 4 steps have started
+            if (!allRequiredStepsStarted) {
+              return; // Skip this batch for QA count
+            }
+          }
 
           // Include batch if:
           // 1. It has StartDate AND missing EndDate (traditional in-progress), OR
@@ -1259,8 +1310,8 @@ const ProductionDashboard = () => {
         productDeptMap[item.Group_ProductID] = item.Group_Dept;
       });
 
-      // Fetch PCT Breakdown data
-      const pctResponse = await fetch(apiUrl('/api/pctBreakdown'));
+      // Fetch PCT Breakdown data with period parameter
+      const pctResponse = await fetch(apiUrl(`/api/pctBreakdown?period=${pctPeriod}`));
       if (!pctResponse.ok) {
         throw new Error(`PCT API error! status: ${pctResponse.status}`);
       }
@@ -2291,7 +2342,7 @@ const ProductionDashboard = () => {
         console.log('Product Dept Mapping:', productDeptMap);
 
         // Fetch PCT Breakdown data (now batch-level details)
-        const pctResponse = await fetch(apiUrl('/api/pctBreakdown'));
+        const pctResponse = await fetch(apiUrl(`/api/pctBreakdown?period=${pctPeriod}`));
         if (!pctResponse.ok) {
           throw new Error(`PCT API error! status: ${pctResponse.status}`);
         }
@@ -2480,6 +2531,107 @@ const ProductionDashboard = () => {
     // Cleanup interval on component unmount
     return () => clearInterval(refreshInterval);
   }, []);
+
+  // Separate effect for PCT period changes (manual toggle only)
+  useEffect(() => {
+    const fetchPCTData = async () => {
+      try {
+        // Fetch PCT Breakdown data with period parameter
+        const pctResponse = await fetch(apiUrl(`/api/pctBreakdown?period=${pctPeriod}`));
+        if (!pctResponse.ok) {
+          throw new Error(`PCT API error! status: ${pctResponse.status}`);
+        }
+        
+        const pctResult = await pctResponse.json();
+        const pctBatchData = pctResult.data || [];
+        
+        // Only check for empty MTD on manual toggle (not initial load)
+        if (pctBatchData.length === 0 && pctPeriod === 'MTD' && !isInitialLoad) {
+          // Show vignette notification
+          setShowPctVignette(true);
+          
+          // Wait 3 seconds, then switch to YTD
+          setTimeout(() => {
+            setShowPctVignette(false);
+            setPctPeriod('YTD');
+          }, 3000);
+          
+          return; // Don't update data yet, wait for YTD fetch
+        }
+        
+        setPctRawData(pctBatchData);
+        
+        // Calculate average total days from Total_Days field
+        const totalDaysValues = pctBatchData
+          .map(batch => batch.Total_Days)
+          .filter(val => val !== null && val !== undefined && !isNaN(val));
+        
+        const calculatedAvgTotalDays = totalDaysValues.length > 0
+          ? Math.round(totalDaysValues.reduce((sum, val) => sum + val, 0) / totalDaysValues.length)
+          : 0;
+        
+        setAvgTotalDays(calculatedAvgTotalDays);
+        
+        // Calculate PCT stage averages
+        if (pctBatchData.length > 0) {
+          const stages = ['Timbang', 'Proses', 'QC', 'Mikro', 'QA'];
+          const pctBreakdown = {};
+          
+          stages.forEach(stage => {
+            const stageKey = `${stage}_Days`;
+            const values = pctBatchData
+              .map(batch => batch[stageKey])
+              .filter(val => val !== null && val !== undefined && !isNaN(val));
+            
+            if (values.length > 0) {
+              const avg = values.reduce((sum, val) => sum + val, 0) / values.length;
+              pctBreakdown[stage] = Math.round(avg);
+            } else {
+              pctBreakdown[stage] = 0;
+            }
+          });
+          
+          setPctData(pctBreakdown);
+        } else {
+          setPctData({
+            Timbang: 0,
+            Proses: 0,
+            QC: 0,
+            Mikro: 0,
+            QA: 0,
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching PCT data:', error);
+      }
+    };
+
+    // Only fetch if pctPeriod has been initialized (not on initial load)
+    if (pctPeriod) {
+      fetchPCTData();
+    }
+  }, [pctPeriod]);
+
+  // Check for empty MTD after initial load completes
+  useEffect(() => {
+    // Only run on initial load when loading becomes false
+    if (!loading && isInitialLoad && pctPeriod === 'MTD' && pctRawData.length === 0) {
+      // Show vignette notification
+      setShowPctVignette(true);
+      
+      // Wait 3 seconds, then switch to YTD
+      setTimeout(() => {
+        setShowPctVignette(false);
+        setPctPeriod('YTD');
+      }, 3000);
+      
+      // Mark that we've done the initial check
+      setIsInitialLoad(false);
+    } else if (!loading && isInitialLoad) {
+      // If loading complete but MTD has data, just mark initial load as done
+      setIsInitialLoad(false);
+    }
+  }, [loading, isInitialLoad, pctPeriod, pctRawData]);
 
   if (loading) {
     return (
@@ -2967,24 +3119,90 @@ const ProductionDashboard = () => {
                 )}
               </div>
             </div>
-            <div className="pct-card">
+            <div className="pct-card" style={{ position: 'relative' }}>
+              {/* Vignette overlay when switching from empty MTD to YTD */}
+              {showPctVignette && (
+                <div style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  backgroundColor: 'rgba(0, 0, 0, 0.85)',
+                  borderRadius: '12px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 10,
+                  animation: 'fadeIn 0.3s ease-in',
+                }}>
+                  <div style={{
+                    color: '#fff',
+                    fontSize: '1.2rem',
+                    fontWeight: '600',
+                    textAlign: 'center',
+                    padding: '0 40px',
+                    lineHeight: '1.6'
+                  }}>
+                    <div style={{ fontSize: '3rem', marginBottom: '16px' }}>📊</div>
+                    <div>PCT MTD is currently empty.</div>
+                    <div style={{ fontSize: '1rem', fontWeight: '400', marginTop: '12px', color: '#e5e7eb' }}>
+                      Switching to YTD data...
+                    </div>
+                  </div>
+                </div>
+              )}
+              
               <div className="pct-description">
-                <p style={{ margin: '0 0 4px 0' }}>Average days for each stage in the production process (Month-to-date)</p>
+                <p style={{ margin: '0 0 4px 0' }}>Average days for each stage in the production process ({pctPeriod === 'MTD' ? 'Month-to-date' : 'Year-to-date'})</p>
                 <small style={{ color: '#666', fontSize: '0.85rem' }}>
-                  📊 Batches completed with "Approve Release" this month
+                  📊 Batches completed with "Approve Release" this {pctPeriod === 'MTD' ? 'month' : 'year'}
                 </small>
-                {/* PCT Breakdown title - positioned absolutely to not affect height */}
-                <h3 style={{ 
+                {/* PCT Breakdown title with period toggle - positioned absolutely to not affect height */}
+                <div style={{ 
                   position: 'absolute',
                   right: '50px',
                   top: '0',
-                  margin: '0', 
-                  fontSize: '1.1rem', 
-                  color: '#2c3e50',
-                  fontWeight: '600'
+                  margin: '0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px'
                 }}>
-                  PCT Breakdown
-                </h3>
+                  <h3 style={{ 
+                    margin: '0', 
+                    fontSize: '1.1rem', 
+                    color: '#2c3e50',
+                    fontWeight: '600'
+                  }}>
+                    PCT Breakdown
+                  </h3>
+                  <button
+                    onClick={() => setPctPeriod(pctPeriod === 'MTD' ? 'YTD' : 'MTD')}
+                    style={{
+                      padding: '6px 12px',
+                      fontSize: '0.85rem',
+                      fontWeight: '500',
+                      color: '#fff',
+                      backgroundColor: pctPeriod === 'MTD' ? '#3b82f6' : '#10b981',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.target.style.transform = 'translateY(-1px)';
+                      e.target.style.boxShadow = '0 4px 8px rgba(0,0,0,0.15)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.transform = 'translateY(0)';
+                      e.target.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+                    }}
+                  >
+                    {pctPeriod === 'MTD' ? 'Switch to YTD' : 'Switch to MTD'}
+                  </button>
+                </div>
               </div>
               <div style={{ 
                 display: 'grid', 

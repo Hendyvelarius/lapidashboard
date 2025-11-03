@@ -355,8 +355,20 @@ async function getMaterial() {
   return result.recordset;
 }
 
-async function getPCTBreakdown() {
+async function getPCTBreakdown(period = 'MTD') {
   const db = await connect();
+  
+  // Determine the date filter based on period
+  let dateFilter;
+  if (period === 'YTD') {
+    // Year-to-Date: filter by year only
+    dateFilter = `AND YEAR(EndDate) = YEAR(GETDATE())`;
+  } else {
+    // Month-to-Date (default): filter by year and month
+    dateFilter = `AND YEAR(EndDate) = YEAR(GETDATE())
+        AND MONTH(EndDate) = MONTH(GETDATE())`;
+  }
+  
   const query = `
     WITH FilteredAlur AS (
       SELECT 
@@ -372,14 +384,13 @@ async function getPCTBreakdown() {
         AND ISDATE(ap.Batch_Date) = 1
         AND mp.Product_Name NOT LIKE '%granulat%'
     ),
-    -- Get only batches that have completed "Tempel Label Realese" with EndDate THIS MONTH (month-to-date)
+    -- Get only batches that have completed "Tempel Label Realese" with EndDate based on period (MTD or YTD)
     CompletedBatches AS (
       SELECT DISTINCT Batch_No
       FROM FilteredAlur
       WHERE LOWER(nama_tahapan) LIKE '%tempel%label%realese%'
         AND EndDate IS NOT NULL
-        AND YEAR(EndDate) = YEAR(GETDATE())
-        AND MONTH(EndDate) = MONTH(GETDATE())
+        ${dateFilter}
     )
     -- Return batch-level details with stage durations
     SELECT 

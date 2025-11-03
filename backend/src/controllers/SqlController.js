@@ -228,7 +228,8 @@ async function getMaterial(req, res) {
 
 async function getPCTBreakdown(req, res) {
   try {
-    const data = await SqlModel.getPCTBreakdown();
+    const period = req.query.period || 'MTD'; // Default to MTD if not specified
+    const data = await SqlModel.getPCTBreakdown(period);
     res.json({ data });
   } catch (err) {
     console.error('Error in fetching PCT Breakdown:', err);
