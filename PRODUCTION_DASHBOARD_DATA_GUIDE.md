@@ -147,9 +147,9 @@ Dashboard Produksi secara otomatis melakukan refresh setiap jam dan menampilkan 
 - Kategorisasi produk (Generik, OTC, ETH)
 
 ### Metrik Utama
-- **Forecast** - Jumlah produksi yang direncanakan
-- **Actual** - Jumlah produksi yang diselesaikan
-- **Variance** - Selisih antara forecast dan aktual
+- **Target** - Jumlah produksi yang direncanakan
+- **Production** - Jumlah produksi yang diselesaikan
+- **Achievement** - Persentase produksi
 
 ---
 

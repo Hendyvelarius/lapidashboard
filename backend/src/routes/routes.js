@@ -32,6 +32,7 @@ router.get('/ofsummary', SqlController.getofsummary);
 router.get('/pct', SqlController.getProductCycleTime);
 router.get('/pctYearly', SqlController.getProductCycleTimeYearly);
 router.get('/pctAverage', SqlController.getProductCycleTimeAverage);
+router.get('/pctSummary', SqlController.getPCTSummary);
 router.get('/pctBreakdown', SqlController.getPCTBreakdown);
 
 // Routing Stock Related

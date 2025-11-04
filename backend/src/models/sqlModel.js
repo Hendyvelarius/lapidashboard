@@ -533,6 +533,80 @@ DROP TABLE #tmpData;
   return result.recordset;
 }
 
+async function getPCTSummary() {
+  const db = await connect();
+  
+  // MTD only for summary dashboard
+  const dateFilter = `AND YEAR(EndDate) = YEAR(GETDATE())
+        AND MONTH(EndDate) = MONTH(GETDATE())`;
+  
+  const query = `
+    WITH FilteredAlur AS (
+      SELECT 
+        ap.*,
+        mp.Product_Name,
+        ISNULL(mtg.tahapan_group, 'Other') AS tahapan_group
+      FROM t_alur_proses ap
+      JOIN m_Product mp ON ap.Product_ID = mp.Product_ID
+      LEFT JOIN m_tahapan_group mtg ON ap.kode_tahapan = mtg.kode_tahapan
+      WHERE 
+        ap.Batch_Date LIKE '[1-2][0-9][0-9][0-9]/[0-1][0-9]/[0-3][0-9]'
+        AND LEN(ap.Batch_Date) = 10
+        AND ISDATE(ap.Batch_Date) = 1
+        AND mp.Product_Name NOT LIKE '%granulat%'
+    ),
+    -- Get only batches that have completed "Tempel Label Realese" with EndDate (MTD)
+    CompletedBatches AS (
+      SELECT DISTINCT Batch_No
+      FROM FilteredAlur
+      WHERE LOWER(nama_tahapan) LIKE '%tempel%label%realese%'
+        AND EndDate IS NOT NULL
+        ${dateFilter}
+    ),
+    -- Batch-level details with Total_Days
+    BatchDetails AS (
+      SELECT 
+        fa.Batch_No,
+        fa.Product_ID,
+        fa.Product_Name,
+        -- Total days from earliest StartDate to Tempel Label Realese EndDate
+        DATEDIFF(DAY,
+          MIN(fa.StartDate),
+          MAX(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%tempel%label%realese%' THEN fa.EndDate END)
+        ) AS Total_Days
+      FROM FilteredAlur fa
+      INNER JOIN CompletedBatches cb ON fa.Batch_No = cb.Batch_No
+      GROUP BY fa.Batch_No, fa.Product_ID, fa.Product_Name
+    )
+    -- Group by Product and calculate average PCT
+    SELECT 
+      bd.Product_ID,
+      bd.Product_Name,
+      AVG(bd.Total_Days) AS PCTAverage,
+      COUNT(bd.Batch_No) AS BatchCount,
+      STUFF((
+        SELECT ', ' + b2.Batch_No
+        FROM BatchDetails b2
+        WHERE b2.Product_ID = bd.Product_ID
+        FOR XML PATH(''), TYPE
+      ).value('.', 'NVARCHAR(MAX)'), 1, 2, '') AS Batch_Nos,
+      ISNULL(mpg.Group_Dept, 'Unknown') AS Dept,
+      CASE 
+        WHEN EXISTS (SELECT 1 FROM m_product_otc otc WHERE otc.Product_ID = bd.Product_ID) THEN 'OTC'
+        WHEN bd.Product_Name LIKE '%generik%' OR bd.Product_Name LIKE '%generic%' THEN 'Generik'
+        ELSE 'ETH'
+      END AS Kategori
+    FROM BatchDetails bd
+    LEFT JOIN m_Product_PN_Group mpg ON mpg.Group_ProductID = bd.Product_ID 
+      AND mpg.Group_Periode = CONVERT(VARCHAR(7), GETDATE(), 120)
+    GROUP BY bd.Product_ID, bd.Product_Name, mpg.Group_Dept
+    ORDER BY bd.Product_ID
+  `;
+  
+  const result = await db.request().query(query);
+  return result.recordset;
+}
+
 async function getProductList() {
   const db = await connect();
   const query = `SELECT mp.Product_ID, mp.Product_Name FROM m_Product mp`;
@@ -569,4 +643,4 @@ async function getReleasedBatches() {
   return result.recordset;
 }
 
-module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches};
+module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTSummary, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches};

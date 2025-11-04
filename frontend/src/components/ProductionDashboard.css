@@ -8,6 +8,12 @@
   flex: 1;
   margin-left: 250px;
   min-height: 100vh;
+  transition: margin-left 0.3s ease;
+}
+
+/* Adjust layout when sidebar is minimized */
+.sidebar-minimized .production-main-content {
+  margin-left: 80px;
 }
 
 .production-content {

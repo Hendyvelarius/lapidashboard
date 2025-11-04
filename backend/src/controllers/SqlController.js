@@ -113,11 +113,22 @@ async function getProductCycleTimeYearly(req, res) {
 
 async function getProductCycleTimeAverage(req, res) {
   try {
-    const raw = await SqlModel.getProductCycleTime();
-    const data = converterModel.getProductCycleTimeAverage(raw);
+    // Use getPCTSummary which groups by product and calculates averages
+    // Same data source as Production Dashboard but grouped for Summary view
+    const data = await SqlModel.getPCTSummary();
     res.json({ data });
   } catch (err) {
     console.error('Error in fetching Product Cycle Time Average:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+async function getPCTSummary(req, res) {
+  try {
+    const data = await SqlModel.getPCTSummary();
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching PCT Summary:', err);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 }
@@ -287,4 +298,4 @@ async function getReleasedBatches(req, res) {
   }
 }
 
-module.exports = { getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getOrderFulfillment, getStockReport, getofsummary, getPCTBreakdown, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches };
+module.exports = { getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getPCTSummary, getOrderFulfillment, getStockReport, getofsummary, getPCTBreakdown, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches };

@@ -3184,7 +3184,7 @@ const ProductionDashboard = () => {
               <div className="pct-description">
                 <p style={{ margin: '0 0 4px 0' }}>Average days for each stage in the production process ({pctPeriod === 'MTD' ? 'Month-to-date' : 'Year-to-date'})</p>
                 <small style={{ color: '#666', fontSize: '0.85rem' }}>
-                  📊 Batches completed with "Approve Release" this {pctPeriod === 'MTD' ? 'month' : 'year'}
+                  📊 Batches completed with "Tempel Label Release" this {pctPeriod === 'MTD' ? 'month' : 'year'}
                 </small>
                 {/* PCT Breakdown title with period toggle - positioned absolutely to not affect height */}
                 <div style={{ 

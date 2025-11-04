@@ -2229,11 +2229,11 @@ const PCTDetailsModal = ({ isOpen, onClose, pctData }) => {
                       <div className="product-info">
                         <span className="product-name">{product.Product_Name || 'N/A'}</span>
                         <span className="product-id">
-                          PCT: {product.PCTAverage} hari | {product.Kategori} | {product.Dept}
+                          PCT: {Math.round(product.PCTAverage)} hari | {product.Kategori} | {product.Dept}
                         </span>
-                        {product.Batch_Nos && product.Batch_Nos.length > 0 && (
+                        {product.Batch_Nos && (
                           <span className="product-id">
-                            Batches: {product.Batch_Nos.join(', ')}
+                            Batches: {product.Batch_Nos}
                           </span>
                         )}
                       </div>
@@ -2258,11 +2258,11 @@ const PCTDetailsModal = ({ isOpen, onClose, pctData }) => {
                       <div className="product-info">
                         <span className="product-name">{product.Product_Name || 'N/A'}</span>
                         <span className="product-id">
-                          PCT: {product.PCTAverage} hari | {product.Kategori} | {product.Dept}
+                          PCT: {Math.round(product.PCTAverage)} hari | {product.Kategori} | {product.Dept}
                         </span>
-                        {product.Batch_Nos && product.Batch_Nos.length > 0 && (
+                        {product.Batch_Nos && (
                           <span className="product-id">
-                            Batches: {product.Batch_Nos.join(', ')}
+                            Batches: {product.Batch_Nos}
                           </span>
                         )}
                       </div>
@@ -4614,19 +4614,33 @@ function SummaryDashboard() {
       };
     }
 
-    // Calculate average PCT from all PCTAverage values
-    const totalPCT = dataArray.reduce((sum, item) => sum + (item.PCTAverage || 0), 0);
-    const averagePCT = dataArray.length > 0 ? totalPCT / dataArray.length : 0;
+    // New format from getPCTSummary: product-level with PCTAverage already calculated
+    // This is grouped from the same data source as Production Dashboard PCT
+    const pctAverageValues = dataArray
+      .map(product => product.PCTAverage)
+      .filter(val => val !== null && val !== undefined && !isNaN(val));
+
+    if (pctAverageValues.length === 0) {
+      return {
+        average: 0,
+        longest: 0,
+        percentage: 0
+      };
+    }
+
+    // Calculate average PCT from all products' PCTAverage values
+    const totalPCT = pctAverageValues.reduce((sum, val) => sum + val, 0);
+    const averagePCT = pctAverageValues.length > 0 ? totalPCT / pctAverageValues.length : 0;
     
     // Find the longest PCT
-    const longestPCT = Math.max(...dataArray.map(item => item.PCTAverage || 0));
+    const longestPCT = Math.max(...pctAverageValues);
     
     // Calculate percentage (average against longest)
     const percentage = longestPCT > 0 ? (averagePCT / longestPCT) * 100 : 0;
     
     return {
-      average: Math.round(averagePCT * 10) / 10, // Round to 1 decimal place
-      longest: Math.round(longestPCT * 10) / 10, // Round to 1 decimal place
+      average: Math.round(averagePCT), // Round to whole number
+      longest: Math.round(longestPCT), // Round to whole number
       percentage: Math.round(percentage)
     };
   };

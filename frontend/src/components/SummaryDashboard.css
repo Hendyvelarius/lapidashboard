@@ -1112,10 +1112,11 @@
 .ota-center-text {
   position: absolute;
   top: 50%;
-  left: 27.5%; /* Adjusted to account for legend on the right */
+  left: 30%; /* Adjusted for visual centering within the donut chart */
   transform: translate(-50%, -50%);
   text-align: center;
   z-index: 10;
+  pointer-events: none; /* Allow clicks to pass through to the overlay div */
 }
 
 .ota-center-percentage {
