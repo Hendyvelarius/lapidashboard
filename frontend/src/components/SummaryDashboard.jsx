@@ -2286,11 +2286,6 @@ const OTADetailsModal = ({ isOpen, onClose, otaData, modalConfig }) => {
   
   if (!isOpen || !otaData || !modalConfig) return null;
 
-  // Debug logs
-  console.log('🚚 OTA Modal - Total OTA Data:', otaData.length);
-  console.log('🚚 OTA Modal - Modal Config:', modalConfig);
-  console.log('🚚 OTA Modal - Sample Data:', otaData.slice(0, 3));
-
   // Filter and process data based on modal type
   let filteredData = [];
   let title = modalConfig.title;
@@ -3171,7 +3166,6 @@ function SummaryDashboard() {
       if (!forceRefresh) {
         const cachedData = getCachedData();
         if (cachedData && !cachedData.isExpired) {
-          console.log('📦 Using cached data');
           setData(cachedData.data);
           setOfRawData(applyOFBusinessLogic(cachedData.rawData.ofData || []));
           setForecastRawData(cachedData.rawData.forecastData || []);
@@ -3187,7 +3181,6 @@ function SummaryDashboard() {
         }
       }
 
-      console.log('🔄 Fetching fresh data');
       if (forceRefresh) {
         setRefreshing(true);
       } else {
@@ -3459,7 +3452,6 @@ function SummaryDashboard() {
     const intervalId = setInterval(() => {
       const cachedData = getCachedData();
       if (cachedData && cachedData.isExpired) {
-        console.log('⏰ Cache expired, fetching fresh data');
         fetchAllData(true);
       }
     }, 5 * 60 * 1000); // Check every 5 minutes

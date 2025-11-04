@@ -4,7 +4,7 @@ import ChartDataLabels from 'chartjs-plugin-datalabels';
 import { Doughnut, Bar, Line } from 'react-chartjs-2';
 import * as XLSX from 'xlsx';
 import pptxgen from 'pptxgenjs';
-import html2canvas from 'html2canvas';
+import { loadDashboardCache, saveDashboardCache, clearDashboardCache, isCacheValid } from '../utils/dashboardCache';
 import DashboardLoading from './DashboardLoading';
 import Sidebar from './Sidebar';
 import Modal from './Modal';
@@ -1283,6 +1283,9 @@ const ProductionDashboard = () => {
   // Manual refresh function
   const handleManualRefresh = async () => {
     try {
+      // Clear cache to force fresh data
+      clearDashboardCache();
+      
       setLoading(true);
       setError(null);
 
@@ -1471,6 +1474,23 @@ const ProductionDashboard = () => {
       // Process forecast data
       const processedForecast = processForecastData(forecastRawData, categories);
       setForecastData(processedForecast);
+      
+      // Save all data to cache (same as in fetchData)
+      const cacheData = {
+        productCategories: categories,
+        productDeptMap,
+        pctRawData: pctBatchData,
+        avgTotalDays: calculatedAvgTotalDays,
+        pctData: pctBreakdown,
+        pctDeptData,
+        wipRawData,
+        processedWipData: processed,
+        overallDeptData: overallDept,
+        forecastRawData,
+        processedForecast
+      };
+      
+      saveDashboardCache(cacheData);
       
       setLoading(false);
       setLastRefreshTime(new Date());
@@ -2309,6 +2329,41 @@ const ProductionDashboard = () => {
   };
 
   useEffect(() => {
+    const loadData = async () => {
+      // Try to load cached data first
+      const cachedData = loadDashboardCache();
+      
+      if (cachedData) {
+        // Use cached data - no loading needed!
+        setProductCategories(cachedData.productCategories);
+        setPctRawData(cachedData.pctRawData);
+        setAvgTotalDays(cachedData.avgTotalDays);
+        setPctData(cachedData.pctData);
+        setPctDeptData(cachedData.pctDeptData);
+        setRawWipData(cachedData.wipRawData);
+        setProcessedWipData(cachedData.processedWipData);
+        setOverallDeptData(cachedData.overallDeptData);
+        setForecastRawData(cachedData.forecastRawData);
+        setForecastData(cachedData.processedForecast);
+        setLastRefreshTime(cachedData.fetchTime);
+        setLoading(false);
+        
+        // Trigger speedometer animation
+        setTimeout(() => {
+          const animState = {};
+          cachedData.overallDeptData.forEach(dept => {
+            animState[dept.dept] = true;
+          });
+          setSpeedometerAnimated(animState);
+        }, 100);
+        
+        return; // Don't fetch from API
+      }
+      
+      // No valid cache, fetch from API
+      fetchData();
+    };
+    
     const fetchData = async () => {
       try {
         setLoading(true);
@@ -2348,7 +2403,6 @@ const ProductionDashboard = () => {
           }
         });
 
-        console.log('Product Categories:', categories);
         setProductCategories(categories);
 
         // Fetch Product Group Dept data
@@ -2365,8 +2419,6 @@ const ProductionDashboard = () => {
         groupDeptData.forEach(item => {
           productDeptMap[item.Group_ProductID] = item.Group_Dept;
         });
-        
-        console.log('Product Dept Mapping:', productDeptMap);
 
         // Fetch PCT Breakdown data (now batch-level details)
         const pctResponse = await fetch(apiUrl(`/api/pctBreakdown?period=${pctPeriod}`));
@@ -2444,8 +2496,6 @@ const ProductionDashboard = () => {
             totalBatches,
             avgTotalPct
           });
-          
-          console.log('PCT Dept Data:', { deptCounts, totalBatches, avgTotalPct });
         } else {
           setPctData({
             Timbang: 0,
@@ -2482,22 +2532,17 @@ const ProductionDashboard = () => {
         // Create a Set of released batch numbers for quick lookup
         const releasedBatchSet = new Set(releasedBatches.map(rb => rb.DNc_BatchNo));
         
-        console.log('Released Batches Count:', releasedBatchSet.size);
-        
         // Filter out batches that exist in t_dnc_product (already released)
         wipRawData = wipRawData.filter(entry => !releasedBatchSet.has(entry.Batch_No));
         
-        console.log('Raw WIP Data (after filtering released):', wipRawData);
         setRawWipData(wipRawData);
 
         // Process WIP data
         const processed = processWIPData(wipRawData);
-        console.log('Processed WIP Data:', processed);
         setProcessedWipData(processed);
 
         // Process overall department data
         const overallDept = processOverallDeptData(wipRawData);
-        console.log('Overall Dept Data:', overallDept);
         setOverallDeptData(overallDept);
 
         // Fetch Forecast data
@@ -2509,17 +2554,32 @@ const ProductionDashboard = () => {
         const forecastResult = await forecastResponse.json();
         const forecastRawData = forecastResult || [];
         
-        console.log('Raw Forecast Data:', forecastRawData);
-        
         // Store raw forecast data for detailed modal view
         setForecastRawData(forecastRawData);
         
         // Process forecast data to monthly totals with categories
         const processedForecast = processForecastData(forecastRawData, categories);
-        console.log('Processed Forecast Data:', processedForecast);
         setForecastData(processedForecast);
         
+        // Save all data to cache
+        const cacheData = {
+          productCategories: categories,
+          productDeptMap,
+          pctRawData: pctBatchData,
+          avgTotalDays: calculatedAvgTotalDays,
+          pctData: pctData,
+          pctDeptData,
+          wipRawData,
+          processedWipData: processed,
+          overallDeptData: overallDept,
+          forecastRawData,
+          processedForecast
+        };
+        
+        saveDashboardCache(cacheData);
+        
         setLoading(false);
+        setLastRefreshTime(new Date());
         
         // Trigger speedometer animation after a short delay
         setTimeout(() => {
@@ -2548,11 +2608,15 @@ const ProductionDashboard = () => {
       }
     };
 
-    fetchData();
+    loadData(); // Start by checking cache first
 
-    // Set up auto-refresh every 1 hour (3600000 ms)
+    // Set up auto-refresh check every 1 hour (3600000 ms)
     const refreshInterval = setInterval(() => {
-      fetchData();
+      // Check if cache is still valid, if not, refresh
+      if (!isCacheValid()) {
+        clearDashboardCache();
+        fetchData();
+      }
     }, 3600000);
 
     // Cleanup interval on component unmount
