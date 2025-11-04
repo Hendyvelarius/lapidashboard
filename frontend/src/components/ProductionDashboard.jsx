@@ -1363,9 +1363,11 @@ const ProductionDashboard = () => {
       setAvgTotalDays(calculatedAvgTotalDays);
       
       // Calculate PCT stage averages
+      let pctBreakdown = {};
+      let pctDeptDataLocal = { departments: {}, totalBatches: 0, avgTotalPct: 0 };
+      
       if (pctBatchData.length > 0) {
         const stages = ['Timbang', 'Proses', 'QC', 'Mikro', 'QA'];
-        const pctBreakdown = {};
         
         stages.forEach(stage => {
           const stageKey = `${stage}_Days`;
@@ -1407,24 +1409,23 @@ const ProductionDashboard = () => {
         
         const avgTotalPct = totalBatches > 0 ? Math.round(totalPctDays / totalBatches) : 0;
         
-        setPctDeptData({
+        pctDeptDataLocal = {
           departments: deptCounts,
           totalBatches,
           avgTotalPct
-        });
+        };
+        
+        setPctDeptData(pctDeptDataLocal);
       } else {
-        setPctData({
+        pctBreakdown = {
           Timbang: 0,
           Proses: 0,
           QC: 0,
           Mikro: 0,
           QA: 0,
-        });
-        setPctDeptData({
-          departments: {},
-          totalBatches: 0,
-          avgTotalPct: 0
-        });
+        };
+        setPctData(pctBreakdown);
+        setPctDeptData(pctDeptDataLocal);
       }
 
       // Fetch WIP data
@@ -1482,7 +1483,7 @@ const ProductionDashboard = () => {
         pctRawData: pctBatchData,
         avgTotalDays: calculatedAvgTotalDays,
         pctData: pctBreakdown,
-        pctDeptData,
+        pctDeptData: pctDeptDataLocal,
         wipRawData,
         processedWipData: processed,
         overallDeptData: overallDept,
