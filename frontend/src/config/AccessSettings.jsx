@@ -100,6 +100,30 @@ export const PAGE_ACCESS = {
     ],
   },
 
+  // Line PN1 Dashboard
+  'line-pn1': {
+    requireAuth: true,
+    allowedDepartments: ['HQ', 'SCM', 'PL'], // Full access for these departments
+    allowedUserIds: [], // Specific users who always have access
+    allowedJobLevels: [], // No general job level restriction
+    specificCombinations: [
+      // PN1 - accessible for MGR, SPV, and OFC
+      { department: 'PN1', jobLevel: 'MGR' },
+      { department: 'PN1', jobLevel: 'SPV' },
+      { department: 'PN1', jobLevel: 'OFC' },
+      
+      // NT - accessible for MGR, SPV, and OFC
+      { department: 'NT', jobLevel: 'MGR' },
+      { department: 'NT', jobLevel: 'SPV' },
+      { department: 'NT', jobLevel: 'OFC' },
+      
+      // PC - accessible for MGR, ASM, and SPV
+      { department: 'PC', jobLevel: 'MGR' },
+      { department: 'PC', jobLevel: 'ASM' },
+      { department: 'PC', jobLevel: 'SPV' },
+    ],
+  },
+
   // WIP Report Page
   'wip': {
     requireAuth: true,

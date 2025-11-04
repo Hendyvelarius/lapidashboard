@@ -1,0 +1,971 @@
+import React, { useState, useEffect } from 'react';
+import { Chart as ChartJS, ArcElement, BarElement, CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend } from 'chart.js';
+import { Bar, Line, Doughnut } from 'react-chartjs-2';
+import Sidebar from './Sidebar';
+import './LinePN1Dashboard.css';
+
+ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend);
+
+// WIP Summary Donut with Pointers Component
+const WIPDonutWithPointers = ({ stages }) => {
+  const [animated, setAnimated] = useState(false);
+  
+  useEffect(() => {
+    const timer = setTimeout(() => setAnimated(true), 100);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const totalBatches = stages.reduce((sum, stage) => sum + stage.value, 0);
+  
+  const colors = [
+    { bg: 'rgba(79, 140, 255, 0.8)', border: '#4f8cff' },
+    { bg: 'rgba(147, 51, 234, 0.8)', border: '#9333ea' },
+    { bg: 'rgba(56, 230, 197, 0.8)', border: '#38e6c5' },
+    { bg: 'rgba(255, 179, 71, 0.8)', border: '#ffb347' },
+    { bg: 'rgba(34, 197, 94, 0.8)', border: '#22c55e' },
+    { bg: 'rgba(239, 68, 68, 0.8)', border: '#ef4444' },
+    { bg: 'rgba(236, 72, 153, 0.8)', border: '#ec4899' },
+    { bg: 'rgba(245, 158, 11, 0.8)', border: '#f59e0b' },
+  ];
+
+  // Calculate slice data
+  let currentAngle = -90;
+  const slices = stages.map((stage, index) => {
+    const percentage = (stage.value / totalBatches) * 100;
+    const sweepAngle = (percentage / 100) * 360;
+    const startAngle = currentAngle;
+    const endAngle = currentAngle + sweepAngle;
+    const midAngle = startAngle + sweepAngle / 2;
+    
+    currentAngle = endAngle;
+    
+    return {
+      name: stage.name,
+      value: stage.value,
+      percentage,
+      sweepAngle,
+      startAngle,
+      endAngle,
+      midAngle,
+      color: colors[index] || colors[0]
+    };
+  });
+
+  const size = 280;
+  const center = size / 2;
+  const outerRadius = 65;
+  const innerRadius = 45;
+  const labelRadius = outerRadius + 30;
+
+  const polarToCartesian = (angle, radius) => {
+    const rads = (angle * Math.PI) / 180;
+    return {
+      x: center + radius * Math.cos(rads),
+      y: center + radius * Math.sin(rads)
+    };
+  };
+
+  const getSmartLabelPosition = (midAngle) => {
+    if (midAngle >= -90 && midAngle <= 90) {
+      return {
+        textAnchor: 'start',
+        lineExtension: 15
+      };
+    } else {
+      return {
+        textAnchor: 'end',
+        lineExtension: 15
+      };
+    }
+  };
+
+  const createSlicePath = (slice) => {
+    const start = polarToCartesian(slice.startAngle, outerRadius);
+    const end = polarToCartesian(slice.endAngle, outerRadius);
+    const startInner = polarToCartesian(slice.startAngle, innerRadius);
+    const endInner = polarToCartesian(slice.endAngle, innerRadius);
+    
+    const largeArc = slice.sweepAngle > 180 ? 1 : 0;
+    
+    return `
+      M ${start.x} ${start.y}
+      A ${outerRadius} ${outerRadius} 0 ${largeArc} 1 ${end.x} ${end.y}
+      L ${endInner.x} ${endInner.y}
+      A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${startInner.x} ${startInner.y}
+      Z
+    `;
+  };
+
+  return (
+    <div style={{ position: 'relative', width: '100%', height: '250px', overflow: 'visible' }}>
+      <svg 
+        width={size} 
+        height={size} 
+        style={{ 
+          position: 'absolute', 
+          left: '50%',
+          top: '50%',
+          transform: 'translate(-50%, -50%)',
+          overflow: 'visible'
+        }}
+      >
+        {slices.map((slice, index) => {
+          const midPoint = polarToCartesian(slice.midAngle, outerRadius + 5);
+          const labelPoint = polarToCartesian(slice.midAngle, labelRadius);
+          const labelPos = getSmartLabelPosition(slice.midAngle);
+          
+          const horizontalEnd = {
+            x: labelPoint.x + (labelPos.textAnchor === 'start' ? labelPos.lineExtension : -labelPos.lineExtension),
+            y: labelPoint.y
+          };
+          
+          return (
+            <g key={index}>
+              <path
+                d={createSlicePath(slice)}
+                fill={slice.color.bg}
+                stroke={slice.color.border}
+                strokeWidth="2"
+                style={{
+                  opacity: animated ? 1 : 0,
+                  transition: 'all 0.3s ease',
+                  transitionDelay: `${index * 0.1}s`
+                }}
+              />
+              
+              <path
+                d={`M ${midPoint.x} ${midPoint.y} L ${labelPoint.x} ${labelPoint.y} L ${horizontalEnd.x} ${horizontalEnd.y}`}
+                stroke={slice.color.border}
+                strokeWidth="1.5"
+                fill="none"
+                style={{
+                  opacity: animated ? 1 : 0,
+                  transition: 'opacity 0.5s ease',
+                  transitionDelay: `${0.3 + index * 0.1}s`
+                }}
+              />
+              
+              <circle
+                cx={horizontalEnd.x}
+                cy={horizontalEnd.y}
+                r="2.5"
+                fill={slice.color.border}
+                style={{
+                  opacity: animated ? 1 : 0,
+                  transition: 'opacity 0.3s ease',
+                  transitionDelay: `${0.5 + index * 0.1}s`
+                }}
+              />
+              
+              <text
+                x={horizontalEnd.x + (labelPos.textAnchor === 'start' ? 6 : -6)}
+                y={horizontalEnd.y - 2}
+                textAnchor={labelPos.textAnchor}
+                style={{
+                  fontSize: '9px',
+                  fontWeight: '600',
+                  fill: '#374151',
+                  opacity: animated ? 1 : 0,
+                  transition: 'opacity 0.3s ease',
+                  transitionDelay: `${0.5 + index * 0.1}s`
+                }}
+              >
+                {slice.name}
+              </text>
+              
+              <text
+                x={horizontalEnd.x + (labelPos.textAnchor === 'start' ? 6 : -6)}
+                y={horizontalEnd.y + 10}
+                textAnchor={labelPos.textAnchor}
+                style={{
+                  fontSize: '10px',
+                  fontWeight: '700',
+                  fill: slice.color.border,
+                  opacity: animated ? 1 : 0,
+                  transition: 'opacity 0.3s ease',
+                  transitionDelay: `${0.5 + index * 0.1}s`
+                }}
+              >
+                {slice.value}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+      
+      <div style={{
+        position: 'absolute',
+        top: '50%',
+        left: '50%',
+        transform: 'translate(-50%, -50%)',
+        textAlign: 'center',
+        pointerEvents: 'none',
+        opacity: animated ? 1 : 0,
+        transition: 'opacity 0.5s ease',
+        transitionDelay: '0.3s'
+      }}>
+        <div style={{ 
+          fontSize: '1.5rem', 
+          fontWeight: 'bold', 
+          color: '#374151',
+          lineHeight: '1'
+        }}>
+          {totalBatches}
+        </div>
+        <div style={{ 
+          fontSize: '0.65rem', 
+          color: '#6b7280',
+          marginTop: '4px'
+        }}>
+          Total Batches
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Helper function to get stage-specific thresholds for PN1
+const getStageThresholds = (stageName) => {
+  const thresholds = {
+    'Terima Bahan': { min: 3, med: 6, max: 10 },
+    'Filling': { min: 4, med: 8, max: 12 },
+    'Mixing': { min: 5, med: 10, max: 15 },
+    'Granulasi': { min: 6, med: 12, max: 18 },
+    'Cetak': { min: 5, med: 10, max: 15 },
+    'Coating': { min: 4, med: 8, max: 12 },
+    'Kemas Primer': { min: 2, med: 4, max: 6 },
+    'Kemas Sekunder': { min: 3, med: 5, max: 7 },
+  };
+  
+  return thresholds[stageName] || { min: 5, med: 10, max: 15 };
+};
+
+// Helper function to get color based on batch count
+const getQueueColor = (batchCount, stageName) => {
+  if (batchCount === 0) {
+    return '#10b981'; // Dark green - no queue
+  }
+  
+  const thresholds = getStageThresholds(stageName);
+  const { min, med, max } = thresholds;
+  
+  const minMidpoint = min / 2;
+  const medMidpoint = (min + med) / 2;
+  const maxMidpoint = (med + max) / 2;
+  
+  if (batchCount <= minMidpoint) {
+    return '#22c55e'; // Light green
+  } else if (batchCount <= min) {
+    return '#84cc16'; // Lime green
+  } else if (batchCount <= medMidpoint) {
+    return '#eab308'; // Yellow
+  } else if (batchCount <= med) {
+    return '#f59e0b'; // Orange
+  } else if (batchCount <= maxMidpoint) {
+    return '#f97316'; // Deep orange
+  } else if (batchCount <= max) {
+    return '#ef4444'; // Light red
+  } else {
+    return '#dc2626'; // Deep red - critical
+  }
+};
+
+// Speedometer Component
+const Speedometer = ({ label, value, maxValue = 50, stageName, batches = [] }) => {
+  const thresholds = getStageThresholds(stageName);
+  const { min, med, max } = thresholds;
+  
+  const needleColor = value > 0 ? getQueueColor(value, stageName) : '#9ca3af';
+  
+  // Calculate needle position
+  let needleAngle;
+  if (value === 0) {
+    needleAngle = -90;
+  } else if (value <= min) {
+    needleAngle = -90 + (value / min) * 36;
+  } else if (value <= med) {
+    const ratio = (value - min) / (med - min);
+    needleAngle = -54 + ratio * 36;
+  } else if (value <= max) {
+    const ratio = (value - med) / (max - med);
+    needleAngle = -18 + ratio * 36;
+  } else {
+    const excess = Math.min(value - max, max);
+    const ratio = excess / max;
+    needleAngle = 18 + ratio * 72;
+  }
+  
+  const fixedSegments = [
+    { size: maxValue * 0.10, color: '#22c55e' },
+    { size: maxValue * 0.10, color: '#84cc16' },
+    { size: maxValue * 0.10, color: '#eab308' },
+    { size: maxValue * 0.10, color: '#f59e0b' },
+    { size: maxValue * 0.10, color: '#f97316' },
+    { size: maxValue * 0.10, color: '#ef4444' },
+    { size: maxValue * 0.40, color: '#dc2626' },
+  ];
+  
+  const gaugeData = {
+    datasets: [
+      {
+        data: fixedSegments.map(s => s.size),
+        backgroundColor: fixedSegments.map(s => s.color),
+        borderColor: fixedSegments.map(s => s.color),
+        borderWidth: 2,
+        circumference: 180,
+        rotation: 270,
+      },
+    ],
+  };
+
+  const gaugeOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    cutout: '70%',
+    plugins: {
+      legend: { display: false },
+      tooltip: { enabled: false },
+    },
+    animation: false,
+  };
+
+  // Sort batches by days in stage (descending)
+  const sortedBatches = [...batches].sort((a, b) => b.daysInStage - a.daysInStage);
+
+  return (
+    <div className="speedometer-container">
+      <div className="speedometer-gauge">
+        <div className="speedometer-chart">
+          <div style={{ position: 'absolute', width: '100%', height: '100%' }}>
+            <Doughnut data={gaugeData} options={gaugeOptions} />
+          </div>
+          <div 
+            className="speedometer-needle"
+            style={{
+              backgroundColor: needleColor,
+              transform: `translateX(-50%) rotate(${needleAngle}deg)`,
+              boxShadow: value > 0 ? `0 0 6px ${needleColor}` : 'none',
+            }}
+          />
+          <div 
+            className="speedometer-center"
+            style={{
+              backgroundColor: needleColor,
+            }}
+          />
+          <div className="speedometer-value" style={{ color: needleColor }}>
+            {value}
+          </div>
+        </div>
+      </div>
+      <div className="speedometer-label">
+        <div className="speedometer-label-text">{label}</div>
+        <div className="speedometer-status">{value > 0 ? `${value} batches` : 'clear'}</div>
+      </div>
+
+      {/* Batch Details Table */}
+      {sortedBatches.length > 0 && (
+        <div className="speedometer-batch-table">
+          <div className="batch-list">
+            {sortedBatches.map((batch, index) => (
+              <div key={index} className="batch-item">
+                <div className="batch-product">{batch.productName}</div>
+                <div className="batch-details">
+                  <span className="batch-number">{batch.batchNo}</span>
+                  <span className="batch-days">{batch.daysInStage}d</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const LinePN1Dashboard = () => {
+  const [sidebarMinimized, setSidebarMinimized] = useState(false);
+  const [currentView, setCurrentView] = useState('monthly'); // 'monthly' or 'daily'
+  const [fadeClass, setFadeClass] = useState('fade-in');
+  const [sidebarChartKey, setSidebarChartKey] = useState(0); // Key for sidebar-triggered re-render only
+  const [currentDateTime, setCurrentDateTime] = useState(new Date());
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Listen for sidebar state changes
+  useEffect(() => {
+    const checkSidebarState = () => {
+      const isMinimized = document.body.classList.contains('sidebar-minimized');
+      setSidebarMinimized(isMinimized);
+      // Force all charts to re-render when sidebar state changes
+      setSidebarChartKey(prev => prev + 1);
+    };
+
+    // Initial check
+    checkSidebarState();
+
+    // Create a MutationObserver to watch for class changes on body
+    const observer = new MutationObserver(checkSidebarState);
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['class']
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
+  // Auto-rotate between Monthly and Daily Output every 10 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // Start fade out
+      setFadeClass('fade-out');
+      
+      // After fade out completes (500ms), switch view and fade in
+      setTimeout(() => {
+        setCurrentView(prev => prev === 'monthly' ? 'daily' : 'monthly');
+        setFadeClass('fade-in');
+      }, 500);
+    }, 10000); // 10 seconds
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Force chart resize when sidebar state changes
+  useEffect(() => {
+    // Trigger a window resize event to make charts recalculate their size
+    window.dispatchEvent(new Event('resize'));
+  }, [sidebarMinimized]);
+
+  // Update current date/time every minute
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentDateTime(new Date());
+    }, 60000); // Update every minute
+
+    return () => clearInterval(timer);
+  }, []);
+
+  // Format date and time
+  const formatDateTime = () => {
+    const options = { 
+      weekday: 'long', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    };
+    return currentDateTime.toLocaleDateString('en-US', options);
+  };
+
+  // Handle manual refresh
+  const handleRefresh = () => {
+    setRefreshing(true);
+    // Force all charts to re-render
+    setSidebarChartKey(prev => prev + 1);
+    
+    // Simulate refresh delay
+    setTimeout(() => {
+      setRefreshing(false);
+    }, 1000);
+  };
+
+  // Mock WIP data for PN1 stages with batch details
+  const wipStages = [
+    { 
+      name: 'Terima Bahan', 
+      value: 3, 
+      avgDays: 2,
+      batches: [
+        { batchNo: 'TB-2024-001', productName: 'Paracetamol 500mg', daysInStage: 3 },
+        { batchNo: 'TB-2024-002', productName: 'Amoxicillin 250mg', daysInStage: 2 },
+        { batchNo: 'TB-2024-003', productName: 'Vitamin C 1000mg', daysInStage: 1 },
+      ]
+    },
+    { 
+      name: 'Filling', 
+      value: 8, 
+      avgDays: 5,
+      batches: [
+        { batchNo: 'FL-2024-012', productName: 'Ibuprofen 400mg', daysInStage: 8 },
+        { batchNo: 'FL-2024-013', productName: 'Aspirin 100mg', daysInStage: 7 },
+        { batchNo: 'FL-2024-014', productName: 'Cetirizine 10mg', daysInStage: 6 },
+        { batchNo: 'FL-2024-015', productName: 'Omeprazole 20mg', daysInStage: 5 },
+        { batchNo: 'FL-2024-016', productName: 'Metformin 500mg', daysInStage: 4 },
+        { batchNo: 'FL-2024-017', productName: 'Losartan 50mg', daysInStage: 3 },
+        { batchNo: 'FL-2024-018', productName: 'Simvastatin 20mg', daysInStage: 2 },
+        { batchNo: 'FL-2024-019', productName: 'Amlodipine 5mg', daysInStage: 1 },
+      ]
+    },
+    { 
+      name: 'Mixing', 
+      value: 12, 
+      avgDays: 7,
+      batches: [
+        { batchNo: 'MX-2024-023', productName: 'Paracetamol 500mg', daysInStage: 12 },
+        { batchNo: 'MX-2024-024', productName: 'Amoxicillin 500mg', daysInStage: 10 },
+        { batchNo: 'MX-2024-025', productName: 'Dexamethasone 0.5mg', daysInStage: 9 },
+        { batchNo: 'MX-2024-026', productName: 'Prednisone 5mg', daysInStage: 8 },
+        { batchNo: 'MX-2024-027', productName: 'Ranitidine 150mg', daysInStage: 7 },
+        { batchNo: 'MX-2024-028', productName: 'Captopril 25mg', daysInStage: 6 },
+        { batchNo: 'MX-2024-029', productName: 'Atenolol 50mg', daysInStage: 5 },
+        { batchNo: 'MX-2024-030', productName: 'Glibenclamide 5mg', daysInStage: 4 },
+        { batchNo: 'MX-2024-031', productName: 'Furosemide 40mg', daysInStage: 3 },
+        { batchNo: 'MX-2024-032', productName: 'Spironolactone 25mg', daysInStage: 2 },
+        { batchNo: 'MX-2024-033', productName: 'Hydrochlorothiazide 25mg', daysInStage: 1 },
+        { batchNo: 'MX-2024-034', productName: 'Lisinopril 10mg', daysInStage: 1 },
+      ]
+    },
+    { 
+      name: 'Granulasi', 
+      value: 15, 
+      avgDays: 9,
+      batches: [
+        { batchNo: 'GR-2024-045', productName: 'Ciprofloxacin 500mg', daysInStage: 15 },
+        { batchNo: 'GR-2024-046', productName: 'Azithromycin 500mg', daysInStage: 14 },
+        { batchNo: 'GR-2024-047', productName: 'Cefixime 200mg', daysInStage: 13 },
+        { batchNo: 'GR-2024-048', productName: 'Levofloxacin 500mg', daysInStage: 12 },
+        { batchNo: 'GR-2024-049', productName: 'Clarithromycin 500mg', daysInStage: 11 },
+        { batchNo: 'GR-2024-050', productName: 'Metronidazole 500mg', daysInStage: 10 },
+        { batchNo: 'GR-2024-051', productName: 'Doxycycline 100mg', daysInStage: 9 },
+        { batchNo: 'GR-2024-052', productName: 'Tetracycline 500mg', daysInStage: 8 },
+        { batchNo: 'GR-2024-053', productName: 'Erythromycin 500mg', daysInStage: 7 },
+        { batchNo: 'GR-2024-054', productName: 'Clindamycin 300mg', daysInStage: 6 },
+        { batchNo: 'GR-2024-055', productName: 'Trimethoprim 200mg', daysInStage: 5 },
+        { batchNo: 'GR-2024-056', productName: 'Sulfamethoxazole 400mg', daysInStage: 4 },
+        { batchNo: 'GR-2024-057', productName: 'Nitrofurantoin 100mg', daysInStage: 3 },
+        { batchNo: 'GR-2024-058', productName: 'Cephalexin 500mg', daysInStage: 2 },
+        { batchNo: 'GR-2024-059', productName: 'Penicillin V 500mg', daysInStage: 1 },
+      ]
+    },
+    { 
+      name: 'Cetak', 
+      value: 10, 
+      avgDays: 6,
+      batches: [
+        { batchNo: 'CT-2024-067', productName: 'Diclofenac 50mg', daysInStage: 10 },
+        { batchNo: 'CT-2024-068', productName: 'Meloxicam 15mg', daysInStage: 9 },
+        { batchNo: 'CT-2024-069', productName: 'Piroxicam 20mg', daysInStage: 8 },
+        { batchNo: 'CT-2024-070', productName: 'Naproxen 500mg', daysInStage: 7 },
+        { batchNo: 'CT-2024-071', productName: 'Ketorolac 10mg', daysInStage: 6 },
+        { batchNo: 'CT-2024-072', productName: 'Celecoxib 200mg', daysInStage: 5 },
+        { batchNo: 'CT-2024-073', productName: 'Etoricoxib 90mg', daysInStage: 4 },
+        { batchNo: 'CT-2024-074', productName: 'Indomethacin 25mg', daysInStage: 3 },
+        { batchNo: 'CT-2024-075', productName: 'Ketoprofen 100mg', daysInStage: 2 },
+        { batchNo: 'CT-2024-076', productName: 'Mefenamic Acid 500mg', daysInStage: 1 },
+      ]
+    },
+    { 
+      name: 'Coating', 
+      value: 6, 
+      avgDays: 4,
+      batches: [
+        { batchNo: 'CO-2024-082', productName: 'Pantoprazole 40mg', daysInStage: 6 },
+        { batchNo: 'CO-2024-083', productName: 'Lansoprazole 30mg', daysInStage: 5 },
+        { batchNo: 'CO-2024-084', productName: 'Esomeprazole 20mg', daysInStage: 4 },
+        { batchNo: 'CO-2024-085', productName: 'Rabeprazole 20mg', daysInStage: 3 },
+        { batchNo: 'CO-2024-086', productName: 'Domperidone 10mg', daysInStage: 2 },
+        { batchNo: 'CO-2024-087', productName: 'Metoclopramide 10mg', daysInStage: 1 },
+      ]
+    },
+    { 
+      name: 'Kemas Primer', 
+      value: 4, 
+      avgDays: 2,
+      batches: [
+        { batchNo: 'KP-2024-091', productName: 'Loratadine 10mg', daysInStage: 4 },
+        { batchNo: 'KP-2024-092', productName: 'Fexofenadine 120mg', daysInStage: 3 },
+        { batchNo: 'KP-2024-093', productName: 'Chlorpheniramine 4mg', daysInStage: 2 },
+        { batchNo: 'KP-2024-094', productName: 'Diphenhydramine 25mg', daysInStage: 1 },
+      ]
+    },
+    { 
+      name: 'Kemas Sekunder', 
+      value: 2, 
+      avgDays: 1,
+      batches: [
+        { batchNo: 'KS-2024-098', productName: 'Multivitamin', daysInStage: 2 },
+        { batchNo: 'KS-2024-099', productName: 'Calcium 500mg', daysInStage: 1 },
+      ]
+    },
+  ];
+
+  // Mock data for Monthly Output
+  const monthlyOutputData = {
+    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+    datasets: [
+      {
+        label: 'ETH',
+        data: [45000, 52000, 48000, 61000, 55000, 58000, 62000, 59000, 64000, 67000, 63000, 70000],
+        backgroundColor: 'rgba(147, 51, 234, 0.8)',
+        borderColor: '#9333ea',
+        borderWidth: 1
+      },
+      {
+        label: 'OTC',
+        data: [38000, 42000, 39000, 45000, 43000, 47000, 49000, 46000, 51000, 53000, 50000, 55000],
+        backgroundColor: 'rgba(79, 140, 255, 0.8)',
+        borderColor: '#4f8cff',
+        borderWidth: 1
+      },
+      {
+        label: 'Generik',
+        data: [28000, 31000, 29000, 35000, 33000, 36000, 38000, 37000, 40000, 42000, 41000, 44000],
+        backgroundColor: 'rgba(56, 230, 197, 0.8)',
+        borderColor: '#38e6c5',
+        borderWidth: 1
+      }
+    ]
+  };
+
+  const monthlyOutputOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    layout: {
+      padding: {
+        top: 5,
+        bottom: 5,
+        left: 5,
+        right: 5
+      }
+    },
+    scales: {
+      x: {
+        stacked: true,
+        grid: {
+          display: false
+        },
+        ticks: {
+          font: {
+            size: 10
+          }
+        }
+      },
+      y: {
+        stacked: true,
+        beginAtZero: true,
+        ticks: {
+          font: {
+            size: 10
+          },
+          callback: function(value) {
+            return (value / 1000) + 'K';
+          }
+        }
+      }
+    },
+    plugins: {
+      legend: {
+        display: true,
+        position: 'top',
+        labels: {
+          boxWidth: 12,
+          font: {
+            size: 10
+          },
+          padding: 8
+        }
+      },
+      tooltip: {
+        callbacks: {
+          label: function(context) {
+            return context.dataset.label + ': ' + context.parsed.y.toLocaleString() + ' units';
+          }
+        }
+      }
+    }
+  };
+
+  // Mock data for Daily Output (last 30 days)
+  const generateDailyData = (baseValue, variance) => {
+    const data = [];
+    for (let i = 0; i < 30; i++) {
+      const randomVariation = Math.random() * variance - variance / 2;
+      data.push(Math.round(baseValue + randomVariation));
+    }
+    return data;
+  };
+
+  const dailyLabels = Array.from({ length: 30 }, (_, i) => `${i + 1}`);
+
+  const dailyOutputData = {
+    labels: dailyLabels,
+    datasets: [
+      {
+        label: 'ETH',
+        data: generateDailyData(2200, 400),
+        borderColor: '#9333ea',
+        backgroundColor: 'rgba(147, 51, 234, 0.1)',
+        borderWidth: 2,
+        tension: 0.4,
+        fill: true
+      },
+      {
+        label: 'OTC',
+        data: generateDailyData(1800, 350),
+        borderColor: '#4f8cff',
+        backgroundColor: 'rgba(79, 140, 255, 0.1)',
+        borderWidth: 2,
+        tension: 0.4,
+        fill: true
+      },
+      {
+        label: 'Generik',
+        data: generateDailyData(1400, 300),
+        borderColor: '#38e6c5',
+        backgroundColor: 'rgba(56, 230, 197, 0.1)',
+        borderWidth: 2,
+        tension: 0.4,
+        fill: true
+      }
+    ]
+  };
+
+  const dailyOutputOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    layout: {
+      padding: {
+        top: 5,
+        bottom: 5,
+        left: 5,
+        right: 5
+      }
+    },
+    interaction: {
+      mode: 'index',
+      intersect: false,
+    },
+    scales: {
+      x: {
+        grid: {
+          display: false
+        },
+        ticks: {
+          autoSkip: false,
+          maxRotation: 0,
+          minRotation: 0,
+          font: {
+            size: 9
+          }
+        }
+      },
+      y: {
+        beginAtZero: true,
+        ticks: {
+          font: {
+            size: 10
+          },
+          callback: function(value) {
+            return (value / 1000) + 'K';
+          }
+        }
+      }
+    },
+    plugins: {
+      legend: {
+        display: true,
+        position: 'top',
+        labels: {
+          boxWidth: 12,
+          font: {
+            size: 10
+          },
+          padding: 8
+        }
+      }
+    }
+  };
+
+  // Mock data for Daily OF1 (Order Fulfillment for current month)
+  const dailyOF1Data = {
+    labels: dailyLabels,
+    datasets: [
+      {
+        label: 'Daily OF1 Production',
+        data: generateDailyData(1500, 250),
+        borderColor: '#f59e0b',
+        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+        borderWidth: 3,
+        tension: 0.4,
+        fill: true,
+        pointRadius: 3,
+        pointHoverRadius: 5
+      },
+      {
+        label: 'Target',
+        data: Array(30).fill(1500),
+        borderColor: '#e57373',
+        backgroundColor: 'transparent',
+        borderWidth: 2,
+        borderDash: [5, 5],
+        tension: 0,
+        fill: false,
+        pointRadius: 0
+      }
+    ]
+  };
+
+  const dailyOF1Options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    layout: {
+      padding: {
+        top: 5,
+        bottom: 5,
+        left: 5,
+        right: 5
+      }
+    },
+    interaction: {
+      mode: 'index',
+      intersect: false,
+    },
+    scales: {
+      x: {
+        grid: {
+          display: false
+        },
+        ticks: {
+          autoSkip: false,
+          maxRotation: 0,
+          minRotation: 0,
+          font: {
+            size: 9
+          }
+        }
+      },
+      y: {
+        beginAtZero: true,
+        ticks: {
+          font: {
+            size: 10
+          },
+          callback: function(value) {
+            return (value / 1000) + 'K';
+          }
+        }
+      }
+    },
+    plugins: {
+      legend: {
+        display: true,
+        position: 'top',
+        labels: {
+          boxWidth: 12,
+          font: {
+            size: 10
+          },
+          padding: 8
+        }
+      },
+      tooltip: {
+        callbacks: {
+          label: function(context) {
+            return context.dataset.label + ': ' + context.parsed.y.toLocaleString() + ' units';
+          }
+        }
+      }
+    }
+  };
+
+  // Mock data for WIP Summary (only shown when sidebar is minimized)
+  // WIP Summary data for pointer-based donut
+  const wipSummaryStages = [
+    { name: 'Timbang', value: 12 },
+    { name: 'Proses', value: 28 },
+    { name: 'Primer', value: 15 },
+    { name: 'Sekunder', value: 18 },
+    { name: 'QC', value: 8 },
+    { name: 'Mikro', value: 6 },
+    { name: 'QA', value: 5 }
+  ];
+
+  return (
+    <div className="line-pn1-dashboard">
+      <Sidebar />
+      <div className="line-pn1-main-content">
+        <div className="line-pn1-content">
+          <div className="line-pn1-header">
+            <div className="line-pn1-header-left">
+              <h1>Line PN1 Dashboard</h1>
+              <div className="line-pn1-datetime">
+                <span>📅</span>
+                <span>{formatDateTime()}</span>
+              </div>
+            </div>
+            <button 
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className={`line-pn1-refresh-btn ${refreshing ? 'refreshing' : ''}`}
+            >
+              {refreshing ? 'Refreshing...' : 'Refresh'}
+            </button>
+          </div>
+
+          <div className={`line-pn1-charts-container ${sidebarMinimized ? 'sidebar-minimized' : ''}`}>
+            {/* Combined Monthly/Daily Output - Auto-rotating */}
+            <div className="line-pn1-chart-card">
+              <div className="chart-card-header">
+                <h3>{currentView === 'monthly' ? 'Monthly Output' : 'Daily Output'}</h3>
+                <span className="chart-card-subtitle">
+                  {currentView === 'monthly' ? 'Total units produced per month' : 'Last 30 days production trend'}
+                </span>
+              </div>
+              <div style={{ position: 'relative', height: '250px', minHeight: '250px' }}>
+                <div className={`chart-card-content ${currentView === 'monthly' ? 'fade-in' : 'fade-out'}`}>
+                  <Bar data={monthlyOutputData} options={monthlyOutputOptions} key={`monthly-${sidebarMinimized}`} />
+                </div>
+                <div className={`chart-card-content ${currentView === 'daily' ? 'fade-in' : 'fade-out'}`}>
+                  <Line data={dailyOutputData} options={dailyOutputOptions} key={`daily-${sidebarMinimized}`} />
+                </div>
+              </div>
+            </div>
+
+            {/* Daily OF1 */}
+            <div className="line-pn1-chart-card">
+              <div className="chart-card-header">
+                <h3>Daily OF1</h3>
+                <span className="chart-card-subtitle">Order fulfillment for current month batches</span>
+              </div>
+              <div className="chart-card-content" key={`of1-${sidebarChartKey}`}>
+                <Line data={dailyOF1Data} options={dailyOF1Options} key={`of1-chart-${sidebarChartKey}`} />
+              </div>
+            </div>
+
+            {/* WIP Summary - Only visible when sidebar is minimized */}
+            {sidebarMinimized && (
+              <div className="line-pn1-chart-card">
+                <div className="chart-card-header">
+                  <h3>WIP Summary</h3>
+                  <span className="chart-card-subtitle">Batches by production stage</span>
+                </div>
+                <div className="chart-card-content" key={`wip-${sidebarChartKey}`}>
+                  <WIPDonutWithPointers stages={wipSummaryStages} />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* WIP Speedometers Section */}
+          <div className="line-pn1-wip-section">
+            <h2 className="line-pn1-section-title">Work In Progress Stages</h2>
+            <div className="line-pn1-speedometers-grid">
+              {wipStages.map((stage, index) => (
+                <Speedometer
+                  key={index}
+                  label={stage.name}
+                  value={stage.value}
+                  maxValue={50}
+                  stageName={stage.name}
+                  batches={stage.batches}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default LinePN1Dashboard;

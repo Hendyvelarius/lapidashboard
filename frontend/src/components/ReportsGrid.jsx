@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router";
-import { FaChartLine, FaClipboardList, FaCog, FaBoxOpen, FaRegFileAlt, FaRegImage, FaRegPlayCircle, FaRegFolderOpen, FaFlask } from "react-icons/fa";
+import { FaChartLine, FaClipboardList, FaCog, FaBoxOpen, FaRegFileAlt, FaRegImage, FaRegPlayCircle, FaRegFolderOpen, FaFlask, FaIndustry } from "react-icons/fa";
 import "../App.css";
 import Modal from "./Modal";
 
@@ -27,9 +27,9 @@ const cards = [
     desc: "Informasi proses produksi secara keseluruhan.",
   },
   {
-    icon: <FaFlask size={36} color="#f59e0b" />,
-    title: "In Construction",
-    desc: "Work in progress, coming soon.",
+    icon: <FaIndustry size={36} color="#8b5cf6" />, // Line PN1
+    title: "Line PN1",
+    desc: "Dashboard khusus untuk production line PN1.",
   },
   {
     icon: <FaRegImage size={36} color="#6a5acd" />,
@@ -67,6 +67,8 @@ export default function ReportsGrid() {
       navigate("/wip");
     } else if (card.title === "Production") {
       navigate("/production");
+    } else if (card.title === "Line PN1") {
+      navigate("/line-pn1");
     }
     // Add more navigation cases for other cards here later
   };

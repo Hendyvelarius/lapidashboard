@@ -9,6 +9,7 @@ import WIPReportPage from "./components/WIPReportPage";
 import StockForecastDashboard from "./components/StockForecastDashboard";
 import SummaryDashboard from "./components/SummaryDashboard";
 import ProductionDashboard from "./components/ProductionDashboard";
+import LinePN1Dashboard from "./components/LinePN1Dashboard";
 import LandingPage from "./components/LandingPage";
 
 // Component to handle auth token from URL
@@ -97,6 +98,7 @@ export default function AppRouter() {
         />
         <Route path="/wip" element={<ProtectedRoute pageName="wip"><WIPReportPage /></ProtectedRoute>} />
         <Route path="/production" element={<ProtectedRoute pageName="production"><ProductionDashboard /></ProtectedRoute>} />
+        <Route path="/line-pn1" element={<ProtectedRoute pageName="line-pn1"><LinePN1Dashboard /></ProtectedRoute>} />
         <Route path="/stock-forecast" element={<ProtectedRoute pageName="stock-forecast"><StockForecastDashboard /></ProtectedRoute>} />
       </Routes>
       </AuthHandler>
