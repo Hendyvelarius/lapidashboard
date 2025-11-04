@@ -68,6 +68,7 @@ const AnimatedDonutWithCallouts = ({ data, onSliceClick, batchCount, averageTota
       name,
       value,
       percentage,
+      sweepAngle,
       startAngle,
       endAngle,
       midAngle,
