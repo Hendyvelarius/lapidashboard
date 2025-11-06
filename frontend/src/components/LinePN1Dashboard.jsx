@@ -394,6 +394,7 @@ const LinePN1Dashboard = () => {
   const [wipData, setWipData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [forecastData, setForecastData] = useState([]);
+  const [dailyProductionData, setDailyProductionData] = useState([]);
   const [productGroupDept, setProductGroupDept] = useState({});
   const [productCategories, setProductCategories] = useState({});
 
@@ -415,9 +416,10 @@ const LinePN1Dashboard = () => {
         setLoading(true);
         
         // Fetch all required data
-        const [wipResponse, forecastResponse, groupDeptResponse, productListResponse, otcProductsResponse] = await Promise.all([
+        const [wipResponse, forecastResponse, dailyProductionResponse, groupDeptResponse, productListResponse, otcProductsResponse] = await Promise.all([
           fetch(apiUrl('/api/wipData')),
           fetch(apiUrl('/api/forecast')),
+          fetch(apiUrl('/api/dailyProduction')),
           fetch(apiUrl('/api/productGroupDept')),
           fetch(apiUrl('/api/productList')),
           fetch(apiUrl('/api/otcProducts'))
@@ -433,6 +435,12 @@ const LinePN1Dashboard = () => {
         if (forecastResponse.ok) {
           const forecastResult = await forecastResponse.json();
           setForecastData(forecastResult.data || forecastResult || []);
+        }
+
+        // Process daily production data
+        if (dailyProductionResponse.ok) {
+          const dailyProductionResult = await dailyProductionResponse.json();
+          setDailyProductionData(dailyProductionResult.data || []);
         }
 
         // Process product group/dept mapping
@@ -646,6 +654,71 @@ const LinePN1Dashboard = () => {
   // Get production data
   const productionData = processPN1ProductionData();
 
+  // Process daily production data for PN1 only (actual daily data from API)
+  const processPN1DailyProductionData = () => {
+    if (!dailyProductionData || dailyProductionData.length === 0 || Object.keys(productGroupDept).length === 0) {
+      // Return empty array for 30 days if no data
+      return Array.from({ length: 30 }, (_, i) => ({
+        day: i + 1,
+        eth: 0,
+        otc: 0,
+        total: 0
+      }));
+    }
+
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth(); // 0-indexed
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+
+    // Create a map for quick lookup: day -> {eth, otc}
+    const dailyMap = {};
+    
+    dailyProductionData.forEach(item => {
+      const productionDate = new Date(item.ProductionDate);
+      const day = productionDate.getDate();
+      const productId = item.Product_ID;
+      const production = parseFloat(item.DailyProduction) || 0;
+      
+      // Only include PN1 products
+      if (productGroupDept[productId] !== 'PN1') {
+        return;
+      }
+      
+      const category = productCategories[productId] || 'ETH';
+      
+      if (!dailyMap[day]) {
+        dailyMap[day] = { eth: 0, otc: 0 };
+      }
+      
+      // Add production to the appropriate category (only ETH or OTC for PN1)
+      if (category === 'OTC') {
+        dailyMap[day].otc += production;
+      } else {
+        dailyMap[day].eth += production;
+      }
+    });
+
+    // Build array for all days in the month
+    const dailyData = [];
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dayData = dailyMap[day] || { eth: 0, otc: 0 };
+      const total = dayData.eth + dayData.otc;
+      
+      dailyData.push({
+        day: day,
+        eth: Math.round(dayData.eth),
+        otc: Math.round(dayData.otc),
+        total: Math.round(total)
+      });
+    }
+
+    return dailyData;
+  };
+
+  // Get actual daily production data for PN1
+  const actualDailyData = processPN1DailyProductionData();
+
   // Listen for sidebar state changes
   useEffect(() => {
     const checkSidebarState = () => {
@@ -718,9 +791,10 @@ const LinePN1Dashboard = () => {
     
     // Fetch fresh data
     try {
-      const [wipResponse, forecastResponse] = await Promise.all([
+      const [wipResponse, forecastResponse, dailyProductionResponse] = await Promise.all([
         fetch(apiUrl('/api/wipData')),
-        fetch(apiUrl('/api/forecast'))
+        fetch(apiUrl('/api/forecast')),
+        fetch(apiUrl('/api/dailyProduction'))
       ]);
       
       if (wipResponse.ok) {
@@ -731,6 +805,11 @@ const LinePN1Dashboard = () => {
       if (forecastResponse.ok) {
         const result = await forecastResponse.json();
         setForecastData(result.data || result || []);
+      }
+      
+      if (dailyProductionResponse.ok) {
+        const result = await dailyProductionResponse.json();
+        setDailyProductionData(result.data || []);
       }
     } catch (error) {
       console.error('Error refreshing data:', error);
@@ -945,13 +1024,13 @@ const LinePN1Dashboard = () => {
     }
   };
 
-  // Daily Output data (using real production data)
+  // Daily Output data (using real daily production data from API)
   const dailyOutputData = {
-    labels: productionData.daily.map(d => `${d.day}`),
+    labels: actualDailyData.map(d => `${d.day}`),
     datasets: [
       {
         label: 'ETH',
-        data: productionData.daily.map(d => d.eth),
+        data: actualDailyData.map(d => d.eth),
         borderColor: '#9333ea',
         backgroundColor: 'rgba(147, 51, 234, 0.1)',
         borderWidth: 2,
@@ -960,7 +1039,7 @@ const LinePN1Dashboard = () => {
       },
       {
         label: 'OTC',
-        data: productionData.daily.map(d => d.otc),
+        data: actualDailyData.map(d => d.otc),
         borderColor: '#4f8cff',
         backgroundColor: 'rgba(79, 140, 255, 0.1)',
         borderWidth: 2,

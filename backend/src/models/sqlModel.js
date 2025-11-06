@@ -643,4 +643,35 @@ async function getReleasedBatches() {
   return result.recordset;
 }
 
-module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTSummary, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches};
+async function getDailyProduction() {
+  const db = await connect();
+  
+  // Get current month in YYYYMM format
+  const currentDate = new Date();
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = String(currentDate.getMonth() + 1).padStart(2, '0');
+  const targetMonth = `${currentYear}${currentMonth}`;
+  
+  const query = `
+    SELECT 
+      CONVERT(DATE, s.process_date) AS ProductionDate,
+      d.bphp_productid AS Product_ID,
+      SUM(d.bphp_jumlah) AS DailyProduction
+    FROM t_bphp_detail d
+    INNER JOIN t_bphp_header h ON d.bphp_no = h.bphp_no
+    INNER JOIN t_bphp_status s ON d.bphp_no = s.bphp_no
+    WHERE 
+      s.Approver_No = '3' 
+      AND s.isReject = 0
+      AND CONVERT(VARCHAR(6), s.process_date, 112) = '${targetMonth}'
+    GROUP BY 
+      CONVERT(DATE, s.process_date),
+      d.bphp_productid
+    ORDER BY ProductionDate, Product_ID
+  `;
+  
+  const result = await db.request().query(query);
+  return result.recordset;
+}
+
+module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTSummary, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getDailyProduction};

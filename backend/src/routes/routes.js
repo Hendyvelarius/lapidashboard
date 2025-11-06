@@ -41,6 +41,7 @@ router.get('/monthlyForecast', SqlController.getMonthlyForecast);
 router.get('/forecast', SqlController.getForecast);
 router.get('/bbbk', SqlController.getbbbk);
 router.get('/dailySales', SqlController.getDailySales);
+router.get('/dailyProduction', SqlController.getDailyProduction);
 router.get('/lostSales', SqlController.getLostSales);
 router.get('/ota', SqlController.getOTA);
 router.get('/material', SqlController.getMaterial);

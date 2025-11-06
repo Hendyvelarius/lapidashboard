@@ -429,6 +429,37 @@ const parseSQLDateTime = (sqlDateString) => {
   return new Date(localDateString);
 };
 
+// Helper function to determine if a batch is in "Waiting" status for a stage
+// Waiting = all steps with IdleStartDate are completed, remaining steps don't have IdleStartDate yet
+// BUT if ALL tasks in the stage are complete, it's not waiting - the stage is done
+const isBatchWaiting = (entries) => {
+  if (!entries || entries.length === 0) return false;
+  
+  // First check: If ALL entries are complete (have EndDate), stage is finished - not waiting
+  const allEntriesComplete = entries.every(e => e.EndDate);
+  if (allEntriesComplete) {
+    return false; // Stage is complete, not waiting
+  }
+  
+  // Separate entries into two groups
+  const entriesWithIdleDate = entries.filter(e => e.IdleStartDate);
+  const entriesWithoutIdleDate = entries.filter(e => !e.IdleStartDate);
+  
+  // If there are no entries with IdleStartDate, it's not waiting (it's not started)
+  if (entriesWithIdleDate.length === 0) {
+    return false;
+  }
+  
+  // Check if ALL entries with IdleStartDate are completed (have EndDate)
+  const allIdleDateEntriesCompleted = entriesWithIdleDate.every(e => e.EndDate);
+  
+  // Check if there are remaining entries without IdleStartDate
+  const hasRemainingSteps = entriesWithoutIdleDate.length > 0;
+  
+  // Waiting = all idle-assigned steps are done AND there are steps waiting for idle assignment
+  return allIdleDateEntriesCompleted && hasRemainingSteps;
+};
+
 // Helper function to calculate days in stage from batch date
 const calculateDaysInStage = (entries, stageName = '') => {
   if (!entries || entries.length === 0) return 0;
@@ -1033,6 +1064,7 @@ const ProductionDashboard = () => {
       if (!deptGroups[dept].stages[condensedStage]) {
         deptGroups[dept].stages[condensedStage] = {
           batchesInProgress: new Set(),
+          batchesWaiting: new Set(),
           entries: [],
         };
       }
@@ -1066,6 +1098,9 @@ const ProductionDashboard = () => {
           const hasStartDate = entries.some(e => e.StartDate);
           const hasMissingEndDate = entries.some(e => !e.EndDate);
           const hasDisplayFlag = entries.some(e => e.Display === '1' || e.Display === 1);
+          
+          // Check if batch is in "Waiting" status
+          const isWaiting = isBatchWaiting(entries);
 
           // Special check for QA stage - only include if all 4 required steps have started
           if (stageName === 'QA') {
@@ -1091,10 +1126,12 @@ const ProductionDashboard = () => {
             }
           }
 
-          // Include batch if:
-          // 1. It has StartDate AND missing EndDate (traditional in-progress), OR
-          // 2. It has Display = '1' (scheduled/planned)
-          if ((hasStartDate && hasMissingEndDate) || hasDisplayFlag) {
+          // Categorize batch as Waiting or In Progress
+          if (isWaiting) {
+            // Batch is waiting for idle time assignment
+            stage.batchesWaiting.add(batchNo);
+          } else if ((hasStartDate && hasMissingEndDate) || hasDisplayFlag) {
+            // Batch is actively in progress
             stage.batchesInProgress.add(batchNo);
             
             // Only calculate duration if there's an actual StartDate
@@ -1135,6 +1172,10 @@ const ProductionDashboard = () => {
         group.stages[stageName] ? group.stages[stageName].batchesInProgress.size : 0
       );
 
+      const stageWaitingCounts = condensedStageOrder.map(stageName =>
+        group.stages[stageName] ? group.stages[stageName].batchesWaiting.size : 0
+      );
+
       const stageAverageDays = condensedStageOrder.map(stageName =>
         group.stages[stageName] ? (group.stages[stageName].averageDays || 0) : 0
       );
@@ -1143,6 +1184,7 @@ const ProductionDashboard = () => {
         dept: dept,
         stages: condensedStageOrder,
         stageCounts: stageCounts,
+        stageWaitingCounts: stageWaitingCounts,
         stageAverageDays: stageAverageDays,
         totalBatches: Array.from(group.batches).length,
       });
@@ -1220,12 +1262,19 @@ const ProductionDashboard = () => {
       }
     });
 
-    // Filter to only show batches in progress or scheduled (Display = '1')
+    // Filter to only show batches in progress or waiting, or scheduled (Display = '1')
+    // Exclude batches where ALL tasks are complete (no missing EndDate)
     const activeBatches = Object.values(batchDetails).filter(batch => {
-      // Basic filter: batch must be in progress or scheduled
+      // If all tasks are complete, don't show this batch in this stage
+      if (!batch.hasMissingEndDate && !batch.hasDisplayFlag) {
+        return false;
+      }
+      
+      // Basic filter: batch must be in progress, waiting, or scheduled
+      const isWaiting = isBatchWaiting(batch.entries);
       const isInProgress = (batch.hasStartDate && batch.hasMissingEndDate) || batch.hasDisplayFlag;
       
-      if (!isInProgress) return false;
+      if (!isInProgress && !isWaiting) return false;
       
       // Special check for QA stage - only include if all 4 required steps have started
       if (condensedStageName === 'QA') {
@@ -1252,25 +1301,44 @@ const ProductionDashboard = () => {
       return true;
     });
 
-    // Add daysInStage to each batch and sort by longest duration first
-    // For Display='1' batches, days will be calculated from IdleStartDate
-    const batchesWithDays = activeBatches.map(batch => ({
-      ...batch,
-      daysInStage: calculateDaysInStage(batch.entries, condensedStageName),
-      stageStart: getEarliestIdleStartDate(batch.entries)
-    })).sort((a, b) => {
-      // Handle null values (Not Started) - sort them to the end
+    // Separate batches into In Progress and Waiting
+    const inProgressBatches = [];
+    const waitingBatches = [];
+    
+    activeBatches.forEach(batch => {
+      const isWaiting = isBatchWaiting(batch.entries);
+      const batchWithMetadata = {
+        ...batch,
+        isWaiting: isWaiting,
+        daysInStage: calculateDaysInStage(batch.entries, condensedStageName),
+        stageStart: getEarliestIdleStartDate(batch.entries)
+      };
+      
+      if (isWaiting) {
+        waitingBatches.push(batchWithMetadata);
+      } else {
+        inProgressBatches.push(batchWithMetadata);
+      }
+    });
+
+    // Sort in-progress batches by longest duration first
+    inProgressBatches.sort((a, b) => {
       if (a.daysInStage === null && b.daysInStage === null) return 0;
       if (a.daysInStage === null) return 1;
       if (b.daysInStage === null) return -1;
       return b.daysInStage - a.daysInStage;
     });
 
+    // Combine: in-progress first, waiting after
+    const allBatches = [...inProgressBatches, ...waitingBatches];
+
     setSelectedStageData({
       dept,
       jenisSediaan: 'All Products', // Indicate this is for all products
       stageName: condensedStageName,
-      batches: batchesWithDays,
+      batches: allBatches,
+      inProgressCount: inProgressBatches.length,
+      waitingCount: waitingBatches.length,
       color: deptColors[dept] || '#4f8cff',
     });
     setModalOpen(true);
@@ -3651,7 +3719,20 @@ const ProductionDashboard = () => {
                 <strong style={{ marginLeft: '8px' }}>Stage:</strong> {selectedStageData.stageName}
               </div>
               <div style={{ fontSize: '1.1rem', fontWeight: '600', color: selectedStageData.color }}>
-                {selectedStageData.batches.length} Batch{selectedStageData.batches.length > 1 ? 'es' : ''} in Progress
+                {selectedStageData.inProgressCount !== undefined ? (
+                  <>
+                    {selectedStageData.inProgressCount} Batch{selectedStageData.inProgressCount !== 1 ? 'es' : ''} in Progress
+                    {selectedStageData.waitingCount > 0 && (
+                      <span style={{ color: '#f59e0b', marginLeft: '8px' }}>
+                        ({selectedStageData.waitingCount} Waiting)
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {selectedStageData.batches.length} Batch{selectedStageData.batches.length > 1 ? 'es' : ''} in Progress
+                  </>
+                )}
               </div>
             </div>
 
@@ -3683,10 +3764,22 @@ const ProductionDashboard = () => {
                         </div>
                         <div style={{ 
                           fontSize: '0.85rem', 
-                          color: '#e67e22',
+                          color: batch.isWaiting ? '#f59e0b' : '#e67e22',
                           fontWeight: '600',
                         }}>
-                          Days in Stage: {batch.daysInStage !== null ? `${batch.daysInStage} ${batch.daysInStage === 1 ? 'day' : 'days'}` : 'Not Started'}
+                          {batch.isWaiting ? (
+                            <>
+                              Status: <span style={{ 
+                                backgroundColor: '#fef3c7', 
+                                color: '#92400e',
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                fontWeight: '700'
+                              }}>In Waiting</span>
+                            </>
+                          ) : (
+                            <>Days in Stage: {batch.daysInStage !== null ? `${batch.daysInStage} ${batch.daysInStage === 1 ? 'day' : 'days'}` : 'Not Started'}</>
+                          )}
                         </div>
                         {batch.jenisSediaan && selectedStageData.jenisSediaan === 'All Products' && (
                           <div style={{ 
@@ -4063,7 +4156,7 @@ const ProductionDashboard = () => {
       <Modal
         open={targetModalOpen}
         onClose={() => setTargetModalOpen(false)}
-        title={selectedTargetData ? `Production Target - ${selectedTargetData.monthName} (${selectedTargetData.periode})` : ''}
+        title={selectedTargetData ? `Production Output - ${selectedTargetData.monthName} (${selectedTargetData.periode})` : ''}
       >
         {selectedTargetData && (
           <div style={{ maxHeight: '70vh', overflowY: 'auto' }}>
@@ -4078,10 +4171,19 @@ const ProductionDashboard = () => {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
                 <div>
                   <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase' }}>
-                    Total Target
+                    Total Forecast
                   </div>
-                  <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#4f8cff' }}>
-                    {selectedTargetData.totalTarget.toLocaleString()}
+                  <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#8b5cf6' }}>
+                    {selectedTargetData.products.reduce((sum, p) => sum + p.forecast, 0).toLocaleString()}
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>units</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase' }}>
+                    Total Initial Stock
+                  </div>
+                  <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#f59e0b' }}>
+                    {selectedTargetData.products.reduce((sum, p) => sum + p.stockRelease, 0).toLocaleString()}
                   </div>
                   <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>units</div>
                 </div>
@@ -4094,25 +4196,12 @@ const ProductionDashboard = () => {
                   </div>
                   <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>units</div>
                 </div>
-                <div>
-                  <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase' }}>
-                    Achievement
-                  </div>
-                  <div style={{ 
-                    fontSize: '1.5rem', 
-                    fontWeight: '700', 
-                    color: selectedTargetData.overallAchievement >= 100 ? '#10b981' : 
-                           selectedTargetData.overallAchievement >= 80 ? '#f59e0b' : '#ef4444'
-                  }}>
-                    {selectedTargetData.overallAchievement}%
-                  </div>
-                </div>
               </div>
             </div>
 
             {/* Product List */}
             <div style={{ marginBottom: '8px', fontSize: '0.85rem', fontWeight: '600', color: '#6b7280' }}>
-              PRODUCTS WITH PRODUCTION TARGET ({selectedTargetData.products.length} items)
+              PRODUCTION OUTPUT BY PRODUCT ({selectedTargetData.products.length} items)
             </div>
             
             {selectedTargetData.products.length === 0 ? (
@@ -4122,24 +4211,19 @@ const ProductionDashboard = () => {
                 color: '#9ca3af',
                 fontSize: '0.9rem',
               }}>
-                <div style={{ fontSize: '2rem', marginBottom: '8px' }}>✅</div>
-                <p>All products have sufficient stock. No production needed.</p>
+                <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📊</div>
+                <p>No production data available for this period.</p>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {selectedTargetData.products.map((product, index) => {
-                  const achievementColor = product.achievement >= 100 ? '#10b981' : 
-                                          product.achievement >= 80 ? '#f59e0b' : '#ef4444';
-                  const achievementBg = product.achievement >= 100 ? '#f0fdf4' : 
-                                       product.achievement >= 80 ? '#fffbeb' : '#fef2f2';
-                  
                   return (
                     <div
                       key={`${product.productId}-${index}`}
                       style={{
                         backgroundColor: 'white',
                         border: '1px solid #e5e7eb',
-                        borderLeft: `4px solid ${achievementColor}`,
+                        borderLeft: `4px solid #10b981`,
                         borderRadius: '8px',
                         padding: '12px',
                         transition: 'all 0.2s ease',
@@ -4165,22 +4249,11 @@ const ProductionDashboard = () => {
                             {product.category}
                           </div>
                         </div>
-                        <div style={{
-                          display: 'inline-block',
-                          backgroundColor: achievementBg,
-                          color: achievementColor,
-                          padding: '2px 8px',
-                          borderRadius: '4px',
-                          fontSize: '0.75rem',
-                          fontWeight: '600',
-                        }}>
-                          {product.achievement}% Achievement
-                        </div>
                       </div>
                       
                       <div style={{ 
                         display: 'grid', 
-                        gridTemplateColumns: 'repeat(4, 1fr)', 
+                        gridTemplateColumns: 'repeat(3, 1fr)', 
                         gap: '12px',
                         fontSize: '0.75rem',
                         paddingTop: '12px',
@@ -4188,25 +4261,19 @@ const ProductionDashboard = () => {
                       }}>
                         <div>
                           <div style={{ color: '#9ca3af', marginBottom: '4px' }}>Forecast</div>
-                          <div style={{ fontWeight: '600', color: '#374151' }}>
+                          <div style={{ fontWeight: '600', color: '#8b5cf6' }}>
                             {product.forecast.toLocaleString()}
                           </div>
                         </div>
                         <div>
-                          <div style={{ color: '#9ca3af', marginBottom: '4px' }}>Stock</div>
-                          <div style={{ fontWeight: '600', color: '#374151' }}>
+                          <div style={{ color: '#9ca3af', marginBottom: '4px' }}>Initial Stock</div>
+                          <div style={{ fontWeight: '600', color: '#f59e0b' }}>
                             {product.stockRelease.toLocaleString()}
                           </div>
                         </div>
                         <div>
-                          <div style={{ color: '#9ca3af', marginBottom: '4px' }}>Target</div>
-                          <div style={{ fontWeight: '700', color: '#4f8cff' }}>
-                            {product.target.toLocaleString()}
-                          </div>
-                        </div>
-                        <div>
                           <div style={{ color: '#9ca3af', marginBottom: '4px' }}>Production</div>
-                          <div style={{ fontWeight: '700', color: achievementColor }}>
+                          <div style={{ fontWeight: '700', color: '#10b981' }}>
                             {product.production.toLocaleString()}
                           </div>
                         </div>
