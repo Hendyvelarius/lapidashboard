@@ -87,11 +87,13 @@ export const PAGE_ACCESS = {
       { department: 'PC', jobLevel: 'MGR' },
       { department: 'PC', jobLevel: 'ASM' },
       { department: 'PC', jobLevel: 'SPV' },
+      { department: 'PC', jobLevel: 'OFC' },
       
       // WH - accessible for MGR, ASM, and SPV
       { department: 'WH', jobLevel: 'MGR' },
       { department: 'WH', jobLevel: 'ASM' },
       { department: 'WH', jobLevel: 'SPV' },
+      { department: 'WH', jobLevel: 'OFC' },
 
       // NT - accessible for MGR, SPV, and OFC
       { department: 'NT', jobLevel: 'MGR' },
@@ -107,7 +109,7 @@ export const PAGE_ACCESS = {
     allowedUserIds: [], // Specific users who always have access
     allowedJobLevels: [], // No general job level restriction
     specificCombinations: [
-      
+      // Example: { department: 'PC', jobLevel: 'MGR' }
     ],
   },
 

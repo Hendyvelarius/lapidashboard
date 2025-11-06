@@ -638,7 +638,22 @@ async function getProductGroupDept() {
 
 async function getReleasedBatches() {
   const db = await connect();
-  const query = `SELECT DNc_ProductID, DNc_BatchNo FROM t_dnc_product`;
+  
+  // Get current month in YYYY-MM format for filtering
+  const currentMonth = new Date().toISOString().slice(0, 7); // e.g., "2025-01"
+  
+  const query = `
+    SELECT 
+      DNc_ProductID, 
+      DNc_BatchNo, 
+      DNC_Diluluskan,
+      dnc_status,
+      Process_Date
+    FROM t_dnc_product
+    WHERE dnc_status = 'DILULUSKAN'
+      AND CONVERT(VARCHAR(7), Process_Date, 120) = '${currentMonth}'
+  `;
+  
   const result = await db.request().query(query);
   return result.recordset;
 }

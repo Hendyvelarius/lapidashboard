@@ -397,6 +397,8 @@ const LinePN1Dashboard = () => {
   const [dailyProductionData, setDailyProductionData] = useState([]);
   const [productGroupDept, setProductGroupDept] = useState({});
   const [productCategories, setProductCategories] = useState({});
+  const [ofTargetData, setOfTargetData] = useState([]);
+  const [ofActualData, setOfActualData] = useState([]);
 
   // Helper function to parse SQL datetime
   const parseSQLDateTime = (sqlDateTime) => {
@@ -416,13 +418,24 @@ const LinePN1Dashboard = () => {
         setLoading(true);
         
         // Fetch all required data
-        const [wipResponse, forecastResponse, dailyProductionResponse, groupDeptResponse, productListResponse, otcProductsResponse] = await Promise.all([
+        const [
+          wipResponse, 
+          forecastResponse, 
+          dailyProductionResponse, 
+          groupDeptResponse, 
+          productListResponse, 
+          otcProductsResponse,
+          ofTargetResponse,
+          ofActualResponse
+        ] = await Promise.all([
           fetch(apiUrl('/api/wipData')),
           fetch(apiUrl('/api/forecast')),
           fetch(apiUrl('/api/dailyProduction')),
           fetch(apiUrl('/api/productGroupDept')),
           fetch(apiUrl('/api/productList')),
-          fetch(apiUrl('/api/otcProducts'))
+          fetch(apiUrl('/api/otcProducts')),
+          fetch(apiUrl('/api/ofsummary')),
+          fetch(apiUrl('/api/releasedBatches'))
         ]);
 
         // Process WIP data
@@ -441,6 +454,18 @@ const LinePN1Dashboard = () => {
         if (dailyProductionResponse.ok) {
           const dailyProductionResult = await dailyProductionResponse.json();
           setDailyProductionData(dailyProductionResult.data || []);
+        }
+
+        // Process OF target data (from sp_Dashboard_OF1)
+        if (ofTargetResponse.ok) {
+          const ofTargetResult = await ofTargetResponse.json();
+          setOfTargetData(ofTargetResult.data || []);
+        }
+
+        // Process OF actual data (from t_dnc_product)
+        if (ofActualResponse.ok) {
+          const ofActualResult = await ofActualResponse.json();
+          setOfActualData(ofActualResult.data || []);
         }
 
         // Process product group/dept mapping
@@ -716,8 +741,88 @@ const LinePN1Dashboard = () => {
     return dailyData;
   };
 
+  // Process OF1 data - compare target vs actual production per product
+  const processOF1Data = () => {
+    if (!ofTargetData.length && !ofActualData.length) {
+      return { labels: [], targetData: [], actualData: [], products: [] };
+    }
+
+    // Aggregate targets by ProductID
+    const targetMap = {};
+    ofTargetData.forEach(item => {
+      const productId = item.ProductID;
+      const productName = item.Product_Name || productId;
+      const target = parseFloat(item.group_stdoutput) || 0;
+
+      // Check if this product is PN1
+      const dept = productGroupDept[productId];
+      if (dept !== 'PN1') return; // Only include PN1 products
+
+      if (!targetMap[productId]) {
+        targetMap[productId] = {
+          productId: productId,
+          productName: productName,
+          target: 0
+        };
+      }
+      targetMap[productId].target += target;
+    });
+
+    // Aggregate actuals by DNc_ProductID (only for current month)
+    const actualMap = {};
+    ofActualData.forEach(item => {
+      const productId = item.DNc_ProductID;
+      const actual = parseFloat(item.DNC_Diluluskan) || 0;
+
+      // Check if this product is PN1
+      const dept = productGroupDept[productId];
+      if (dept !== 'PN1') return; // Only include PN1 products
+
+      if (!actualMap[productId]) {
+        actualMap[productId] = {
+          productId: productId,
+          actual: 0
+        };
+      }
+      actualMap[productId].actual += actual;
+    });
+
+    // Combine targets and actuals
+    const productIds = new Set([
+      ...Object.keys(targetMap),
+      ...Object.keys(actualMap)
+    ]);
+
+    const products = [];
+    productIds.forEach(productId => {
+      const target = targetMap[productId]?.target || 0;
+      const actual = actualMap[productId]?.actual || 0;
+      const productName = targetMap[productId]?.productName || productId;
+
+      products.push({
+        productId,
+        productName,
+        target: Math.round(target),
+        actual: Math.round(actual)
+      });
+    });
+
+    // Sort by target descending
+    products.sort((a, b) => b.target - a.target);
+
+    // Extract arrays for chart
+    const labels = products.map(p => p.productName);
+    const targetData = products.map(p => p.target);
+    const actualData = products.map(p => p.actual);
+
+    return { labels, targetData, actualData, products };
+  };
+
   // Get actual daily production data for PN1
   const actualDailyData = processPN1DailyProductionData();
+
+  // Get OF1 comparison data for PN1
+  const of1ComparisonData = processOF1Data();
 
   // Listen for sidebar state changes
   useEffect(() => {
@@ -791,10 +896,18 @@ const LinePN1Dashboard = () => {
     
     // Fetch fresh data
     try {
-      const [wipResponse, forecastResponse, dailyProductionResponse] = await Promise.all([
+      const [
+        wipResponse, 
+        forecastResponse, 
+        dailyProductionResponse,
+        ofTargetResponse,
+        ofActualResponse
+      ] = await Promise.all([
         fetch(apiUrl('/api/wipData')),
         fetch(apiUrl('/api/forecast')),
-        fetch(apiUrl('/api/dailyProduction'))
+        fetch(apiUrl('/api/dailyProduction')),
+        fetch(apiUrl('/api/ofsummary')),
+        fetch(apiUrl('/api/releasedBatches'))
       ]);
       
       if (wipResponse.ok) {
@@ -810,6 +923,16 @@ const LinePN1Dashboard = () => {
       if (dailyProductionResponse.ok) {
         const result = await dailyProductionResponse.json();
         setDailyProductionData(result.data || []);
+      }
+
+      if (ofTargetResponse.ok) {
+        const result = await ofTargetResponse.json();
+        setOfTargetData(result.data || []);
+      }
+
+      if (ofActualResponse.ok) {
+        const result = await ofActualResponse.json();
+        setOfActualData(result.data || []);
       }
     } catch (error) {
       console.error('Error refreshing data:', error);
@@ -1105,35 +1228,31 @@ const LinePN1Dashboard = () => {
     }
   };
 
-  // Mock data for Daily OF1 (Order Fulfillment for current month)
-  const generateDailyLabels = () => Array.from({ length: 30 }, (_, i) => `${i + 1}`);
-  const generateDailyData = (base, variance) => 
-    Array.from({ length: 30 }, () => base + Math.floor(Math.random() * variance * 2 - variance));
-  
+  // Daily OF1 data (Target vs Actual Production per Product)
   const dailyOF1Data = {
-    labels: generateDailyLabels(),
+    labels: of1ComparisonData.labels,
     datasets: [
       {
-        label: 'Daily OF1 Production',
-        data: generateDailyData(1500, 250),
-        borderColor: '#f59e0b',
-        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+        label: 'Target Production',
+        data: of1ComparisonData.targetData,
+        borderColor: '#e57373',
+        backgroundColor: 'rgba(229, 115, 115, 0.2)',
         borderWidth: 3,
         tension: 0.4,
         fill: true,
-        pointRadius: 3,
-        pointHoverRadius: 5
+        pointRadius: 4,
+        pointHoverRadius: 6
       },
       {
-        label: 'Target',
-        data: Array(30).fill(1500),
-        borderColor: '#e57373',
-        backgroundColor: 'transparent',
-        borderWidth: 2,
-        borderDash: [5, 5],
-        tension: 0,
-        fill: false,
-        pointRadius: 0
+        label: 'Actual Production',
+        data: of1ComparisonData.actualData,
+        borderColor: '#4caf50',
+        backgroundColor: 'rgba(76, 175, 80, 0.2)',
+        borderWidth: 3,
+        tension: 0.4,
+        fill: true,
+        pointRadius: 4,
+        pointHoverRadius: 6
       }
     ]
   };
