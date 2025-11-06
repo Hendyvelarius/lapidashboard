@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Chart as ChartJS, ArcElement, BarElement, CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend } from 'chart.js';
 import { Bar, Line, Doughnut } from 'react-chartjs-2';
 import Sidebar from './Sidebar';
+import { apiUrl } from '../api';
 import './LinePN1Dashboard.css';
 
 ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend);
@@ -390,6 +391,260 @@ const LinePN1Dashboard = () => {
   const [sidebarChartKey, setSidebarChartKey] = useState(0); // Key for sidebar-triggered re-render only
   const [currentDateTime, setCurrentDateTime] = useState(new Date());
   const [refreshing, setRefreshing] = useState(false);
+  const [wipData, setWipData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [forecastData, setForecastData] = useState([]);
+  const [productGroupDept, setProductGroupDept] = useState({});
+  const [productCategories, setProductCategories] = useState({});
+
+  // Helper function to parse SQL datetime
+  const parseSQLDateTime = (sqlDateTime) => {
+    if (!sqlDateTime) return null;
+    try {
+      const date = new Date(sqlDateTime);
+      return isNaN(date.getTime()) ? null : date;
+    } catch {
+      return null;
+    }
+  };
+
+  // Fetch WIP data for PN1
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        
+        // Fetch all required data
+        const [wipResponse, forecastResponse, groupDeptResponse, productListResponse, otcProductsResponse] = await Promise.all([
+          fetch(apiUrl('/api/wipData')),
+          fetch(apiUrl('/api/forecast')),
+          fetch(apiUrl('/api/productGroupDept')),
+          fetch(apiUrl('/api/productList')),
+          fetch(apiUrl('/api/otcProducts'))
+        ]);
+
+        // Process WIP data
+        if (wipResponse.ok) {
+          const wipResult = await wipResponse.json();
+          setWipData(wipResult.data || []);
+        }
+
+        // Process forecast data
+        if (forecastResponse.ok) {
+          const forecastResult = await forecastResponse.json();
+          setForecastData(forecastResult.data || forecastResult || []);
+        }
+
+        // Process product group/dept mapping
+        if (groupDeptResponse.ok) {
+          const groupDeptResult = await groupDeptResponse.json();
+          const groupDeptData = groupDeptResult.data || [];
+          
+          // Create mapping of Product_ID to Group_Dept
+          const deptMap = {};
+          groupDeptData.forEach(item => {
+            deptMap[item.Group_ProductID] = item.Group_Dept;
+          });
+          setProductGroupDept(deptMap);
+        }
+
+        // Process product categories (ETH vs OTC)
+        if (productListResponse.ok && otcProductsResponse.ok) {
+          const productListData = await productListResponse.json();
+          const otcProductsData = await otcProductsResponse.json();
+
+          const productList = productListData.data || [];
+          const otcProducts = otcProductsData.data || [];
+
+          // Create a Set of OTC product IDs for quick lookup
+          const otcProductIds = new Set(otcProducts.map(p => p.Product_ID));
+
+          // Categorize products as ETH or OTC
+          const categories = {};
+          productList.forEach(product => {
+            const productId = product.Product_ID;
+            categories[productId] = otcProductIds.has(productId) ? 'OTC' : 'ETH';
+          });
+          setProductCategories(categories);
+        }
+
+      } catch (error) {
+        console.error('Error fetching data:', error);
+        setWipData([]);
+        setForecastData([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  // Process WIP data for PN1 Proses stages
+  const processPN1WIPData = (rawData) => {
+    if (!rawData || rawData.length === 0) {
+      return [];
+    }
+
+    // Filter for PN1 only and exclude completed batches
+    const batchesWithTempelLabelRelease = new Set();
+    rawData.forEach(entry => {
+      if (entry.nama_tahapan === 'Tempel Label Realese' && entry.EndDate) {
+        batchesWithTempelLabelRelease.add(entry.Batch_No);
+      }
+    });
+
+    const pn1ActiveBatches = rawData.filter(entry => 
+      entry.Group_Dept === 'PN1' && 
+      !batchesWithTempelLabelRelease.has(entry.Batch_No)
+    );
+
+    // Define the Proses sub-stages we want to track
+    const prosesStages = [
+      'Terima Bahan',
+      'Filling',
+      'Mixing',
+      'Granulasi',
+      'Cetak',
+      'Coating',
+      'Kemas Primer',
+      'Kemas Sekunder'
+    ];
+
+    const stageData = {};
+    prosesStages.forEach(stageName => {
+      stageData[stageName] = {
+        batches: new Map(), // Map of batchNo -> batch details
+        totalCount: 0
+      };
+    });
+
+    // Group batches by stage
+    pn1ActiveBatches.forEach(entry => {
+      const tahapanGroup = entry.tahapan_group;
+      const batchNo = entry.Batch_No;
+      const productName = entry.Produk_Nama || entry.Product_Name || 'Unknown Product';
+
+      // Skip if not a Proses stage
+      if (!prosesStages.includes(tahapanGroup)) {
+        return;
+      }
+
+      // Check if batch is in progress for this stage
+      const hasStartDate = entry.StartDate;
+      const hasMissingEndDate = !entry.EndDate;
+      const hasDisplayFlag = entry.Display === '1' || entry.Display === 1;
+
+      if ((hasStartDate && hasMissingEndDate) || hasDisplayFlag) {
+        if (!stageData[tahapanGroup].batches.has(batchNo)) {
+          // Calculate days in stage
+          let daysInStage = 0;
+          if (hasStartDate) {
+            const startDate = parseSQLDateTime(entry.StartDate);
+            if (startDate) {
+              const currentDate = new Date();
+              daysInStage = Math.floor((currentDate - startDate) / (1000 * 60 * 60 * 24));
+            }
+          }
+
+          stageData[tahapanGroup].batches.set(batchNo, {
+            batchNo,
+            productName,
+            daysInStage
+          });
+        }
+      }
+    });
+
+    // Convert to array format and sort batches by days descending
+    return prosesStages.map(stageName => {
+      const batchArray = Array.from(stageData[stageName].batches.values())
+        .sort((a, b) => b.daysInStage - a.daysInStage);
+
+      return {
+        name: stageName,
+        value: batchArray.length,
+        avgDays: batchArray.length > 0 
+          ? Math.round(batchArray.reduce((sum, b) => sum + b.daysInStage, 0) / batchArray.length)
+          : 0,
+        batches: batchArray
+      };
+    });
+  };
+
+  // Process production data for PN1 only
+  const processPN1ProductionData = () => {
+    if (!forecastData || forecastData.length === 0 || Object.keys(productGroupDept).length === 0) {
+      return { monthly: [], daily: [] };
+    }
+
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth() + 1;
+
+    // Monthly production data
+    const monthlyData = [];
+    for (let month = 1; month <= 12; month++) {
+      const periode = `${currentYear}${month.toString().padStart(2, '0')}`;
+      
+      // Filter forecast data for this period and PN1 products only
+      const monthData = forecastData.filter(item => {
+        const isPN1 = productGroupDept[item.Product_ID] === 'PN1';
+        const isPeriod = item.Periode === periode;
+        return isPN1 && isPeriod;
+      });
+
+      // Calculate production by category
+      const productionByCategory = { ETH: 0, OTC: 0 };
+
+      monthData.forEach(item => {
+        const production = parseFloat(item.Produksi) || 0;
+        const productId = item.Product_ID;
+        const category = productCategories[productId] || 'ETH';
+        
+        if (category === 'ETH' || category === 'OTC') {
+          productionByCategory[category] += production;
+        }
+      });
+
+      const totalProduction = productionByCategory.ETH + productionByCategory.OTC;
+
+      monthlyData.push({
+        month: new Date(currentYear, month - 1).toLocaleString('en-US', { month: 'short' }),
+        eth: month <= currentMonth ? Math.round(productionByCategory.ETH) : 0,
+        otc: month <= currentMonth ? Math.round(productionByCategory.OTC) : 0,
+        total: month <= currentMonth ? Math.round(totalProduction) : 0,
+        hasData: month <= currentMonth
+      });
+    }
+
+    // Daily production data (last 30 days)
+    const dailyData = [];
+    const today = new Date();
+    
+    for (let i = 29; i >= 0; i--) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - i);
+      const dayNumber = i === 0 ? 30 : 30 - i;
+      
+      // For now, we'll estimate daily from monthly (since we don't have daily granularity)
+      // This could be replaced with actual daily data if available
+      const monthIndex = date.getMonth();
+      const monthProduction = monthlyData[monthIndex];
+      const daysInMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+      
+      dailyData.push({
+        day: dayNumber,
+        eth: monthProduction ? Math.round(monthProduction.eth / daysInMonth) : 0,
+        otc: monthProduction ? Math.round(monthProduction.otc / daysInMonth) : 0
+      });
+    }
+
+    return { monthly: monthlyData, daily: dailyData };
+  };
+
+  // Get production data
+  const productionData = processPN1ProductionData();
 
   // Listen for sidebar state changes
   useEffect(() => {
@@ -458,8 +713,29 @@ const LinePN1Dashboard = () => {
   };
 
   // Handle manual refresh
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setRefreshing(true);
+    
+    // Fetch fresh data
+    try {
+      const [wipResponse, forecastResponse] = await Promise.all([
+        fetch(apiUrl('/api/wipData')),
+        fetch(apiUrl('/api/forecast'))
+      ]);
+      
+      if (wipResponse.ok) {
+        const result = await wipResponse.json();
+        setWipData(result.data || []);
+      }
+      
+      if (forecastResponse.ok) {
+        const result = await forecastResponse.json();
+        setForecastData(result.data || result || []);
+      }
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+    }
+    
     // Force all charts to re-render
     setSidebarChartKey(prev => prev + 1);
     
@@ -469,8 +745,8 @@ const LinePN1Dashboard = () => {
     }, 1000);
   };
 
-  // Mock WIP data for PN1 stages with batch details
-  const wipStages = [
+  // Get WIP stages data (use real data if available, otherwise fallback to mock)
+  const wipStages = wipData.length > 0 ? processPN1WIPData(wipData) : [
     { 
       name: 'Terima Bahan', 
       value: 3, 
@@ -587,31 +863,25 @@ const LinePN1Dashboard = () => {
         { batchNo: 'KS-2024-099', productName: 'Calcium 500mg', daysInStage: 1 },
       ]
     },
-  ];
+  ];  // End of fallback mock data
 
   // Mock data for Monthly Output
+  // Monthly Output data (using real production data)
   const monthlyOutputData = {
-    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+    labels: productionData.monthly.map(d => d.month),
     datasets: [
       {
         label: 'ETH',
-        data: [45000, 52000, 48000, 61000, 55000, 58000, 62000, 59000, 64000, 67000, 63000, 70000],
+        data: productionData.monthly.map(d => d.hasData ? d.eth : null),
         backgroundColor: 'rgba(147, 51, 234, 0.8)',
         borderColor: '#9333ea',
         borderWidth: 1
       },
       {
         label: 'OTC',
-        data: [38000, 42000, 39000, 45000, 43000, 47000, 49000, 46000, 51000, 53000, 50000, 55000],
+        data: productionData.monthly.map(d => d.hasData ? d.otc : null),
         backgroundColor: 'rgba(79, 140, 255, 0.8)',
         borderColor: '#4f8cff',
-        borderWidth: 1
-      },
-      {
-        label: 'Generik',
-        data: [28000, 31000, 29000, 35000, 33000, 36000, 38000, 37000, 40000, 42000, 41000, 44000],
-        backgroundColor: 'rgba(56, 230, 197, 0.8)',
-        borderColor: '#38e6c5',
         borderWidth: 1
       }
     ]
@@ -675,24 +945,13 @@ const LinePN1Dashboard = () => {
     }
   };
 
-  // Mock data for Daily Output (last 30 days)
-  const generateDailyData = (baseValue, variance) => {
-    const data = [];
-    for (let i = 0; i < 30; i++) {
-      const randomVariation = Math.random() * variance - variance / 2;
-      data.push(Math.round(baseValue + randomVariation));
-    }
-    return data;
-  };
-
-  const dailyLabels = Array.from({ length: 30 }, (_, i) => `${i + 1}`);
-
+  // Daily Output data (using real production data)
   const dailyOutputData = {
-    labels: dailyLabels,
+    labels: productionData.daily.map(d => `${d.day}`),
     datasets: [
       {
         label: 'ETH',
-        data: generateDailyData(2200, 400),
+        data: productionData.daily.map(d => d.eth),
         borderColor: '#9333ea',
         backgroundColor: 'rgba(147, 51, 234, 0.1)',
         borderWidth: 2,
@@ -701,18 +960,9 @@ const LinePN1Dashboard = () => {
       },
       {
         label: 'OTC',
-        data: generateDailyData(1800, 350),
+        data: productionData.daily.map(d => d.otc),
         borderColor: '#4f8cff',
         backgroundColor: 'rgba(79, 140, 255, 0.1)',
-        borderWidth: 2,
-        tension: 0.4,
-        fill: true
-      },
-      {
-        label: 'Generik',
-        data: generateDailyData(1400, 300),
-        borderColor: '#38e6c5',
-        backgroundColor: 'rgba(56, 230, 197, 0.1)',
         borderWidth: 2,
         tension: 0.4,
         fill: true
@@ -777,8 +1027,12 @@ const LinePN1Dashboard = () => {
   };
 
   // Mock data for Daily OF1 (Order Fulfillment for current month)
+  const generateDailyLabels = () => Array.from({ length: 30 }, (_, i) => `${i + 1}`);
+  const generateDailyData = (base, variance) => 
+    Array.from({ length: 30 }, () => base + Math.floor(Math.random() * variance * 2 - variance));
+  
   const dailyOF1Data = {
-    labels: dailyLabels,
+    labels: generateDailyLabels(),
     datasets: [
       {
         label: 'Daily OF1 Production',
