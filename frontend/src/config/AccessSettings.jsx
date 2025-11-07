@@ -113,6 +113,17 @@ export const PAGE_ACCESS = {
     ],
   },
 
+  // Line PN2 Dashboard
+  'line-pn2': {
+    requireAuth: true,
+    allowedDepartments: ['NT'], // Full access for these departments
+    allowedUserIds: [], // Specific users who always have access
+    allowedJobLevels: [], // No general job level restriction
+    specificCombinations: [
+      // Example: { department: 'PC', jobLevel: 'MGR' }
+    ],
+  },
+
   // WIP Report Page
   'wip': {
     requireAuth: true,

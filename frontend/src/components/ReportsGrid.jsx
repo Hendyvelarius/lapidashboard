@@ -32,12 +32,12 @@ const cards = [
     desc: "Dashboard khusus untuk production line PN1.",
   },
   {
-    icon: <FaRegImage size={36} color="#6a5acd" />,
-    title: "In Construction",
-    desc: "Work in progress, coming soon.",
+    icon: <FaIndustry size={36} color="#ec4899" />, // Line PN2
+    title: "Line PN2",
+    desc: "Dashboard khusus untuk production line PN2.",
   },
   {
-    icon: <FaRegPlayCircle size={36} color="#43a047" />,
+    icon: <FaRegImage size={36} color="#6a5acd" />,
     title: "In Construction",
     desc: "Work in progress, coming soon.",
   },
@@ -69,6 +69,8 @@ export default function ReportsGrid() {
       navigate("/production");
     } else if (card.title === "Line PN1") {
       navigate("/line-pn1");
+    } else if (card.title === "Line PN2") {
+      navigate("/line-pn2");
     }
     // Add more navigation cases for other cards here later
   };

@@ -5,7 +5,7 @@ import Sidebar from './Sidebar';
 import Modal from './Modal';
 import DashboardLoading from './DashboardLoading';
 import { apiUrl } from '../api';
-import './LinePN1Dashboard.css';
+import './LinePN2Dashboard.css';
 
 ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend);
 
@@ -430,7 +430,7 @@ const Speedometer = ({ label, value, maxValue = 50, stageName, batches = [], onC
   );
 };
 
-const LinePN1Dashboard = () => {
+const LinePN2Dashboard = () => {
   const [sidebarMinimized, setSidebarMinimized] = useState(false);
   const [currentView, setCurrentView] = useState('monthly'); // 'monthly' or 'daily'
   const [autoMode, setAutoMode] = useState(true); // Auto-switch between monthly/daily
@@ -631,7 +631,7 @@ const LinePN1Dashboard = () => {
     });
 
     const pn1ActiveBatches = rawData.filter(entry => 
-      entry.Group_Dept === 'PN1' && 
+      entry.Group_Dept === 'PN2' && 
       !batchesWithTempelLabelRelease.has(entry.Batch_No)
     );
 
@@ -758,7 +758,7 @@ const LinePN1Dashboard = () => {
       
       // Filter forecast data for this period and PN1 products only
       const monthData = forecastData.filter(item => {
-        const isPN1 = productGroupDept[item.Product_ID] === 'PN1';
+        const isPN1 = productGroupDept[item.Product_ID] === 'PN2';
         const isPeriod = item.Periode === periode;
         return isPN1 && isPeriod;
       });
@@ -842,7 +842,7 @@ const LinePN1Dashboard = () => {
       const production = parseFloat(item.DailyProduction) || 0;
       
       // Only include PN1 products
-      if (productGroupDept[productId] !== 'PN1') {
+      if (productGroupDept[productId] !== 'PN2') {
         return;
       }
       
@@ -894,7 +894,7 @@ const LinePN1Dashboard = () => {
 
       // Check if this product is PN1
       const dept = productGroupDept[productId];
-      if (dept === 'PN1') {
+      if (dept === 'PN2') {
         totalMonthlyTarget += target;
       }
     });
@@ -909,7 +909,7 @@ const LinePN1Dashboard = () => {
 
       // Check if this product is PN1
       const dept = productGroupDept[productId];
-      if (dept !== 'PN1') return;
+      if (dept !== 'PN2') return;
 
       // Parse the process date to get the day
       if (processDate) {
@@ -1134,7 +1134,7 @@ const LinePN1Dashboard = () => {
     if (isMonthly) {
       // Monthly breakdown - use forecast data
       forecastData.forEach(item => {
-        const isPN1 = productGroupDept[item.Product_ID] === 'PN1';
+        const isPN1 = productGroupDept[item.Product_ID] === 'PN2';
         const isPeriod = item.Periode === periodValue;
 
         if (isPN1 && isPeriod) {
@@ -1154,7 +1154,7 @@ const LinePN1Dashboard = () => {
       dailyProductionData.forEach(item => {
         const itemDate = new Date(item.ProductionDate);
         const itemDay = itemDate.getDate();
-        const isPN1 = productGroupDept[item.Product_ID] === 'PN1';
+        const isPN1 = productGroupDept[item.Product_ID] === 'PN2';
         const matchesDay = itemDay === (index + 1);
 
         if (isPN1 && matchesDay) {
@@ -1222,7 +1222,7 @@ const LinePN1Dashboard = () => {
       const productId = item.ProductID;
       const dept = productGroupDept[productId];
       
-      if (dept === 'PN1') {
+      if (dept === 'PN2') {
         const batchNo = item.ListBet; // Batch number
         const batchSize = parseFloat(item.group_stdoutput) || 0; // Expected output for this batch
         
@@ -1269,7 +1269,7 @@ const LinePN1Dashboard = () => {
       const productId = item.DNc_ProductID;
       const dept = productGroupDept[productId];
       
-      if (dept !== 'PN1') return;
+      if (dept !== 'PN2') return;
 
       const batchNo = String(item.DNc_BatchNo || ''); // Convert to string for comparison
       const quantity = parseFloat(item.DNC_Diluluskan) || 0;
@@ -1385,7 +1385,7 @@ const LinePN1Dashboard = () => {
       const entryDept = entry.Group_Dept || 'Unknown';
       const entryTahapanGroup = entry.tahapan_group || 'Other';
       
-      return entryDept === 'PN1' 
+      return entryDept === 'PN2' 
         && entryTahapanGroup === stageName
         && !batchesWithTempelLabelRelease.has(entry.Batch_No);
     });
@@ -1520,7 +1520,7 @@ const LinePN1Dashboard = () => {
       const entryDept = entry.Group_Dept || 'Unknown';
       const entryTahapanGroup = entry.tahapan_group || 'Other';
       
-      return entryDept === 'PN1' 
+      return entryDept === 'PN2' 
         && entryTahapanGroup === stageName
         && !batchesWithTempelLabelRelease.has(entry.Batch_No);
     });
@@ -1999,13 +1999,13 @@ const LinePN1Dashboard = () => {
   })();
 
   return (
-    <div className="line-pn1-dashboard">
+    <div className="line-pn2-dashboard">
       <Sidebar />
       
       {/* Loading Screen */}
       <DashboardLoading 
         loading={loading && !error} 
-        text="Loading Line PN1 Dashboard..." 
+        text="Loading Line PN2 Dashboard..." 
         subtext="Fetching WIP, production, and OF data..." 
         coverContentArea={true}
       />
@@ -2091,12 +2091,12 @@ const LinePN1Dashboard = () => {
         </div>
       )}
 
-      <div className="line-pn1-main-content">
-        <div className="line-pn1-content">
-          <div className="line-pn1-header">
-            <div className="line-pn1-header-left">
-              <h1>Line PN1 Dashboard</h1>
-              <div className="line-pn1-datetime">
+      <div className="line-pn2-main-content">
+        <div className="line-pn2-content">
+          <div className="line-pn2-header">
+            <div className="line-pn2-header-left">
+              <h1>Line PN2 Dashboard</h1>
+              <div className="line-pn2-datetime">
                 <span>📅</span>
                 <span>{formatDateTime()}</span>
               </div>
@@ -2104,15 +2104,15 @@ const LinePN1Dashboard = () => {
             <button 
               onClick={handleRefresh}
               disabled={refreshing}
-              className={`line-pn1-refresh-btn ${refreshing ? 'refreshing' : ''}`}
+              className={`line-pn2-refresh-btn ${refreshing ? 'refreshing' : ''}`}
             >
               {refreshing ? 'Refreshing...' : 'Refresh'}
             </button>
           </div>
 
-          <div className={`line-pn1-charts-container ${sidebarMinimized ? 'sidebar-minimized' : ''}`}>
+          <div className={`line-pn2-charts-container ${sidebarMinimized ? 'sidebar-minimized' : ''}`}>
             {/* Combined Monthly/Daily Output - Auto-rotating */}
-            <div className="line-pn1-chart-card">
+            <div className="line-pn2-chart-card">
               <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
                   <h3>{currentView === 'monthly' ? 'Monthly Output' : 'Daily Output'}</h3>
@@ -2197,7 +2197,7 @@ const LinePN1Dashboard = () => {
             </div>
 
             {/* Daily OF1 */}
-            <div className="line-pn1-chart-card">
+            <div className="line-pn2-chart-card">
               <div className="chart-card-header">
                 <h3>Daily OF1</h3>
                 <span className="chart-card-subtitle">Order fulfillment for current month batches</span>
@@ -2209,7 +2209,7 @@ const LinePN1Dashboard = () => {
 
             {/* WIP Summary - Only visible when sidebar is minimized */}
             {sidebarMinimized && (
-              <div className="line-pn1-chart-card">
+              <div className="line-pn2-chart-card">
                 <div className="chart-card-header">
                   <h3>WIP Summary</h3>
                   <span className="chart-card-subtitle">Batches by production stage</span>
@@ -2222,8 +2222,8 @@ const LinePN1Dashboard = () => {
           </div>
 
           {/* WIP Speedometers Section */}
-          <div className="line-pn1-wip-section">
-            <h2 className="line-pn1-section-title">Work In Progress Stages</h2>
+          <div className="line-pn2-wip-section">
+            <h2 className="line-pn2-section-title">Work In Progress Stages</h2>
             {wipStages.length === 0 ? (
               <div style={{
                 textAlign: 'center',
@@ -2241,7 +2241,7 @@ const LinePN1Dashboard = () => {
                 </div>
               </div>
             ) : (
-              <div className="line-pn1-speedometers-grid">
+              <div className="line-pn2-speedometers-grid">
                 {wipStages.map((stage, index) => (
                   <Speedometer
                     key={index}
@@ -3176,4 +3176,4 @@ const LinePN1Dashboard = () => {
   );
 };
 
-export default LinePN1Dashboard;
+export default LinePN2Dashboard;
