@@ -1683,11 +1683,18 @@ const ProductionDashboard = () => {
       // 1. (at least one step started AND not all steps completed), OR
       // 2. Has Display = '1'
       if ((hasStartedStep && !allStepsCompleted) || hasDisplayFlag) {
-        // Convert steps to entries format for calculateDaysInStage
+        // Convert steps to entries format for isBatchWaiting and calculateDaysInStage
         const entries = steps.map(step => ({
           IdleStartDate: step.idleStartDate,
+          EndDate: step.endDate,
           nama_tahapan: step.nama_tahapan,
         }));
+        
+        // Check if batch is in waiting status - exclude from Excel export
+        const isWaiting = isBatchWaiting(entries);
+        if (isWaiting) {
+          return; // Skip batches that are "In Waiting"
+        }
         
         // Use the calculateDaysInStage function (handles QA special logic)
         const daysInStage = calculateDaysInStage(entries, stage);
