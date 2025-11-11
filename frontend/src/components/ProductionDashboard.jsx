@@ -3926,25 +3926,46 @@ const ProductionDashboard = () => {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {selectedTaskData.tasks.map((task, index) => {
                   const isInProgress = task.StartDate && !task.EndDate;
-                  const isUnstarted = !task.StartDate;
                   const isCompleted = task.StartDate && task.EndDate;
+                  
+                  // Check if batch has started (at least one step has IdleStartDate)
+                  const batchHasStarted = selectedTaskData.tasks.some(t => t.IdleStartDate);
+                  
+                  // A step is "Waiting" if:
+                  // - The batch has started (at least one step has IdleStartDate)
+                  // - This specific step does NOT have IdleStartDate yet
+                  const isWaiting = batchHasStarted && !task.IdleStartDate && !isCompleted;
+                  
+                  // A step is "Not Started" only if:
+                  // - The batch has NOT started (no steps have IdleStartDate)
+                  // - This step doesn't have a StartDate
+                  const isUnstarted = !batchHasStarted && !task.StartDate && !isCompleted;
 
                   let statusBadge = '';
                   let statusColor = '';
                   let bgColor = '';
                   
-                  if (isInProgress) {
+                  if (isCompleted) {
+                    statusBadge = '✅ Completed';
+                    statusColor = '#10b981';
+                    bgColor = '#f0fdf4';
+                  } else if (isInProgress) {
                     statusBadge = '🔄 In Progress';
                     statusColor = '#f59e0b';
                     bgColor = '#fffbeb';
+                  } else if (isWaiting) {
+                    statusBadge = '⏳ Waiting';
+                    statusColor = '#8b5cf6';
+                    bgColor = '#faf5ff';
                   } else if (isUnstarted) {
                     statusBadge = '⏸️ Not Started';
                     statusColor = '#6b7280';
                     bgColor = '#f9fafb';
-                  } else if (isCompleted) {
-                    statusBadge = '✅ Completed';
-                    statusColor = '#10b981';
-                    bgColor = '#f0fdf4';
+                  } else {
+                    // Fallback for any edge cases
+                    statusBadge = '⏸️ Not Started';
+                    statusColor = '#6b7280';
+                    bgColor = '#f9fafb';
                   }
 
                   return (
