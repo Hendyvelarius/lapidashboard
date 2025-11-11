@@ -572,12 +572,22 @@ const LinePN2Dashboard = () => {
           // Create a Set of OTC product IDs for quick lookup
           const otcProductIds = new Set(otcProducts.map(p => p.Product_ID));
 
-          // Categorize products as ETH or OTC and map product names
+          // Categorize products as Generik, OTC, or ETH and map product names
           const categories = {};
           const names = {};
           productList.forEach(product => {
             const productId = product.Product_ID;
-            categories[productId] = otcProductIds.has(productId) ? 'OTC' : 'ETH';
+            const productName = (product.Product_Name || '').toLowerCase();
+            
+            // Check for Generik products by name
+            if (productName.includes('generik') || productName.includes('generic')) {
+              categories[productId] = 'Generik';
+            } else if (otcProductIds.has(productId)) {
+              categories[productId] = 'OTC';
+            } else {
+              categories[productId] = 'ETH';
+            }
+            
             names[productId] = product.Product_Name || `Product ${productId}`;
           });
           setProductCategories(categories);
@@ -764,24 +774,25 @@ const LinePN2Dashboard = () => {
       });
 
       // Calculate production by category
-      const productionByCategory = { ETH: 0, OTC: 0 };
+      const productionByCategory = { ETH: 0, OTC: 0, Generik: 0 };
 
       monthData.forEach(item => {
         const production = parseFloat(item.Produksi) || 0;
         const productId = item.Product_ID;
         const category = productCategories[productId] || 'ETH';
         
-        if (category === 'ETH' || category === 'OTC') {
+        if (category === 'ETH' || category === 'OTC' || category === 'Generik') {
           productionByCategory[category] += production;
         }
       });
 
-      const totalProduction = productionByCategory.ETH + productionByCategory.OTC;
+      const totalProduction = productionByCategory.ETH + productionByCategory.OTC + productionByCategory.Generik;
 
       monthlyData.push({
         month: new Date(currentYear, month - 1).toLocaleString('en-US', { month: 'short' }),
         eth: month <= currentMonth ? Math.round(productionByCategory.ETH) : 0,
         otc: month <= currentMonth ? Math.round(productionByCategory.OTC) : 0,
+        generik: month <= currentMonth ? Math.round(productionByCategory.Generik) : 0,
         total: month <= currentMonth ? Math.round(totalProduction) : 0,
         hasData: month <= currentMonth
       });
@@ -805,7 +816,8 @@ const LinePN2Dashboard = () => {
       dailyData.push({
         day: dayNumber,
         eth: monthProduction ? Math.round(monthProduction.eth / daysInMonth) : 0,
-        otc: monthProduction ? Math.round(monthProduction.otc / daysInMonth) : 0
+        otc: monthProduction ? Math.round(monthProduction.otc / daysInMonth) : 0,
+        generik: monthProduction ? Math.round(monthProduction.generik / daysInMonth) : 0
       });
     }
 
@@ -823,6 +835,7 @@ const LinePN2Dashboard = () => {
         day: i + 1,
         eth: 0,
         otc: 0,
+        generik: 0,
         total: 0
       }));
     }
@@ -832,7 +845,7 @@ const LinePN2Dashboard = () => {
     const currentMonth = currentDate.getMonth(); // 0-indexed
     const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
 
-    // Create a map for quick lookup: day -> {eth, otc}
+    // Create a map for quick lookup: day -> {eth, otc, generik}
     const dailyMap = {};
     
     dailyProductionData.forEach(item => {
@@ -841,7 +854,7 @@ const LinePN2Dashboard = () => {
       const productId = item.Product_ID;
       const production = parseFloat(item.DailyProduction) || 0;
       
-      // Only include PN1 products
+      // Only include PN2 products
       if (productGroupDept[productId] !== 'PN2') {
         return;
       }
@@ -849,12 +862,14 @@ const LinePN2Dashboard = () => {
       const category = productCategories[productId] || 'ETH';
       
       if (!dailyMap[day]) {
-        dailyMap[day] = { eth: 0, otc: 0 };
+        dailyMap[day] = { eth: 0, otc: 0, generik: 0 };
       }
       
-      // Add production to the appropriate category (only ETH or OTC for PN1)
+      // Add production to the appropriate category
       if (category === 'OTC') {
         dailyMap[day].otc += production;
+      } else if (category === 'Generik') {
+        dailyMap[day].generik += production;
       } else {
         dailyMap[day].eth += production;
       }
@@ -863,13 +878,14 @@ const LinePN2Dashboard = () => {
     // Build array for all days in the month
     const dailyData = [];
     for (let day = 1; day <= daysInMonth; day++) {
-      const dayData = dailyMap[day] || { eth: 0, otc: 0 };
-      const total = dayData.eth + dayData.otc;
+      const dayData = dailyMap[day] || { eth: 0, otc: 0, generik: 0 };
+      const total = dayData.eth + dayData.otc + dayData.generik;
       
       dailyData.push({
         day: day,
         eth: Math.round(dayData.eth),
         otc: Math.round(dayData.otc),
+        generik: Math.round(dayData.generik),
         total: Math.round(total)
       });
     }
@@ -1128,7 +1144,8 @@ const LinePN2Dashboard = () => {
     // Prepare product breakdown data by category
     const productsByCategory = {
       ETH: [],
-      OTC: []
+      OTC: [],
+      Generik: []
     };
 
     if (isMonthly) {
@@ -1680,6 +1697,13 @@ const LinePN2Dashboard = () => {
         backgroundColor: 'rgba(79, 140, 255, 0.8)',
         borderColor: '#4f8cff',
         borderWidth: 1
+      },
+      {
+        label: 'Generik',
+        data: productionData.monthly.map(d => d.hasData ? d.generik : null),
+        backgroundColor: 'rgba(34, 197, 94, 0.8)',
+        borderColor: '#22c55e',
+        borderWidth: 1
       }
     ]
   };
@@ -1761,6 +1785,15 @@ const LinePN2Dashboard = () => {
         data: actualDailyData.map(d => d.otc),
         borderColor: '#4f8cff',
         backgroundColor: 'rgba(79, 140, 255, 0.1)',
+        borderWidth: 2,
+        tension: 0.4,
+        fill: true
+      },
+      {
+        label: 'Generik',
+        data: actualDailyData.map(d => d.generik),
+        borderColor: '#22c55e',
+        backgroundColor: 'rgba(34, 197, 94, 0.1)',
         borderWidth: 2,
         tension: 0.4,
         fill: true
@@ -2296,9 +2329,16 @@ const LinePN2Dashboard = () => {
             {/* Category Cards Container */}
             <div style={{ 
               display: 'grid', 
-              gridTemplateColumns: outputModalData.productsByCategory.ETH?.length > 0 && outputModalData.productsByCategory.OTC?.length > 0 
-                ? '1fr 1fr' 
-                : '1fr',
+              gridTemplateColumns: (() => {
+                const hasETH = outputModalData.productsByCategory.ETH?.length > 0;
+                const hasOTC = outputModalData.productsByCategory.OTC?.length > 0;
+                const hasGenerik = outputModalData.productsByCategory.Generik?.length > 0;
+                const count = [hasETH, hasOTC, hasGenerik].filter(Boolean).length;
+                
+                if (count === 3) return '1fr 1fr 1fr';
+                if (count === 2) return '1fr 1fr';
+                return '1fr';
+              })(),
               gap: '20px',
               marginBottom: '10px',
               alignItems: 'start'
@@ -2558,11 +2598,140 @@ const LinePN2Dashboard = () => {
                   </div>
                 </div>
               )}
+
+              {/* Generik Category Card */}
+              {outputModalData.productsByCategory.Generik && outputModalData.productsByCategory.Generik.length > 0 && (
+                <div style={{
+                  border: '2px solid #22c55e',
+                  borderRadius: '12px',
+                  overflow: 'hidden',
+                  backgroundColor: 'white',
+                  boxShadow: '0 4px 12px rgba(34, 197, 94, 0.15)',
+                  transition: 'transform 0.2s, box-shadow 0.2s',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  maxHeight: '500px'
+                }}>
+                  {/* Category Header */}
+                  <div style={{
+                    background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+                    padding: '16px 20px',
+                    color: 'white',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexShrink: 0
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span style={{ fontSize: '20px' }}>🧪</span>
+                      <span style={{ fontSize: '18px', fontWeight: '600' }}>Generik Products</span>
+                    </div>
+                    <div style={{
+                      backgroundColor: 'rgba(255, 255, 255, 0.25)',
+                      padding: '6px 14px',
+                      borderRadius: '20px',
+                      fontSize: '14px',
+                      fontWeight: '600'
+                    }}>
+                      {outputModalData.categoryTotals.Generik.toLocaleString()} units
+                    </div>
+                  </div>
+                  
+                  {/* Products Table */}
+                  <div style={{ 
+                    padding: '20px',
+                    overflowY: 'auto',
+                    flexGrow: 1
+                  }}>
+                    <table style={{ 
+                      width: '100%', 
+                      borderCollapse: 'separate',
+                      borderSpacing: '0'
+                    }}>
+                      <thead>
+                        <tr style={{
+                          backgroundColor: '#f0fdf4',
+                          borderBottom: '2px solid #22c55e'
+                        }}>
+                          <th style={{
+                            padding: '12px 16px',
+                            textAlign: 'left',
+                            fontSize: '13px',
+                            fontWeight: '600',
+                            color: '#166534',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.5px'
+                          }}>Product Name</th>
+                          <th style={{
+                            padding: '12px 16px',
+                            textAlign: 'right',
+                            fontSize: '13px',
+                            fontWeight: '600',
+                            color: '#166534',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.5px'
+                          }}>Units</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {outputModalData.productsByCategory.Generik.length === 0 ? (
+                          <tr>
+                            <td colSpan="2" style={{
+                              padding: '40px 16px',
+                              textAlign: 'center',
+                              color: '#9ca3af',
+                              fontSize: '14px'
+                            }}>
+                              No Generik products produced
+                            </td>
+                          </tr>
+                        ) : (
+                          outputModalData.productsByCategory.Generik.map((product, idx) => (
+                            <tr key={idx} style={{
+                              borderBottom: idx < outputModalData.productsByCategory.Generik.length - 1 ? '1px solid #e5e7eb' : 'none',
+                              transition: 'background-color 0.15s'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
+                              <td style={{
+                                padding: '14px 16px',
+                                fontSize: '14px',
+                                color: '#1f2937'
+                              }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span style={{
+                                    width: '6px',
+                                    height: '6px',
+                                    borderRadius: '50%',
+                                    backgroundColor: '#22c55e',
+                                    display: 'inline-block'
+                                  }}></span>
+                                  {product.productName}
+                                </div>
+                              </td>
+                              <td style={{
+                                padding: '14px 16px',
+                                textAlign: 'right',
+                                fontSize: '15px',
+                                fontWeight: '600',
+                                color: '#16a34a'
+                              }}>
+                                {product.units.toLocaleString()}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* No Data Message */}
             {(!outputModalData.productsByCategory.ETH || outputModalData.productsByCategory.ETH.length === 0) &&
-             (!outputModalData.productsByCategory.OTC || outputModalData.productsByCategory.OTC.length === 0) && (
+             (!outputModalData.productsByCategory.OTC || outputModalData.productsByCategory.OTC.length === 0) &&
+             (!outputModalData.productsByCategory.Generik || outputModalData.productsByCategory.Generik.length === 0) && (
               <div style={{
                 textAlign: 'center',
                 padding: '40px',
