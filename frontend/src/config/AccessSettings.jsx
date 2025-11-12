@@ -124,6 +124,16 @@ export const PAGE_ACCESS = {
     ],
   },
 
+  'quality': {
+    requireAuth: true,
+    allowedDepartments: ['NT'], // Full access for these departments
+    allowedUserIds: [], // Specific users who always have access
+    allowedJobLevels: [], // No general job level restriction
+    specificCombinations: [
+      // Example: { department: 'PC', jobLevel: 'MGR' }
+    ],
+  },
+
   // WIP Report Page
   'wip': {
     requireAuth: true,

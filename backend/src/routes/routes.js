@@ -35,6 +35,9 @@ router.get('/pctAverage', SqlController.getProductCycleTimeAverage);
 router.get('/pctSummary', SqlController.getPCTSummary);
 router.get('/pctBreakdown', SqlController.getPCTBreakdown);
 
+// Routing Lead Time
+router.get('/leadTime', SqlController.getLeadTime);
+
 // Routing Stock Related
 router.get('/stockReport', SqlController.getStockReport);
 router.get('/monthlyForecast', SqlController.getMonthlyForecast);
@@ -51,5 +54,6 @@ router.get('/productList', SqlController.getProductList);
 router.get('/otcProducts', SqlController.getOTCProducts);
 router.get('/productGroupDept', SqlController.getProductGroupDept);
 router.get('/releasedBatches', SqlController.getReleasedBatches);
+router.get('/releasedBatchesYTD', SqlController.getReleasedBatchesYTD);
 
 module.exports = router;

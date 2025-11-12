@@ -11,6 +11,7 @@ import SummaryDashboard from "./components/SummaryDashboard";
 import ProductionDashboard from "./components/ProductionDashboard";
 import LinePN1Dashboard from "./components/LinePN1Dashboard";
 import LinePN2Dashboard from "./components/LinePN2Dashboard";
+import QualityDashboard from "./components/QualityDashboard";
 import LandingPage from "./components/LandingPage";
 
 // Component to handle auth token from URL
@@ -101,6 +102,7 @@ export default function AppRouter() {
         <Route path="/production" element={<ProtectedRoute pageName="production"><ProductionDashboard /></ProtectedRoute>} />
         <Route path="/line-pn1" element={<ProtectedRoute pageName="line-pn1"><LinePN1Dashboard /></ProtectedRoute>} />
         <Route path="/line-pn2" element={<ProtectedRoute pageName="line-pn2"><LinePN2Dashboard /></ProtectedRoute>} />
+        <Route path="/quality" element={<ProtectedRoute pageName="quality"><QualityDashboard /></ProtectedRoute>} />
         <Route path="/stock-forecast" element={<ProtectedRoute pageName="stock-forecast"><StockForecastDashboard /></ProtectedRoute>} />
       </Routes>
       </AuthHandler>

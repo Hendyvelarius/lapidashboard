@@ -298,6 +298,16 @@ async function getReleasedBatches(req, res) {
   }
 }
 
+async function getReleasedBatchesYTD(req, res) {
+  try {
+    const data = await SqlModel.getReleasedBatchesYTD();
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching Released Batches YTD:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
 async function getDailyProduction(req, res) {
   try {
     const data = await SqlModel.getDailyProduction();
@@ -308,4 +318,15 @@ async function getDailyProduction(req, res) {
   }
 }
 
-module.exports = { getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getPCTSummary, getOrderFulfillment, getStockReport, getofsummary, getPCTBreakdown, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getDailyProduction };
+async function getLeadTime(req, res) {
+  try {
+    const period = req.query.period || 'MTD'; // Default to MTD if not specified
+    const data = await SqlModel.getLeadTime(period);
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching Lead Time:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+module.exports = { getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getPCTSummary, getOrderFulfillment, getStockReport, getofsummary, getPCTBreakdown, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime };

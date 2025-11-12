@@ -29,17 +29,17 @@ const cards = [
   {
     icon: <FaIndustry size={36} color="#8b5cf6" />, // Line PN1
     title: "Line PN1",
-    desc: "Dashboard khusus untuk production line PN1.",
+    desc: "Dashboard produksi pabrik untuk production line PN1.",
   },
   {
     icon: <FaIndustry size={36} color="#ec4899" />, // Line PN2
     title: "Line PN2",
-    desc: "Dashboard khusus untuk production line PN2.",
+    desc: "Dashboard produksi pabrik untuk production line PN2.",
   },
   {
-    icon: <FaRegImage size={36} color="#6a5acd" />,
-    title: "In Construction",
-    desc: "Work in progress, coming soon.",
+    icon: <FaFlask size={36} color="#22c55e" />, // Quality
+    title: "Quality",
+    desc: "Dashboard produksi pabrik untuk QC, Lab Mikro, dan QA.",
   },
   {
     icon: <FaRegFolderOpen size={36} color="#e57373" />,
@@ -71,6 +71,8 @@ export default function ReportsGrid() {
       navigate("/line-pn1");
     } else if (card.title === "Line PN2") {
       navigate("/line-pn2");
+    } else if (card.title === "Quality") {
+      navigate("/quality");
     }
     // Add more navigation cases for other cards here later
   };

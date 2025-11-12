@@ -479,6 +479,81 @@ async function getPCTBreakdown(period = 'MTD') {
   return result.recordset;
 }
 
+async function getLeadTime(period = 'MTD') {
+  const db = await connect();
+  
+  // Determine the date filter based on period
+  let dateFilter;
+  if (period === 'YTD') {
+    // Year-to-Date: filter by year only
+    dateFilter = `AND YEAR(sc.Stage_Completion_Date) = YEAR(GETDATE())`;
+  } else {
+    // Month-to-Date (default): filter by year and month
+    dateFilter = `AND YEAR(sc.Stage_Completion_Date) = YEAR(GETDATE())
+        AND MONTH(sc.Stage_Completion_Date) = MONTH(GETDATE())`;
+  }
+  
+  const query = `
+    WITH FilteredAlur AS (
+      SELECT 
+        ap.Product_ID,
+        ap.Batch_No,
+        ap.Batch_Date,
+        ap.nama_tahapan,
+        ap.kode_tahapan,
+        ap.StartDate,
+        ap.EndDate,
+        mp.Product_Name,
+        ISNULL(mtg.tahapan_group, 'Other') AS tahapan_group
+      FROM t_alur_proses ap
+      JOIN m_Product mp ON ap.Product_ID = mp.Product_ID
+      LEFT JOIN m_tahapan_group mtg ON ap.kode_tahapan = mtg.kode_tahapan
+      WHERE 
+        ap.Batch_Date LIKE '[1-2][0-9][0-9][0-9]/[0-1][0-9]/[0-3][0-9]'
+        AND LEN(ap.Batch_Date) = 10
+        AND ISDATE(ap.Batch_Date) = 1
+        AND mp.Product_Name NOT LIKE '%granulat%'
+        AND mtg.tahapan_group IN ('QC', 'Mikro')
+    ),
+    -- Group by batch and stage, find completion date (MAX EndDate) for each stage
+    StageCompletions AS (
+      SELECT 
+        fa.Product_ID,
+        fa.Batch_No,
+        fa.Batch_Date,
+        fa.Product_Name,
+        fa.tahapan_group,
+        MAX(fa.EndDate) AS Stage_Completion_Date,
+        MIN(fa.StartDate) AS Stage_Start_Date,
+        COUNT(*) AS Total_Steps,
+        COUNT(fa.EndDate) AS Completed_Steps
+      FROM FilteredAlur fa
+      GROUP BY fa.Product_ID, fa.Batch_No, fa.Batch_Date, fa.Product_Name, fa.tahapan_group
+    )
+    -- Return only batches where ALL steps in the stage are completed (Completed_Steps = Total_Steps)
+    -- and the completion date is within the specified period
+    SELECT 
+      sc.Product_ID,
+      sc.Batch_No,
+      sc.Batch_Date,
+      sc.Product_Name,
+      sc.tahapan_group AS Stage_Name,
+      sc.Stage_Completion_Date,
+      sc.Stage_Start_Date,
+      DATEDIFF(DAY, sc.Stage_Start_Date, sc.Stage_Completion_Date) AS Stage_Duration_Days,
+      sc.Total_Steps,
+      sc.Completed_Steps
+    FROM StageCompletions sc
+    WHERE sc.Completed_Steps = sc.Total_Steps
+      AND sc.Stage_Completion_Date IS NOT NULL
+      ${dateFilter}
+    ORDER BY sc.Stage_Completion_Date, sc.Batch_No
+  `;
+  
+  const result = await db.request().query(query);
+  return result.recordset;
+}
+
 async function getWIPData() {
   const db = await connect();
   const query = `
@@ -658,6 +733,28 @@ async function getReleasedBatches() {
   return result.recordset;
 }
 
+async function getReleasedBatchesYTD() {
+  const db = await connect();
+  
+  // Get current year for filtering
+  const currentYear = new Date().getFullYear();
+  
+  const query = `
+    SELECT 
+      DNc_ProductID, 
+      DNc_BatchNo, 
+      DNC_Diluluskan,
+      dnc_status,
+      Process_Date
+    FROM t_dnc_product
+    WHERE dnc_status = 'DILULUSKAN'
+      AND YEAR(Process_Date) = ${currentYear}
+  `;
+  
+  const result = await db.request().query(query);
+  return result.recordset;
+}
+
 async function getDailyProduction() {
   const db = await connect();
   
@@ -689,4 +786,4 @@ async function getDailyProduction() {
   return result.recordset;
 }
 
-module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTSummary, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getDailyProduction};
+module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTSummary, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime};
