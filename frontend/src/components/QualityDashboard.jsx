@@ -473,6 +473,7 @@ const QualityDashboard = () => {
   const [sidebarChartKey, setSidebarChartKey] = useState(0); // Key for sidebar-triggered re-render only
   const [currentDateTime, setCurrentDateTime] = useState(new Date());
   const [refreshing, setRefreshing] = useState(false);
+  const [lastFetchTime, setLastFetchTime] = useState(null); // Track last data fetch time
   const [wipData, setWipData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [forecastData, setForecastData] = useState([]);
@@ -653,6 +654,7 @@ const QualityDashboard = () => {
     };
 
     fetchData();
+    setLastFetchTime(new Date()); // Set initial fetch time
   }, []);
 
   // Separate effect to check when all critical data is loaded and ready
@@ -742,8 +744,78 @@ const QualityDashboard = () => {
     // Calculate days in stage for each batch using ALL its entries
     // Also separate into In Progress and Waiting
     Object.keys(stageData).forEach(stageKey => {
+      const stageName = stageKey.split(' ')[1]; // Extract 'QC', 'Mikro', or 'QA'
+      
       stageData[stageKey].batches.forEach((batch, batchNo) => {
-        // Check if batch is in progress for this stage
+        // Special logic for QA stage
+        if (stageName === 'QA') {
+          const requiredQASteps = [
+            'Cek Dokumen PC oleh QA',
+            'Cek Dokumen PN oleh QA',
+            'Cek Dokumen MC oleh QA',
+            'Cek Dokumen QC oleh QA'
+          ];
+          
+          // Find all the required QA steps that have IdleStartDate
+          const qaStepsWithIdleDate = batch.entries.filter(entry => 
+            requiredQASteps.includes(entry.nama_tahapan) && entry.IdleStartDate
+          );
+          
+          // Check if all 4 required steps have IdleStartDate
+          const allRequiredStepsStarted = requiredQASteps.every(stepName =>
+            qaStepsWithIdleDate.some(entry => entry.nama_tahapan === stepName)
+          );
+          
+          // If not all 4 steps have started, exclude this batch from QA
+          if (!allRequiredStepsStarted) {
+            stageData[stageKey].batches.delete(batchNo);
+            return; // Skip this batch
+          }
+          
+          // Check if QA batch is actually in progress (same logic as Production Dashboard)
+          const hasStartDate = batch.entries.some(e => e.StartDate);
+          const hasMissingEndDate = batch.entries.some(e => !e.EndDate);
+          const hasDisplayFlag = batch.entries.some(e => e.Display === '1' || e.Display === 1);
+          
+          // Check if batch is in waiting status
+          const isWaiting = isBatchWaiting(batch.entries);
+          
+          // Batch must be either in progress, have display flag, or be waiting
+          if (!isWaiting && !((hasStartDate && hasMissingEndDate) || hasDisplayFlag)) {
+            stageData[stageKey].batches.delete(batchNo);
+            return; // Skip this batch - not actually in progress
+          }
+          
+          // For QA, use the LATEST IdleStartDate among the 4 required steps
+          let latestIdleDate = null;
+          qaStepsWithIdleDate.forEach(entry => {
+            if (requiredQASteps.includes(entry.nama_tahapan)) {
+              const idleDate = new Date(entry.IdleStartDate);
+              if (!isNaN(idleDate.getTime())) {
+                if (!latestIdleDate || idleDate > latestIdleDate) {
+                  latestIdleDate = idleDate;
+                }
+              }
+            }
+          });
+          
+          let daysInStage = 0;
+          if (latestIdleDate) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            latestIdleDate.setHours(0, 0, 0, 0);
+            
+            const diffTime = today - latestIdleDate;
+            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+            daysInStage = Math.max(0, diffDays);
+          }
+          
+          batch.daysInStage = daysInStage;
+          batch.isWaiting = isWaiting;
+          return; // QA logic complete, continue to next batch
+        }
+        
+        // Default logic for QC and Mikro stages
         const hasStartDate = batch.entries.some(e => e.StartDate);
         const hasMissingEndDate = batch.entries.some(e => !e.EndDate);
         const hasDisplayFlag = batch.entries.some(e => e.Display === '1' || e.Display === 1);
@@ -938,7 +1010,7 @@ const QualityDashboard = () => {
   // Process Lead Time data for a specific stage (QC or Mikro)
   const processLeadTimeData = (stageName) => {
     if (!leadTimeData || leadTimeData.length === 0) {
-      return { daily: [] };
+      return { daily: [], averageLeadTime: 0 };
     }
 
     const today = new Date();
@@ -948,6 +1020,19 @@ const QualityDashboard = () => {
 
     // Filter data for the specific stage
     const stageData = leadTimeData.filter(item => item.Stage_Name === stageName);
+
+    // Calculate average lead time for all batches in the current month
+    let totalLeadTime = 0;
+    let batchCount = 0;
+    
+    stageData.forEach(item => {
+      if (item.Stage_Duration_Days != null) {
+        totalLeadTime += item.Stage_Duration_Days;
+        batchCount++;
+      }
+    });
+    
+    const averageLeadTime = batchCount > 0 ? (totalLeadTime / batchCount).toFixed(1) : 0;
 
     // Build daily data (MTD)
     const dailyData = [];
@@ -977,7 +1062,7 @@ const QualityDashboard = () => {
       });
     }
 
-    return { daily: dailyData };
+    return { daily: dailyData, averageLeadTime: averageLeadTime };
   };
 
   // Get lead time data for QC and Mikro
@@ -1193,6 +1278,28 @@ const QualityDashboard = () => {
     return () => clearInterval(timer);
   }, []);
 
+  // Auto-refresh data every hour (3600000 ms)
+  useEffect(() => {
+    const checkAndRefresh = () => {
+      if (!lastFetchTime || refreshing) return;
+      
+      const now = new Date();
+      const timeSinceLastFetch = now - lastFetchTime;
+      const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
+      
+      // If more than 1 hour has passed, trigger a silent refresh
+      if (timeSinceLastFetch >= oneHour) {
+        console.log('Auto-refreshing data (1 hour elapsed)...');
+        handleRefresh();
+      }
+    };
+
+    // Check every minute if we need to refresh
+    const interval = setInterval(checkAndRefresh, 60000);
+
+    return () => clearInterval(interval);
+  }, [lastFetchTime, refreshing]);
+
   // Format date and time
   const formatDateTime = () => {
     const options = { 
@@ -1204,6 +1311,21 @@ const QualityDashboard = () => {
       minute: '2-digit'
     };
     return currentDateTime.toLocaleDateString('en-US', options);
+  };
+
+  // Format last fetch time for display
+  const formatLastFetchTime = () => {
+    if (!lastFetchTime) return 'Loading...';
+    
+    const options = { 
+      weekday: 'long', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    };
+    return lastFetchTime.toLocaleDateString('en-US', options);
   };
 
   // Handle manual refresh
@@ -1261,6 +1383,9 @@ const QualityDashboard = () => {
     } catch (error) {
       console.error('Error refreshing data:', error);
     }
+    
+    // Update last fetch time
+    setLastFetchTime(new Date());
     
     // Force all charts to re-render
     setSidebarChartKey(prev => prev + 1);
@@ -1712,6 +1837,30 @@ const QualityDashboard = () => {
       if (!batch.hasMissingEndDate && !batch.hasDisplayFlag) {
         return false;
       }
+      
+      // Special check for QA stage - only include if all 4 required steps have started
+      if (actualStageName === 'QA') {
+        const requiredQASteps = [
+          'Cek Dokumen PC oleh QA',
+          'Cek Dokumen PN oleh QA',
+          'Cek Dokumen MC oleh QA',
+          'Cek Dokumen QC oleh QA'
+        ];
+        
+        const qaStepsWithIdleDate = batch.entries.filter(entry => 
+          requiredQASteps.includes(entry.nama_tahapan) && entry.IdleStartDate
+        );
+        
+        const allRequiredStepsStarted = requiredQASteps.every(stepName =>
+          qaStepsWithIdleDate.some(entry => entry.nama_tahapan === stepName)
+        );
+        
+        // If not all 4 steps have started, exclude this batch from QA modal
+        if (!allRequiredStepsStarted) {
+          return false;
+        }
+      }
+      
       const isWaiting = isBatchWaiting(batch.entries);
       const isInProgress = (batch.hasStartDate && batch.hasMissingEndDate) || batch.hasDisplayFlag;
       return isInProgress || isWaiting;
@@ -1723,27 +1872,60 @@ const QualityDashboard = () => {
 
     // Calculate days in stage for each batch and categorize
     activeBatches.forEach(batch => {
-      // Find earliest IdleStartDate
-      let earliestIdleDate = null;
-      batch.entries.forEach(entry => {
-        if (entry.IdleStartDate) {
-          const idleDate = new Date(entry.IdleStartDate);
-          if (!isNaN(idleDate.getTime())) {
-            if (!earliestIdleDate || idleDate < earliestIdleDate) {
-              earliestIdleDate = idleDate;
+      let idleDate = null;
+      
+      // Special logic for QA stage - use LATEST IdleStartDate
+      if (actualStageName === 'QA') {
+        const requiredQASteps = [
+          'Cek Dokumen PC oleh QA',
+          'Cek Dokumen PN oleh QA',
+          'Cek Dokumen MC oleh QA',
+          'Cek Dokumen QC oleh QA'
+        ];
+        
+        const qaStepsWithIdleDate = batch.entries.filter(entry => 
+          requiredQASteps.includes(entry.nama_tahapan) && entry.IdleStartDate
+        );
+        
+        // Find the LATEST IdleStartDate among the 4 required steps
+        let latestIdleDate = null;
+        qaStepsWithIdleDate.forEach(entry => {
+          if (requiredQASteps.includes(entry.nama_tahapan)) {
+            const entryIdleDate = new Date(entry.IdleStartDate);
+            if (!isNaN(entryIdleDate.getTime())) {
+              if (!latestIdleDate || entryIdleDate > latestIdleDate) {
+                latestIdleDate = entryIdleDate;
+              }
             }
           }
-        }
-      });
+        });
+        
+        idleDate = latestIdleDate;
+      } else {
+        // Default logic for other stages - use EARLIEST IdleStartDate
+        let earliestIdleDate = null;
+        batch.entries.forEach(entry => {
+          if (entry.IdleStartDate) {
+            const entryIdleDate = new Date(entry.IdleStartDate);
+            if (!isNaN(entryIdleDate.getTime())) {
+              if (!earliestIdleDate || entryIdleDate < earliestIdleDate) {
+                earliestIdleDate = entryIdleDate;
+              }
+            }
+          }
+        });
+        
+        idleDate = earliestIdleDate;
+      }
 
-      if (earliestIdleDate) {
+      if (idleDate) {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        earliestIdleDate.setHours(0, 0, 0, 0);
-        const diffTime = today - earliestIdleDate;
+        idleDate.setHours(0, 0, 0, 0);
+        const diffTime = today - idleDate;
         const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
         batch.daysInStage = Math.max(0, diffDays);
-        batch.stageStart = earliestIdleDate.toLocaleDateString('en-GB');
+        batch.stageStart = idleDate.toLocaleDateString('en-GB');
       } else {
         batch.daysInStage = 0;
         batch.stageStart = 'N/A';
@@ -2301,6 +2483,7 @@ const QualityDashboard = () => {
   // Lead Time Chart Data and Options
   const currentLeadTimeData = leadTimeView === 'qc' ? leadTimeQCData : leadTimeMikroData;
   const leadTimeStageName = leadTimeView === 'qc' ? 'QC' : 'Mikro';
+  const averageLeadTime = currentLeadTimeData?.averageLeadTime || 0;
 
   // Ensure data exists with defaults
   const safeLeadTimeData = {
@@ -2312,7 +2495,7 @@ const QualityDashboard = () => {
     labels: safeLeadTimeData.daily.map(d => d.day.toString()),
     datasets: [
       {
-        label: `${leadTimeStageName} Batches Completed`,
+        label: `${leadTimeStageName} Lead Time: ${averageLeadTime} days`,
         data: safeLeadTimeData.daily.map(d => d.count || 0),
         borderColor: leadTimeView === 'qc' ? '#2196f3' : '#9c27b0',
         backgroundColor: leadTimeView === 'qc' ? 'rgba(33, 150, 243, 0.1)' : 'rgba(156, 39, 176, 0.1)',
@@ -2341,10 +2524,6 @@ const QualityDashboard = () => {
         left: 5,
         right: 5
       }
-    },
-    interaction: {
-      mode: 'index',
-      intersect: false,
     },
     scales: {
       x: {
@@ -2512,7 +2691,7 @@ const QualityDashboard = () => {
               <h1>Quality Dashboard</h1>
               <div className="quality-datetime">
                 <span>📅</span>
-                <span>{formatDateTime()}</span>
+                <span>Last updated: {formatLastFetchTime()}</span>
               </div>
             </div>
             <button 
@@ -3966,16 +4145,12 @@ const QualityDashboard = () => {
                       }}>
                         <div style={{
                           display: 'inline-block',
-                          backgroundColor: batch.leadTimeDays <= 3 
-                            ? '#10b98120' 
-                            : batch.leadTimeDays <= 7 
-                              ? '#f59e0b20' 
-                              : '#ef444420',
-                          color: batch.leadTimeDays <= 3 
-                            ? '#059669' 
-                            : batch.leadTimeDays <= 7 
-                              ? '#d97706' 
-                              : '#dc2626',
+                          backgroundColor: leadTimeModalData.stageName === 'QC' 
+                            ? '#e3f2fd' 
+                            : '#f3e5f5',
+                          color: leadTimeModalData.stageName === 'QC' 
+                            ? '#1976d2' 
+                            : '#7b1fa2',
                           padding: '6px 12px',
                           borderRadius: '20px',
                           fontSize: '13px',
@@ -3996,58 +4171,6 @@ const QualityDashboard = () => {
                   ))}
                 </tbody>
               </table>
-            </div>
-
-            {/* Summary Stats */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr 1fr',
-              gap: '12px',
-              marginTop: '20px',
-              marginBottom: '10px'
-            }}>
-              <div style={{
-                backgroundColor: '#10b98110',
-                borderRadius: '8px',
-                padding: '12px',
-                textAlign: 'center',
-                border: '1px solid #10b98130'
-              }}>
-                <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '4px' }}>
-                  Fast (≤3 days)
-                </div>
-                <div style={{ fontSize: '20px', fontWeight: '700', color: '#059669' }}>
-                  {leadTimeModalData.batches.filter(b => b.leadTimeDays <= 3).length}
-                </div>
-              </div>
-              <div style={{
-                backgroundColor: '#f59e0b10',
-                borderRadius: '8px',
-                padding: '12px',
-                textAlign: 'center',
-                border: '1px solid #f59e0b30'
-              }}>
-                <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '4px' }}>
-                  Moderate (4-7 days)
-                </div>
-                <div style={{ fontSize: '20px', fontWeight: '700', color: '#d97706' }}>
-                  {leadTimeModalData.batches.filter(b => b.leadTimeDays > 3 && b.leadTimeDays <= 7).length}
-                </div>
-              </div>
-              <div style={{
-                backgroundColor: '#ef444410',
-                borderRadius: '8px',
-                padding: '12px',
-                textAlign: 'center',
-                border: '1px solid #ef444430'
-              }}>
-                <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '4px' }}>
-                  Slow (&gt;7 days)
-                </div>
-                <div style={{ fontSize: '20px', fontWeight: '700', color: '#dc2626' }}>
-                  {leadTimeModalData.batches.filter(b => b.leadTimeDays > 7).length}
-                </div>
-              </div>
             </div>
           </div>
         </Modal>

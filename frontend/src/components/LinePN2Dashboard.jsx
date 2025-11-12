@@ -474,6 +474,7 @@ const LinePN2Dashboard = () => {
   const [sidebarChartKey, setSidebarChartKey] = useState(0); // Key for sidebar-triggered re-render only
   const [currentDateTime, setCurrentDateTime] = useState(new Date());
   const [refreshing, setRefreshing] = useState(false);
+  const [lastFetchTime, setLastFetchTime] = useState(null); // Track last data fetch time
   const [wipData, setWipData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [forecastData, setForecastData] = useState([]);
@@ -639,6 +640,7 @@ const LinePN2Dashboard = () => {
     };
 
     fetchData();
+    setLastFetchTime(new Date()); // Set initial fetch time
   }, []);
 
   // Separate effect to check when all critical data is loaded and ready
@@ -1152,6 +1154,28 @@ const LinePN2Dashboard = () => {
     return () => clearInterval(timer);
   }, []);
 
+  // Auto-refresh data every hour (3600000 ms)
+  useEffect(() => {
+    const checkAndRefresh = () => {
+      if (!lastFetchTime || refreshing) return;
+      
+      const now = new Date();
+      const timeSinceLastFetch = now - lastFetchTime;
+      const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
+      
+      // If more than 1 hour has passed, trigger a silent refresh
+      if (timeSinceLastFetch >= oneHour) {
+        console.log('Auto-refreshing data (1 hour elapsed)...');
+        handleRefresh();
+      }
+    };
+
+    // Check every minute if we need to refresh
+    const interval = setInterval(checkAndRefresh, 60000);
+
+    return () => clearInterval(interval);
+  }, [lastFetchTime, refreshing]);
+
   // Format date and time
   const formatDateTime = () => {
     const options = { 
@@ -1163,6 +1187,21 @@ const LinePN2Dashboard = () => {
       minute: '2-digit'
     };
     return currentDateTime.toLocaleDateString('en-US', options);
+  };
+
+  // Format last fetch time for display
+  const formatLastFetchTime = () => {
+    if (!lastFetchTime) return 'Loading...';
+    
+    const options = { 
+      weekday: 'long', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    };
+    return lastFetchTime.toLocaleDateString('en-US', options);
   };
 
   // Handle manual refresh
@@ -1213,6 +1252,9 @@ const LinePN2Dashboard = () => {
     } catch (error) {
       console.error('Error refreshing data:', error);
     }
+    
+    // Update last fetch time
+    setLastFetchTime(new Date());
     
     // Force all charts to re-render
     setSidebarChartKey(prev => prev + 1);
@@ -2307,7 +2349,7 @@ const LinePN2Dashboard = () => {
               <h1>Line PN2 Dashboard</h1>
               <div className="line-pn2-datetime">
                 <span>📅</span>
-                <span>{formatDateTime()}</span>
+                <span>Last updated: {formatLastFetchTime()}</span>
               </div>
             </div>
             <button 
