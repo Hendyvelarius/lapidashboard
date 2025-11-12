@@ -9,6 +9,37 @@ import './LinePN2Dashboard.css';
 
 ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend);
 
+// Helper function to determine if a batch is in "Waiting" status for a stage
+// Waiting = all steps with IdleStartDate are completed, remaining steps don't have IdleStartDate yet
+// BUT if ALL tasks in the stage are complete, it's not waiting - the stage is done
+const isBatchWaiting = (entries) => {
+  if (!entries || entries.length === 0) return false;
+  
+  // First check: If ALL entries are complete (have EndDate), stage is finished - not waiting
+  const allEntriesComplete = entries.every(e => e.EndDate);
+  if (allEntriesComplete) {
+    return false; // Stage is complete, not waiting
+  }
+  
+  // Separate entries into two groups
+  const entriesWithIdleDate = entries.filter(e => e.IdleStartDate);
+  const entriesWithoutIdleDate = entries.filter(e => !e.IdleStartDate);
+  
+  // If there are no entries with IdleStartDate, it's not waiting (it's not started)
+  if (entriesWithIdleDate.length === 0) {
+    return false;
+  }
+  
+  // Check if ALL entries with IdleStartDate are completed (have EndDate)
+  const allIdleDateEntriesCompleted = entriesWithIdleDate.every(e => e.EndDate);
+  
+  // Check if there are remaining entries without IdleStartDate
+  const hasRemainingSteps = entriesWithoutIdleDate.length > 0;
+  
+  // Waiting = all idle-assigned steps are done AND there are steps waiting for idle assignment
+  return allIdleDateEntriesCompleted && hasRemainingSteps;
+};
+
 // WIP Summary Donut with Pointers Component
 const WIPDonutWithPointers = ({ stages }) => {
   const [animated, setAnimated] = useState(false);
@@ -396,11 +427,16 @@ const Speedometer = ({ label, value, maxValue = 50, stageName, batches = [], onC
       ) : (
         <div className="speedometer-batch-table">
           <div style={{
-            padding: '32px 16px',
+            padding: '120px 16px',
             textAlign: 'center',
             backgroundColor: '#f9fafb',
             borderRadius: '8px',
-            border: '1px dashed #d1d5db'
+            border: '1px dashed #d1d5db',
+            minHeight: '350px',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            alignItems: 'center'
           }}>
             <div style={{
               fontSize: '32px',
@@ -689,6 +725,7 @@ const LinePN2Dashboard = () => {
     });
 
     // Now calculate days in stage for each batch using ALL its entries
+    // Also separate into In Progress and Waiting
     prosesStages.forEach(stageName => {
       stageData[stageName].batches.forEach((batch, batchNo) => {
         // Check if batch is in progress for this stage
@@ -696,7 +733,10 @@ const LinePN2Dashboard = () => {
         const hasMissingEndDate = batch.entries.some(e => !e.EndDate);
         const hasDisplayFlag = batch.entries.some(e => e.Display === '1' || e.Display === 1);
 
-        if ((hasStartDate && hasMissingEndDate) || hasDisplayFlag) {
+        // Check if batch is in waiting status
+        const isWaiting = isBatchWaiting(batch.entries);
+
+        if (isWaiting || (hasStartDate && hasMissingEndDate) || hasDisplayFlag) {
           // Calculate days in stage using EARLIEST IdleStartDate from all entries
           // This matches Production Dashboard's calculateDaysInStage function
           let earliestIdleDate = null;
@@ -726,27 +766,39 @@ const LinePN2Dashboard = () => {
             daysInStage = Math.max(0, diffDays);
           }
 
-          // Update the batch with calculated days
+          // Update the batch with calculated days and waiting status
           batch.daysInStage = daysInStage;
+          batch.isWaiting = isWaiting;
         } else {
-          // Batch not in progress, remove it
+          // Batch not in progress or waiting, remove it
           stageData[stageName].batches.delete(batchNo);
         }
       });
     });
 
-    // Convert to array format and sort batches by days descending
+    // Convert to array format and separate into in-progress and waiting
     return prosesStages.map(stageName => {
-      const batchArray = Array.from(stageData[stageName].batches.values())
-        .sort((a, b) => b.daysInStage - a.daysInStage);
+      const allBatches = Array.from(stageData[stageName].batches.values());
+      
+      // Separate batches into in-progress and waiting
+      const inProgressBatches = allBatches.filter(b => !b.isWaiting);
+      const waitingBatches = allBatches.filter(b => b.isWaiting);
+      
+      // Sort in-progress batches by days descending
+      inProgressBatches.sort((a, b) => b.daysInStage - a.daysInStage);
+      
+      // Combine: in-progress first, waiting after
+      const sortedBatches = [...inProgressBatches, ...waitingBatches];
 
       return {
         name: stageName,
-        value: batchArray.length,
-        avgDays: batchArray.length > 0 
-          ? Math.round(batchArray.reduce((sum, b) => sum + b.daysInStage, 0) / batchArray.length)
+        value: inProgressBatches.length, // Only count in-progress batches in the speedometer value
+        waitingCount: waitingBatches.length, // Track waiting batches separately
+        totalCount: allBatches.length, // Total of both in-progress and waiting
+        avgDays: inProgressBatches.length > 0 
+          ? Math.round(inProgressBatches.reduce((sum, b) => sum + b.daysInStage, 0) / inProgressBatches.length)
           : 0,
-        batches: batchArray
+        batches: sortedBatches // All batches: in-progress first, then waiting
       };
     });
   };
@@ -901,75 +953,141 @@ const LinePN2Dashboard = () => {
     const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
     const todayDate = currentDate.getDate();
 
-    // Calculate total monthly target for PN1 products
-    let totalMonthlyTarget = 0;
+    // Build product-level target batch tracking
+    const productTargets = {}; // { productId: { targetBatches: Set, releasedBatches: Set } }
     
+    // First, collect all target batches per product
     ofTargetData.forEach(item => {
       const productId = item.ProductID;
-      const target = parseFloat(item.group_stdoutput) || 0;
-
-      // Check if this product is PN1
       const dept = productGroupDept[productId];
-      if (dept === 'PN2') {
-        totalMonthlyTarget += target;
+      const batchNo = String(item.ListBet || '');
+
+      if (dept === 'PN2' && batchNo) {
+        if (!productTargets[productId]) {
+          productTargets[productId] = {
+            targetBatches: new Set(),
+            releasedBatches: new Set(),
+            dailyReleasedBatches: {} // { day: Set of batch keys }
+          };
+        }
+        const batchKey = `${productId}-${batchNo}`;
+        productTargets[productId].targetBatches.add(batchKey);
       }
     });
 
-    // Aggregate actual production by day for PN1 products
-    const dailyActualMap = {}; // { day: totalProduction }
-    
+    // Create a map of target batch numbers for verification
+    const targetBatchMap = new Set();
+    ofTargetData.forEach(item => {
+      const productId = item.ProductID;
+      const dept = productGroupDept[productId];
+      const batchNo = String(item.ListBet || '');
+      
+      if (dept === 'PN2' && batchNo) {
+        targetBatchMap.add(`${productId}-${batchNo}`);
+      }
+    });
+
+    // Track released batches by day for each product
     ofActualData.forEach(item => {
       const productId = item.DNc_ProductID;
-      const actual = parseFloat(item.DNC_Diluluskan) || 0;
-      const processDate = item.Process_Date;
-
-      // Check if this product is PN1
       const dept = productGroupDept[productId];
+      
       if (dept !== 'PN2') return;
 
-      // Parse the process date to get the day
-      if (processDate) {
+      const batchNo = String(item.DNc_BatchNo || '');
+      const processDate = item.Process_Date;
+      const batchKey = `${productId}-${batchNo}`;
+
+      // Only count batches that are in the target OF list
+      if (!targetBatchMap.has(batchKey)) return;
+
+      if (processDate && batchNo) {
         const date = new Date(processDate);
         const day = date.getDate();
         
         // Only include if it's in the current month
         if (date.getMonth() === currentMonth && date.getFullYear() === currentYear) {
-          if (!dailyActualMap[day]) {
-            dailyActualMap[day] = 0;
+          if (productTargets[productId]) {
+            if (!productTargets[productId].dailyReleasedBatches[day]) {
+              productTargets[productId].dailyReleasedBatches[day] = new Set();
+            }
+            productTargets[productId].dailyReleasedBatches[day].add(batchKey);
+            productTargets[productId].releasedBatches.add(batchKey);
           }
-          dailyActualMap[day] += actual;
         }
       }
     });
 
-    // Build cumulative data for each day
+    // Calculate total target batches across all products
+    let totalTargetBatches = 0;
+    Object.values(productTargets).forEach(product => {
+      totalTargetBatches += product.targetBatches.size;
+    });
+
+    // Build daily average completion percentages
     const labels = [];
     const targetData = [];
     const actualCumulativeData = [];
-    const dailyProductionData = [];
+    const dailyBatchCounts = [];
+    const dailyCompletionPercentages = [];
     
-    let cumulativeActual = 0;
+    let cumulativeBatches = 0;
+    const processedBatches = new Set();
     
     for (let day = 1; day <= todayDate; day++) {
       labels.push(`${day}`);
       
-      // Target is always the monthly total (straight line)
-      targetData.push(Math.round(totalMonthlyTarget));
+      // Target is always 100% (all products at 100%)
+      targetData.push(100);
       
-      // Add daily actual to cumulative
-      const dailyActual = dailyActualMap[day] || 0;
-      cumulativeActual += dailyActual;
-      actualCumulativeData.push(Math.round(cumulativeActual));
-      dailyProductionData.push(Math.round(dailyActual));
+      // Calculate average completion percentage for this day (cumulative)
+      let totalProductPercentage = 0;
+      let productCount = 0;
+      let dailyNewBatches = 0;
+      
+      Object.values(productTargets).forEach(product => {
+        const targetCount = product.targetBatches.size;
+        if (targetCount === 0) return;
+        
+        productCount++;
+        
+        // Count cumulative released batches up to this day
+        let releasedCount = 0;
+        for (let d = 1; d <= day; d++) {
+          const dayBatches = product.dailyReleasedBatches[d] || new Set();
+          dayBatches.forEach(batchKey => {
+            if (product.targetBatches.has(batchKey) && !processedBatches.has(batchKey)) {
+              processedBatches.add(batchKey);
+              cumulativeBatches++;
+              if (d === day) dailyNewBatches++;
+            }
+            if (product.targetBatches.has(batchKey)) {
+              releasedCount++;
+            }
+          });
+        }
+        
+        // Calculate this product's completion percentage
+        const productPercentage = (releasedCount / targetCount) * 100;
+        totalProductPercentage += productPercentage;
+      });
+      
+      // Average completion percentage across all products
+      const avgCompletionPercentage = productCount > 0 ? totalProductPercentage / productCount : 0;
+      
+      actualCumulativeData.push(Math.round(avgCompletionPercentage * 10) / 10); // Round to 1 decimal
+      dailyBatchCounts.push(dailyNewBatches);
+      dailyCompletionPercentages.push(Math.round(avgCompletionPercentage * 10) / 10);
     }
 
     return { 
       labels, 
       targetData, 
       actualCumulativeData,
-      dailyProductionData,
-      totalMonthlyTarget: Math.round(totalMonthlyTarget),
-      currentCumulative: Math.round(cumulativeActual)
+      dailyProductionData: dailyBatchCounts,
+      totalMonthlyTarget: totalTargetBatches,
+      currentCumulative: cumulativeBatches,
+      dailyCompletionPercentages: dailyCompletionPercentages
     };
   };
 
@@ -1347,7 +1465,7 @@ const LinePN2Dashboard = () => {
       }
     });
 
-    // Round produced quantities and sort batches
+    // Round produced quantities, sort batches, and calculate product completion percentages
     Object.keys(productDetailsMap).forEach(productId => {
       const product = productDetailsMap[productId];
       
@@ -1360,6 +1478,13 @@ const LinePN2Dashboard = () => {
         batch.produced = Math.round(batch.produced);
       });
       
+      // Calculate product completion percentage
+      const targetBatchCount = product.targetBatches.length;
+      const producedBatchCount = product.targetBatches.filter(batch => batch.isProduced).length;
+      product.completionPercentage = targetBatchCount > 0 
+        ? Math.round((producedBatchCount / targetBatchCount) * 100) 
+        : 0;
+      
       // Sort target batches: produced first, then by batch number
       product.targetBatches.sort((a, b) => {
         if (a.isProduced !== b.isProduced) return b.isProduced - a.isProduced;
@@ -1367,21 +1492,57 @@ const LinePN2Dashboard = () => {
       });
     });
 
-    // Convert to array and sort by standard output (highest first)
+    // Convert to array and sort by unfilled target batches (most unfilled first)
     const productsList = Object.values(productDetailsMap)
       .filter(product => product.standardOutput > 0 || product.totalProduced > 0)
-      .sort((a, b) => b.standardOutput - a.standardOutput);
+      .sort((a, b) => {
+        // Calculate unfilled batches for each product
+        const unfilledA = a.targetBatches.filter(batch => !batch.isProduced).length;
+        const unfilledB = b.targetBatches.filter(batch => !batch.isProduced).length;
+        
+        // If both have unfilled batches, sort by most unfilled first
+        if (unfilledA > 0 && unfilledB > 0) {
+          return unfilledB - unfilledA;
+        }
+        
+        // Products with unfilled batches come before fully completed products
+        if (unfilledA > 0 && unfilledB === 0) return -1;
+        if (unfilledA === 0 && unfilledB > 0) return 1;
+        
+        // If both fully completed or both have no targets, sort by total target batches
+        const targetCountA = a.targetBatches.length;
+        const targetCountB = b.targetBatches.length;
+        
+        if (targetCountA > 0 && targetCountB > 0) {
+          return targetCountB - targetCountA;
+        }
+        
+        // Products with targets come before products with only extra batches
+        if (targetCountA > 0 && targetCountB === 0) return -1;
+        if (targetCountA === 0 && targetCountB > 0) return 1;
+        
+        // Both have no targets (only extra batches), sort by extra batch count
+        return b.extraBatches.length - a.extraBatches.length;
+      });
 
-    // Calculate totals
-    const totalTarget = Math.round(totalTargetSum);
-    const totalProduced = productsList.reduce((sum, p) => sum + p.totalProduced, 0);
+    // Calculate totals based on batch counts
+    const totalTargetBatches = productsList.reduce((sum, p) => sum + p.targetBatches.length, 0);
+    const totalProducedBatches = productsList.reduce((sum, p) => {
+      return sum + p.targetBatches.filter(batch => batch.isProduced).length;
+    }, 0);
+
+    // Calculate average completion percentage across all products
+    const totalProductPercentage = productsList.reduce((sum, p) => sum + p.completionPercentage, 0);
+    const avgCompletionRate = productsList.length > 0 
+      ? Math.round(totalProductPercentage / productsList.length) 
+      : 0;
 
     const modalData = {
       period: fullDate,
       products: productsList,
-      totalTarget: totalTarget,
-      totalProduced: totalProduced,
-      completionRate: totalTarget > 0 ? Math.round((totalProduced / totalTarget) * 100) : 0
+      totalTarget: totalTargetBatches,
+      totalProduced: totalProducedBatches,
+      completionRate: avgCompletionRate
     };
 
     setOf1ModalData(modalData);
@@ -1440,16 +1601,21 @@ const LinePN2Dashboard = () => {
       }
     });
 
-    // Filter to only show batches in progress
+    // Filter to only show batches in progress or waiting
     const activeBatches = Object.values(batchDetails).filter(batch => {
       if (!batch.hasMissingEndDate && !batch.hasDisplayFlag) {
         return false;
       }
+      const isWaiting = isBatchWaiting(batch.entries);
       const isInProgress = (batch.hasStartDate && batch.hasMissingEndDate) || batch.hasDisplayFlag;
-      return isInProgress;
+      return isInProgress || isWaiting;
     });
 
-    // Calculate days in stage for each batch
+    // Separate batches into In Progress and Waiting
+    const inProgressBatches = [];
+    const waitingBatches = [];
+
+    // Calculate days in stage for each batch and categorize
     activeBatches.forEach(batch => {
       // Find earliest IdleStartDate
       let earliestIdleDate = null;
@@ -1476,14 +1642,29 @@ const LinePN2Dashboard = () => {
         batch.daysInStage = 0;
         batch.stageStart = 'N/A';
       }
+
+      // Check if batch is waiting
+      const isWaiting = isBatchWaiting(batch.entries);
+      batch.isWaiting = isWaiting;
+
+      if (isWaiting) {
+        waitingBatches.push(batch);
+      } else {
+        inProgressBatches.push(batch);
+      }
     });
 
-    // Sort by longest duration first
-    activeBatches.sort((a, b) => b.daysInStage - a.daysInStage);
+    // Sort in-progress batches by longest duration first
+    inProgressBatches.sort((a, b) => b.daysInStage - a.daysInStage);
+
+    // Combine: in-progress first, waiting after
+    const allBatches = [...inProgressBatches, ...waitingBatches];
 
     setSelectedWipStageData({
       stageName: stageName,
-      batches: activeBatches,
+      batches: allBatches,
+      inProgressCount: inProgressBatches.length,
+      waitingCount: waitingBatches.length,
       color: '#4f8cff',
     });
     setWipStageModalOpen(true);
@@ -1897,12 +2078,12 @@ const LinePN2Dashboard = () => {
     }
   };
 
-  // Daily OF1 data (MTD Cumulative: Monthly Target vs Actual Production)
+  // Daily OF1 data (MTD Cumulative: Target 100% vs Average Product Completion %)
   const dailyOF1Data = {
     labels: of1ComparisonData.labels,
     datasets: [
       {
-        label: 'Monthly Target',
+        label: 'Target Completion',
         data: of1ComparisonData.targetData,
         borderColor: '#e57373',
         backgroundColor: 'transparent',
@@ -1914,7 +2095,7 @@ const LinePN2Dashboard = () => {
         pointHoverRadius: 4
       },
       {
-        label: 'Cumulative Production',
+        label: 'Average Product Completion',
         data: of1ComparisonData.actualCumulativeData,
         borderColor: '#4caf50',
         backgroundColor: 'rgba(76, 175, 80, 0.1)',
@@ -1959,12 +2140,13 @@ const LinePN2Dashboard = () => {
       },
       y: {
         beginAtZero: true,
+        max: 100,
         ticks: {
           font: {
             size: 10
           },
           callback: function(value) {
-            return (value / 1000) + 'K';
+            return value + '%';
           }
         }
       }
@@ -1992,21 +2174,15 @@ const LinePN2Dashboard = () => {
           },
           label: function(context) {
             const label = context.dataset.label || '';
-            const value = context.parsed.y.toLocaleString();
-            return `${label}: ${value} units`;
+            const value = context.parsed.y;
+            return `${label}: ${value}%`;
           },
           afterBody: function(context) {
             const dayIndex = context[0].dataIndex;
             const dailyProduction = of1ComparisonData.dailyProductionData[dayIndex] || 0;
-            const actual = of1ComparisonData.actualCumulativeData[dayIndex] || 0;
-            const target = of1ComparisonData.totalMonthlyTarget || 0;
+            const batchText = dailyProduction === 1 ? 'batch' : 'batches';
             
-            let info = `\nDaily Production: ${dailyProduction.toLocaleString()} units`;
-            
-            if (target > 0) {
-              const percentage = ((actual / target) * 100).toFixed(1);
-              info += `\nProgress: ${percentage}% of monthly target`;
-            }
+            let info = `\nDaily Released: ${dailyProduction} ${batchText}`;
             
             return info;
           }
@@ -2256,7 +2432,6 @@ const LinePN2Dashboard = () => {
 
           {/* WIP Speedometers Section */}
           <div className="line-pn2-wip-section">
-            <h2 className="line-pn2-section-title">Work In Progress Stages</h2>
             {wipStages.length === 0 ? (
               <div style={{
                 textAlign: 'center',
@@ -2775,7 +2950,7 @@ const LinePN2Dashboard = () => {
                   {of1ModalData.totalProduced.toLocaleString()} / {of1ModalData.totalTarget.toLocaleString()}
                 </div>
                 <div style={{ fontSize: '13px', opacity: 0.9 }}>
-                  Total Produced / Monthly Target
+                  Released Batches / Target Batches
                 </div>
               </div>
               <div style={{
@@ -2846,9 +3021,20 @@ const LinePN2Dashboard = () => {
                         whiteSpace: 'nowrap',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
-                        minWidth: 0
+                        minWidth: 0,
+                        flex: 1
                       }}>
                         - {product.productName}
+                      </span>
+                      <span style={{ 
+                        fontSize: '14px',
+                        fontWeight: '700',
+                        backgroundColor: 'rgba(255, 255, 255, 0.25)',
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        flexShrink: 0
+                      }}>
+                        {product.completionPercentage}%
                       </span>
                     </div>
                     <div style={{
@@ -3063,11 +3249,22 @@ const LinePN2Dashboard = () => {
               borderLeft: `4px solid ${selectedWipStageData.color}`,
             }}>
               <div style={{ fontSize: '0.9rem', color: '#6c757d', marginBottom: '4px' }}>
-                <strong>Department:</strong> PN1 | 
+                <strong>Department:</strong> PN2 | 
                 <strong style={{ marginLeft: '8px' }}>Stage:</strong> {selectedWipStageData.stageName}
               </div>
               <div style={{ fontSize: '1.1rem', fontWeight: '600', color: selectedWipStageData.color }}>
-                {selectedWipStageData.batches.length} Batch{selectedWipStageData.batches.length !== 1 ? 'es' : ''} in Progress
+                {selectedWipStageData.inProgressCount !== undefined ? (
+                  <>
+                    {selectedWipStageData.inProgressCount} Batch{selectedWipStageData.inProgressCount !== 1 ? 'es' : ''} in Progress
+                    {selectedWipStageData.waitingCount > 0 && (
+                      <span style={{ color: '#f59e0b', marginLeft: '8px' }}>
+                        ({selectedWipStageData.waitingCount} Waiting)
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  `${selectedWipStageData.batches.length} Batch${selectedWipStageData.batches.length !== 1 ? 'es' : ''} in Progress`
+                )}
               </div>
             </div>
 
@@ -3099,10 +3296,22 @@ const LinePN2Dashboard = () => {
                         </div>
                         <div style={{ 
                           fontSize: '0.85rem', 
-                          color: '#e67e22',
+                          color: batch.isWaiting ? '#f59e0b' : '#e67e22',
                           fontWeight: '600',
                         }}>
-                          Days in Stage: {batch.daysInStage !== null ? `${batch.daysInStage} ${batch.daysInStage === 1 ? 'day' : 'days'}` : 'Not Started'}
+                          {batch.isWaiting ? (
+                            <>
+                              Status: <span style={{ 
+                                backgroundColor: '#fef3c7', 
+                                color: '#92400e',
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                fontWeight: '700'
+                              }}>In Waiting</span>
+                            </>
+                          ) : (
+                            <>Days in Stage: {batch.daysInStage !== null ? `${batch.daysInStage} ${batch.daysInStage === 1 ? 'day' : 'days'}` : 'Not Started'}</>
+                          )}
                         </div>
                         {batch.jenisSediaan && (
                           <div style={{ 
@@ -3242,25 +3451,46 @@ const LinePN2Dashboard = () => {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {selectedWipTaskData.tasks.map((task, index) => {
                   const isInProgress = task.StartDate && !task.EndDate;
-                  const isUnstarted = !task.StartDate;
                   const isCompleted = task.StartDate && task.EndDate;
+                  
+                  // Check if batch has started (at least one step has IdleStartDate)
+                  const batchHasStarted = selectedWipTaskData.tasks.some(t => t.IdleStartDate);
+                  
+                  // A step is "Waiting" if:
+                  // - The batch has started (at least one step has IdleStartDate)
+                  // - This specific step does NOT have IdleStartDate yet
+                  const isWaiting = batchHasStarted && !task.IdleStartDate && !isCompleted;
+                  
+                  // A step is "Not Started" only if:
+                  // - The batch has NOT started (no steps have IdleStartDate)
+                  // - This step doesn't have a StartDate
+                  const isUnstarted = !batchHasStarted && !task.StartDate && !isCompleted;
 
                   let statusBadge = '';
                   let statusColor = '';
                   let bgColor = '';
                   
-                  if (isInProgress) {
+                  if (isCompleted) {
+                    statusBadge = '✅ Completed';
+                    statusColor = '#10b981';
+                    bgColor = '#f0fdf4';
+                  } else if (isInProgress) {
                     statusBadge = '🔄 In Progress';
                     statusColor = '#f59e0b';
                     bgColor = '#fffbeb';
+                  } else if (isWaiting) {
+                    statusBadge = '⏳ Waiting';
+                    statusColor = '#8b5cf6';
+                    bgColor = '#faf5ff';
                   } else if (isUnstarted) {
                     statusBadge = '⏸️ Not Started';
                     statusColor = '#6b7280';
                     bgColor = '#f9fafb';
-                  } else if (isCompleted) {
-                    statusBadge = '✅ Completed';
-                    statusColor = '#10b981';
-                    bgColor = '#f0fdf4';
+                  } else {
+                    // Fallback for any edge cases
+                    statusBadge = '⏸️ Not Started';
+                    statusColor = '#6b7280';
+                    bgColor = '#f9fafb';
                   }
 
                   return (

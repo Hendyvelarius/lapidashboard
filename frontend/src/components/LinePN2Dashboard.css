@@ -247,6 +247,8 @@ body.sidebar-minimized .line-pn2-charts-container.sidebar-minimized {
 
 /* WIP Speedometers Section */
 .line-pn2-wip-section {
+  padding-top: 1.5rem;
+  border-top: 1px solid #e5e7eb;
 }
 
 .line-pn2-section-title {
@@ -274,6 +276,8 @@ body.sidebar-minimized .line-pn2-charts-container.sidebar-minimized {
   border-radius: 8px;
   border: 1px solid #e5e7eb;
   transition: all 0.3s ease;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .speedometer-container:hover {
@@ -371,11 +375,12 @@ body.sidebar-minimized .line-pn2-charts-container.sidebar-minimized {
 .speedometer-batch-table {
   width: 100%;
   margin-top: 0.75rem;
-  max-height: 200px;
+  max-height: 350px;
   overflow-y: auto;
   overflow-x: hidden;
   border-top: 1px solid #e5e7eb;
   padding-top: 0.5rem;
+  min-width: 0;
 }
 
 .batch-list {
@@ -390,6 +395,8 @@ body.sidebar-minimized .line-pn2-charts-container.sidebar-minimized {
   border-radius: 4px;
   border-left: 3px solid #4f8cff;
   transition: all 0.2s ease;
+  width: 100%;
+  min-width: 0;
 }
 
 .batch-item:hover {
@@ -404,6 +411,11 @@ body.sidebar-minimized .line-pn2-charts-container.sidebar-minimized {
   color: #1f2937;
   line-height: 1.2;
   margin-bottom: 0.25rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+  min-width: 0;
 }
 
 .batch-details {
