@@ -53,7 +53,7 @@ export const PAGE_ACCESS = {
   'production': {
     requireAuth: true,
     allowedDepartments: ['HQ', 'HC', 'PL'], // Full access for these departments
-    allowedUserIds: [], // Specific users who always have access
+    allowedUserIds: ['HWA'], // Specific users who always have access
     allowedJobLevels: [], // No general job level restriction
     specificCombinations: [
       // PN1 - accessible for MGR, SPV, and OFC
@@ -105,32 +105,76 @@ export const PAGE_ACCESS = {
   // Line PN1 Dashboard
   'line-pn1': {
     requireAuth: true,
-    allowedDepartments: ['NT'], // Full access for these departments
-    allowedUserIds: [], // Specific users who always have access
+    allowedDepartments: ['HQ', 'HC', 'PL'], // Full access for these departments
+    allowedUserIds: ['HWA'], // Specific users who always have access
     allowedJobLevels: [], // No general job level restriction
     specificCombinations: [
       // Example: { department: 'PC', jobLevel: 'MGR' }
+      // Department PN1 access
+      { department: 'PN1', jobLevel: 'MGR' },
+      { department: 'PN1', jobLevel: 'SPV' },
+      { department: 'PN1', jobLevel: 'OFC' },
+      // Department NT access
+      { department: 'NT', jobLevel: 'MGR' },
+      { department: 'NT', jobLevel: 'SPV' },
+      { department: 'NT', jobLevel: 'OFC' },
+      // PC - accessible for MGR, ASM, and SPV
+      { department: 'PC', jobLevel: 'MGR' },
+      { department: 'PC', jobLevel: 'ASM' },
+      { department: 'PC', jobLevel: 'SPV' },
+      { department: 'PC', jobLevel: 'OFC' },
     ],
   },
 
   // Line PN2 Dashboard
   'line-pn2': {
     requireAuth: true,
-    allowedDepartments: ['NT'], // Full access for these departments
-    allowedUserIds: [], // Specific users who always have access
+    allowedDepartments: ['HQ', 'HC', 'PL'], // Full access for these departments
+    allowedUserIds: ['HWA'], // Specific users who always have access
     allowedJobLevels: [], // No general job level restriction
     specificCombinations: [
       // Example: { department: 'PC', jobLevel: 'MGR' }
+      // Department PN2 access
+      { department: 'PN2', jobLevel: 'MGR' },
+      { department: 'PN2', jobLevel: 'ASM' },
+      { department: 'PN2', jobLevel: 'SPV' },
+      { department: 'PN2', jobLevel: 'OFC' },
+      // Department NT access
+      { department: 'NT', jobLevel: 'MGR' },
+      { department: 'NT', jobLevel: 'SPV' },
+      { department: 'NT', jobLevel: 'OFC' },
+      // PC - accessible for MGR, ASM, and SPV
+      { department: 'PC', jobLevel: 'MGR' },
+      { department: 'PC', jobLevel: 'ASM' },
+      { department: 'PC', jobLevel: 'SPV' },
+      { department: 'PC', jobLevel: 'OFC' },
     ],
   },
 
   'quality': {
     requireAuth: true,
     allowedDepartments: ['NT'], // Full access for these departments
-    allowedUserIds: [], // Specific users who always have access
+    allowedUserIds: ['HWA'], // Specific users who always have access
     allowedJobLevels: [], // No general job level restriction
     specificCombinations: [
       // Example: { department: 'PC', jobLevel: 'MGR' }
+      { department: 'NT', jobLevel: 'MGR' },
+      { department: 'NT', jobLevel: 'SPV' },
+      { department: 'NT', jobLevel: 'OFC' },
+
+      // QC - accessible for MGR, ASM, SPV, and OFC
+      { department: 'QC', jobLevel: 'MGR' },
+      { department: 'QC', jobLevel: 'ASM' },
+      { department: 'QC', jobLevel: 'SPV' },
+      { department: 'QC', jobLevel: 'OFC' },
+      // MC - accessible for MGR, SPV, and OFC
+      { department: 'MC', jobLevel: 'MGR' },
+      { department: 'MC', jobLevel: 'SPV' },
+      { department: 'MC', jobLevel: 'OFC' },
+      // QA - accessible for MGR, SPV, and OFC
+      { department: 'QA', jobLevel: 'MGR' },
+      { department: 'QA', jobLevel: 'SPV' },
+      { department: 'QA', jobLevel: 'OFC' },
     ],
   },
 
@@ -138,7 +182,7 @@ export const PAGE_ACCESS = {
   'wip': {
     requireAuth: true,
     allowedDepartments: ['NT', 'PL', 'PC'],
-    allowedUserIds: ['JDV'],
+    allowedUserIds: ['JDV', 'HWA'],
     allowedJobLevels: [],
     specificCombinations: [],
   },
@@ -147,7 +191,7 @@ export const PAGE_ACCESS = {
   'pct-reports': {
     requireAuth: true,
     allowedDepartments: ['NT', 'PL', 'PC'],
-    allowedUserIds: ['JDV'],
+    allowedUserIds: ['JDV', 'HWA'],
     allowedJobLevels: [],
     specificCombinations: [],
   },
@@ -156,7 +200,7 @@ export const PAGE_ACCESS = {
   'summary': {
     requireAuth: true,
     allowedDepartments: ['NT', 'PL', 'PC'],
-    allowedUserIds: ['JDV'],
+    allowedUserIds: ['JDV', 'HWA'],
     allowedJobLevels: [],
     specificCombinations: [],
   },
@@ -165,7 +209,7 @@ export const PAGE_ACCESS = {
   'stock-forecast': {
     requireAuth: true,
     allowedDepartments: ['NT', 'PL', 'PC'],
-    allowedUserIds: ['JDV'],
+    allowedUserIds: ['JDV', 'HWA'],
     allowedJobLevels: [],
     specificCombinations: [],
   },
@@ -174,7 +218,7 @@ export const PAGE_ACCESS = {
   'reports': {
     requireAuth: true,
     allowedDepartments: ['NT', 'PL', 'PC'],
-    allowedUserIds: ['JDV'],
+    allowedUserIds: ['JDV', 'HWA'],
     allowedJobLevels: [],
     specificCombinations: [],
   },
@@ -183,7 +227,7 @@ export const PAGE_ACCESS = {
   'beta': {
     requireAuth: true,
     allowedDepartments: ['NT', 'PL', 'PC'],
-    allowedUserIds: ['JDV'],
+    allowedUserIds: ['JDV', 'HWA'],
     allowedJobLevels: [],
     specificCombinations: [],
   },
