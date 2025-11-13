@@ -58,6 +58,57 @@ export default function LandingPage() {
     return nameParts[0];
   };
 
+  // Get department-specific dashboard card
+  const getDepartmentDashboard = () => {
+    const userDept = user?.emp_DeptID;
+    
+    // PN1 - Line PN1 Dashboard
+    if (userDept === 'PN1') {
+      return {
+        title: 'Line PN1 Dashboard',
+        description: 'Monitor produksi real-time untuk Line PN1',
+        icon: '⚙️',
+        color: '#10b981',
+        path: '/line-pn1',
+        stats: 'Line-specific view'
+      };
+    }
+    
+    // PN2 - Line PN2 Dashboard
+    if (userDept === 'PN2') {
+      return {
+        title: 'Line PN2 Dashboard',
+        description: 'Monitor produksi real-time untuk Line PN2',
+        icon: '⚙️',
+        color: '#10b981',
+        path: '/line-pn2',
+        stats: 'Line-specific view'
+      };
+    }
+    
+    // QC, MC, QA - Quality Dashboard
+    if (userDept === 'QC' || userDept === 'MC' || userDept === 'QA') {
+      return {
+        title: 'Quality Dashboard',
+        description: 'Monitor status QC, Mikro, dan QA per line',
+        icon: '✅',
+        color: '#10b981',
+        path: '/quality',
+        stats: 'Quality monitoring'
+      };
+    }
+    
+    // Default - Summary Dashboard
+    return {
+      title: 'Summary Dashboard',
+      description: 'Ringkasan metrik utama dan indikator performa',
+      icon: '📊',
+      color: '#10b981',
+      path: '/summary',
+      stats: 'Comprehensive view'
+    };
+  };
+
   // Quick access cards
   const quickAccessCards = [
     {
@@ -68,14 +119,7 @@ export default function LandingPage() {
       path: '/production',
       stats: 'Real-time monitoring'
     },
-    {
-      title: 'Summary Dashboard',
-      description: 'Ringkasan metrik utama dan indikator performa',
-      icon: '📊',
-      color: '#10b981',
-      path: '/summary',
-      stats: 'Comprehensive view'
-    },
+    getDepartmentDashboard(), // Dynamic card based on user department
     {
       title: 'Reports',
       description: 'Akses laporan detail untuk PCT, WIP, dan analitik',
