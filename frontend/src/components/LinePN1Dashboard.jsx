@@ -2210,6 +2210,13 @@ const LinePN1Dashboard = () => {
             const label = context.dataset.label || '';
             const value = context.parsed.y.toLocaleString();
             return `${label}: ${value} units`;
+          },
+          afterTitle: function(tooltipItems) {
+            let total = 0;
+            tooltipItems.forEach(item => {
+              total += item.parsed.y;
+            });
+            return 'Total: ' + total.toLocaleString() + ' units';
           }
         }
       }

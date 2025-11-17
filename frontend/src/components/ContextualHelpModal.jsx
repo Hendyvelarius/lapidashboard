@@ -5,20 +5,27 @@ import './ContextualHelpModal.css';
 const ContextualHelpModal = ({ topic, onClose, targetRef, dashboardType = 'summary' }) => {
   const modalRef = useRef(null);
   const [currentPage, setCurrentPage] = useState(0); // 0 = "What is", 1 = "Data Source"
+  const [spotlightRect, setSpotlightRect] = useState(null);
 
-  useEffect(() => {
+  // Update spotlight and modal positions
+  const updatePositions = () => {
     if (targetRef && targetRef.current && modalRef.current) {
-      // Position modal near the target element
       const targetRect = targetRef.current.getBoundingClientRect();
       const modal = modalRef.current;
-      const modalHeight = modal.offsetHeight || 400; // estimated height
+      const modalHeight = modal.offsetHeight || 400;
       const modalWidth = modal.offsetWidth || 400;
+      
+      // Update spotlight position
+      setSpotlightRect({
+        top: targetRect.top,
+        left: targetRect.left,
+        width: targetRect.width,
+        height: targetRect.height
+      });
       
       // Calculate available space
       const spaceOnRight = window.innerWidth - targetRect.right;
       const spaceOnLeft = targetRect.left;
-      const spaceBelow = window.innerHeight - targetRect.bottom;
-      const spaceAbove = targetRect.top;
       
       let left, top;
       
@@ -48,6 +55,31 @@ const ContextualHelpModal = ({ topic, onClose, targetRef, dashboardType = 'summa
       modal.style.left = `${left}px`;
       modal.style.top = `${top}px`;
     }
+  };
+
+  // Initial positioning
+  useEffect(() => {
+    updatePositions();
+  }, [targetRef]);
+
+  // Listen for scroll and resize events to update positions
+  useEffect(() => {
+    const handleScrollOrResize = () => {
+      updatePositions();
+    };
+
+    // Add listeners to window and all scrollable parents
+    window.addEventListener('scroll', handleScrollOrResize, true);
+    window.addEventListener('resize', handleScrollOrResize);
+
+    // Update positions periodically for smooth scroll animations
+    const interval = setInterval(updatePositions, 50);
+
+    return () => {
+      window.removeEventListener('scroll', handleScrollOrResize, true);
+      window.removeEventListener('resize', handleScrollOrResize);
+      clearInterval(interval);
+    };
   }, [targetRef]);
 
   if (!topic) return null;
@@ -80,14 +112,14 @@ const ContextualHelpModal = ({ topic, onClose, targetRef, dashboardType = 'summa
     <>
       <div className="contextual-help-overlay" onClick={onClose}>
         {/* Spotlight effect - highlight target section */}
-        {targetRef && targetRef.current && (
+        {spotlightRect && (
           <div 
             className="spotlight-cutout"
             style={{
-              top: `${targetRef.current.getBoundingClientRect().top}px`,
-              left: `${targetRef.current.getBoundingClientRect().left}px`,
-              width: `${targetRef.current.getBoundingClientRect().width}px`,
-              height: `${targetRef.current.getBoundingClientRect().height}px`
+              top: `${spotlightRect.top}px`,
+              left: `${spotlightRect.left}px`,
+              width: `${spotlightRect.width}px`,
+              height: `${spotlightRect.height}px`
             }}
           />
         )}

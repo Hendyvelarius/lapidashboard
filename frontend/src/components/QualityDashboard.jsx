@@ -2461,6 +2461,13 @@ const QualityDashboard = () => {
           label: function(context) {
             const count = context.parsed.y;
             return context.dataset.label + ': ' + count + ' batch' + (count !== 1 ? 'es' : '');
+          },
+          afterTitle: function(tooltipItems) {
+            let total = 0;
+            tooltipItems.forEach(item => {
+              total += item.parsed.y;
+            });
+            return 'Total: ' + total + ' batch' + (total !== 1 ? 'es' : '');
           }
         }
       }
