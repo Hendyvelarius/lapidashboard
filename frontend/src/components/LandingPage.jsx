@@ -109,34 +109,113 @@ export default function LandingPage() {
     };
   };
 
-  // Quick access cards
-  const quickAccessCards = [
-    {
-      title: 'Production Dashboard',
-      description: 'Pantau status WIP, breakdown PCT, dan output produksi',
-      icon: '🏭',
-      color: '#3b82f6',
-      path: '/production',
-      stats: 'Real-time monitoring'
-    },
-    getDepartmentDashboard(), // Dynamic card based on user department
-    {
-      title: 'Reports',
-      description: 'Akses laporan detail untuk PCT, WIP, dan analitik',
-      icon: '📈',
-      color: '#f59e0b',
-      path: '/reports',
-      stats: 'In-depth analysis'
-    },
-    {
-      title: 'Stock Forecast',
-      description: 'Perencanaan inventori dan prediksi permintaan',
-      icon: '📦',
-      color: '#8b5cf6',
-      path: '/stock-forecast',
-      stats: 'Planning tools'
-    },
-  ];
+  // Quick access cards - different layout for HQ, PL, NT departments
+  const getQuickAccessCards = () => {
+    const userDept = user?.emp_DeptID;
+    
+    // Extended layout for HQ, PL, NT departments
+    if (userDept === 'HQ' || userDept === 'PL' || userDept === 'NT') {
+      return [
+        // First Row
+        {
+          title: 'Summary Dashboard',
+          description: 'Ringkasan metrik utama dan indikator performa',
+          icon: '📊',
+          color: '#10b981',
+          path: '/summary',
+          stats: 'Comprehensive view'
+        },
+        {
+          title: 'Dashboard Menu',
+          description: 'Akses semua dashboard dan modul pelaporan',
+          icon: '📋',
+          color: '#f59e0b',
+          path: '/reports',
+          stats: 'All modules'
+        },
+        {
+          title: 'Finished Goods',
+          description: 'Perencanaan inventori dan prediksi permintaan',
+          icon: '📦',
+          color: '#8b5cf6',
+          path: '/stock-forecast',
+          stats: 'Planning tools'
+        },
+        {
+          title: 'Work In Progress',
+          description: 'Status WIP dan progress produksi per batch',
+          icon: '⏳',
+          color: '#ec4899',
+          path: '/wip',
+          stats: 'Batch tracking'
+        },
+        // Second Row
+        {
+          title: 'Production Dashboard',
+          description: 'Pantau status WIP, breakdown PCT, dan output produksi',
+          icon: '🏭',
+          color: '#3b82f6',
+          path: '/production',
+          stats: 'Real-time monitoring'
+        },
+        {
+          title: 'Line PN1 Dashboard',
+          description: 'Monitor produksi real-time untuk Line PN1',
+          icon: '⚙️',
+          color: '#06b6d4',
+          path: '/line-pn1',
+          stats: 'Line-specific view'
+        },
+        {
+          title: 'Line PN2 Dashboard',
+          description: 'Monitor produksi real-time untuk Line PN2',
+          icon: '⚙️',
+          color: '#14b8a6',
+          path: '/line-pn2',
+          stats: 'Line-specific view'
+        },
+        {
+          title: 'Quality Dashboard',
+          description: 'Monitor status QC, Mikro, dan QA per line',
+          icon: '✅',
+          color: '#22c55e',
+          path: '/quality',
+          stats: 'Quality monitoring'
+        }
+      ];
+    }
+    
+    // Default layout for other departments
+    return [
+      {
+        title: 'Production Dashboard',
+        description: 'Pantau status WIP, breakdown PCT, dan output produksi',
+        icon: '🏭',
+        color: '#3b82f6',
+        path: '/production',
+        stats: 'Real-time monitoring'
+      },
+      getDepartmentDashboard(), // Dynamic card based on user department
+      {
+        title: 'Dashboard Menu',
+        description: 'Akses semua dashboard dan modul pelaporan',
+        icon: '📋',
+        color: '#f59e0b',
+        path: '/reports',
+        stats: 'All modules'
+      },
+      {
+        title: 'Finished Goods',
+        description: 'Perencanaan inventori dan prediksi permintaan',
+        icon: '📦',
+        color: '#8b5cf6',
+        path: '/stock-forecast',
+        stats: 'Planning tools'
+      },
+    ];
+  };
+
+  const quickAccessCards = getQuickAccessCards();
 
   return (
     <div className="landing-page">

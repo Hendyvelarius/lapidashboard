@@ -175,6 +175,11 @@ export const PAGE_ACCESS = {
       { department: 'QA', jobLevel: 'MGR' },
       { department: 'QA', jobLevel: 'SPV' },
       { department: 'QA', jobLevel: 'OFC' },
+      // PC - accessible for MGR, ASM, and SPV
+      { department: 'PC', jobLevel: 'MGR' },
+      { department: 'PC', jobLevel: 'ASM' },
+      { department: 'PC', jobLevel: 'SPV' },
+      { department: 'PC', jobLevel: 'OFC' },
     ],
   },
 

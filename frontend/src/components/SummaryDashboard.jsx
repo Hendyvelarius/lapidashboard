@@ -2510,17 +2510,38 @@ const OTADetailsModal = ({ isOpen, onClose, otaData, modalConfig }) => {
 };
 
 // Lost Sales Details Modal Component
-const LostSalesDetailsModal = ({ isOpen, onClose, lostSalesData }) => {
+const LostSalesDetailsModal = ({ isOpen, onClose, lostSalesData, forecastData }) => {
   const [searchTerm, setSearchTerm] = useState('');
   
   if (!isOpen || !lostSalesData) return null;
 
+  // Get current period (YYYYMM format)
+  const currentDate = new Date();
+  const currentPeriod = `${currentDate.getFullYear()}${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+  
+  // Get stocked-out products (Release = 0) from forecast data for current period
+  // Forecast uses Product_ID, Lost Sales uses MSO_ProductID - they should match
+  const stockedOutProductIds = new Set(
+    (forecastData || [])
+      .filter(item => 
+        String(item.Periode || '').toString() === currentPeriod && 
+        (item.Release || 0) === 0
+      )
+      .map(item => item.Product_ID)
+  );
+  
+  // Filter lost sales to only include products that are actually stocked out
+  // Match using MSO_ProductID from lost sales with Product_ID from forecast
+  const filteredLostSalesData = lostSalesData.filter(item => 
+    stockedOutProductIds.has(item.MSO_ProductID)
+  );
+
   // Split by Product_Group and sort by potential (TotalPending) in descending order
-  const allFokusProducts = lostSalesData
+  const allFokusProducts = filteredLostSalesData
     .filter(item => item.Product_Group === "1. PRODUK FOKUS")
     .sort((a, b) => (b.TotalPending || 0) - (a.TotalPending || 0));
   
-  const allNonFokusProducts = lostSalesData
+  const allNonFokusProducts = filteredLostSalesData
     .filter(item => item.Product_Group === "2. PRODUK NON FOKUS")
     .sort((a, b) => (b.TotalPending || 0) - (a.TotalPending || 0));
 
@@ -3752,9 +3773,6 @@ function SummaryDashboard() {
   };
 
   const processStockOutData = (forecastData, lostSalesData) => {
-    // Calculate total lost sales from lostSales API
-    const totalLostSales = lostSalesData.reduce((sum, item) => sum + (item.TotalPending || 0), 0);
-    
     // Get current period (YYYYMM format)
     const currentDate = new Date();
     const currentPeriod = `${currentDate.getFullYear()}${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
@@ -3767,6 +3785,15 @@ function SummaryDashboard() {
     // Calculate stock out products from forecast API (Release = 0) for current period only
     const totalProducts = currentPeriodData.length;
     const stockOutProducts = currentPeriodData.filter(item => (item.Release || 0) === 0);
+    
+    // Get list of Product_IDs that are stocked out (forecast uses Product_ID)
+    const stockOutProductIds = new Set(stockOutProducts.map(item => item.Product_ID));
+    
+    // Calculate lost sales ONLY for products that are actually stocked out
+    // Lost sales API uses MSO_ProductID which should match forecast's Product_ID
+    const totalLostSalesForStockOut = lostSalesData
+      .filter(item => stockOutProductIds.has(item.MSO_ProductID))
+      .reduce((sum, item) => sum + (item.TotalPending || 0), 0);
     
     // Count focus and non-focus products based on Product_Group for current period
     const focusProducts = stockOutProducts.filter(item => 
@@ -3784,8 +3811,8 @@ function SummaryDashboard() {
       percentage: totalProducts > 0 ? (totalStockOut / totalProducts) * 100 : 0,
       focus: focusProducts,
       nonFocus: nonFocusProducts,
-      lostSales: totalLostSales,
-      lostSalesFormatted: formatNumber(totalLostSales)
+      lostSales: totalLostSalesForStockOut,
+      lostSalesFormatted: formatNumber(totalLostSalesForStockOut)
     };
   };
 
@@ -5993,6 +6020,7 @@ function SummaryDashboard() {
           isOpen={lostSalesModalOpen}
           onClose={() => setLostSalesModalOpen(false)}
           lostSalesData={lostSalesRawData}
+          forecastData={forecastRawData}
         />
         
         {/* Inventory OJ Details Modal */}
