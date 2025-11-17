@@ -105,7 +105,7 @@ export const PAGE_ACCESS = {
   // Line PN1 Dashboard
   'line-pn1': {
     requireAuth: true,
-    allowedDepartments: ['HQ', 'HC', 'PL'], // Full access for these departments
+    allowedDepartments: ['HQ', 'PL', 'NT'], // Full access for these departments
     allowedUserIds: ['HWA'], // Specific users who always have access
     allowedJobLevels: [], // No general job level restriction
     specificCombinations: [
@@ -129,7 +129,7 @@ export const PAGE_ACCESS = {
   // Line PN2 Dashboard
   'line-pn2': {
     requireAuth: true,
-    allowedDepartments: ['HQ', 'HC', 'PL'], // Full access for these departments
+    allowedDepartments: ['HQ', 'PL', 'NT'], // Full access for these departments
     allowedUserIds: ['HWA'], // Specific users who always have access
     allowedJobLevels: [], // No general job level restriction
     specificCombinations: [
@@ -153,7 +153,7 @@ export const PAGE_ACCESS = {
 
   'quality': {
     requireAuth: true,
-    allowedDepartments: ['NT'], // Full access for these departments
+    allowedDepartments: ['HQ', 'PL', 'NT'], // Full access for these departments
     allowedUserIds: ['HWA'], // Specific users who always have access
     allowedJobLevels: [], // No general job level restriction
     specificCombinations: [
