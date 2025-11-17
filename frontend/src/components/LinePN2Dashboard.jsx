@@ -1894,7 +1894,10 @@ const LinePN2Dashboard = () => {
   const parseSQLDateTimeForDisplay = (sqlDateTime) => {
     if (!sqlDateTime) return null;
     try {
-      const date = new Date(sqlDateTime);
+      // Remove the 'Z' to treat it as local time, not UTC
+      // This prevents automatic timezone conversion (GMT+7)
+      const localDateString = sqlDateTime.replace('Z', '');
+      const date = new Date(localDateString);
       return isNaN(date.getTime()) ? null : date;
     } catch {
       return null;
