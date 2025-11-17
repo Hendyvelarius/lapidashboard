@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement, Filler } from 'chart.js';
 import { Line, Bar, Doughnut } from 'react-chartjs-2';
 import { useNavigate } from 'react-router';
 import { apiUrl } from '../api';
 import Sidebar from './Sidebar';
 import DashboardLoading from './DashboardLoading';
+import HelpModal from './HelpModal';
+import ContextualHelpModal from './ContextualHelpModal';
+import { useHelp } from '../context/HelpContext';
 import './SummaryDashboard.css';
 
 // Register Chart.js components
@@ -119,8 +122,8 @@ const CircularProgress = ({ percentage, size = 120, strokeWidth = 12, color = '#
 };
 
 // KPI Card Component
-const KPICard = ({ title, children, className = '', headerComponent = null }) => (
-  <div className={`summary-kpi-card ${className}`}>
+const KPICard = React.forwardRef(({ title, children, className = '', headerComponent = null }, ref) => (
+  <div ref={ref} className={`summary-kpi-card ${className}`}>
     <div className="summary-kpi-header">
       <div className="summary-kpi-title">{title}</div>
       {headerComponent && (
@@ -133,7 +136,7 @@ const KPICard = ({ title, children, className = '', headerComponent = null }) =>
       {children}
     </div>
   </div>
-);
+));
 
 // Metric Box Component (for smaller metrics)
 const MetricBox = ({ label, value, color = '#4f8cff' }) => (
@@ -3080,6 +3083,22 @@ function SummaryDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [lastFetchTime, setLastFetchTime] = useState(null);
+  const [helpModalOpen, setHelpModalOpen] = useState(false);
+  
+  // Help system integration
+  const { helpMode, activeTopic, setCurrentDashboard, selectTopic } = useHelp();
+  
+  // Refs for each section
+  const salesRef = useRef(null);
+  const coverageRef = useRef(null);
+  const otaRef = useRef(null);
+  const wipRef = useRef(null);
+  const stockoutRef = useRef(null);
+  const materialRef = useRef(null);
+  const of1Ref = useRef(null);
+  const cycletimeRef = useRef(null);
+  const inventoryRef = useRef(null);
+  
   const [salesChartType, setSalesChartType] = useState('Monthly'); // 'Weekly', 'Daily', or 'Monthly'
   const [salesDropdownOpen, setSalesDropdownOpen] = useState(false);
   const [ofModalOpen, setOfModalOpen] = useState(false);
@@ -3479,6 +3498,34 @@ function SummaryDashboard() {
 
     return () => clearInterval(intervalId);
   }, []);
+
+  // Register dashboard with help system
+  useEffect(() => {
+    setCurrentDashboard('summary');
+    return () => setCurrentDashboard(null);
+  }, [setCurrentDashboard]);
+
+  // Handle topic selection from help panel
+  useEffect(() => {
+    if (activeTopic && helpMode) {
+      const refMap = {
+        sales: salesRef,
+        coverage: coverageRef,
+        ota: otaRef,
+        wip: wipRef,
+        stockout: stockoutRef,
+        material: materialRef,
+        of1: of1Ref,
+        cycletime: cycletimeRef,
+        inventory: inventoryRef
+      };
+      
+      const targetRef = refMap[activeTopic];
+      if (targetRef && targetRef.current) {
+        targetRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [activeTopic, helpMode]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -5044,6 +5091,7 @@ function SummaryDashboard() {
           <div className="summary-grid">
             {/* Sales Section */}
             <KPICard 
+              ref={salesRef}
               title="SELLING IN" 
               className="sales-card"
               headerComponent={
@@ -5260,7 +5308,7 @@ function SummaryDashboard() {
             </KPICard>
 
             {/* OF1 */}
-            <KPICard title="OF1" className="of1-card">
+            <KPICard ref={of1Ref} title="OF1" className="of1-card">
               <div className="of1-content">
                 <div className="of1-grid">
                   <div className="of1-item">
@@ -5338,7 +5386,7 @@ function SummaryDashboard() {
             </KPICard>
 
             {/* Coverage Stock FG */}
-            <KPICard title="COVERAGE STOCK FG" className="coverage-card">
+            <KPICard ref={coverageRef} title="COVERAGE STOCK FG" className="coverage-card">
               <div className="coverage-content-split">
                 {/* Focus Products Section */}
                 <div className="coverage-section">
@@ -5395,7 +5443,7 @@ function SummaryDashboard() {
             </KPICard>
 
             {/* OTA */}
-            <KPICard title="OTA" className="ota-card">
+            <KPICard ref={otaRef} title="OTA" className="ota-card">
               <div className="ota-content-split">
                 {/* Bahan Baku Section */}
                 <div className="ota-section">
@@ -5546,7 +5594,7 @@ function SummaryDashboard() {
             </KPICard>
 
             {/* Stock Out */}
-            <KPICard title="STOCK OUT" className="stock-out-card">
+            <KPICard ref={stockoutRef} title="STOCK OUT" className="stock-out-card">
               <div className="stock-out-content">
                 <div className="stock-out-main">
                   <CircularProgress 
@@ -5579,7 +5627,7 @@ function SummaryDashboard() {
             </KPICard>
 
             {/* Material Availability */}
-            <KPICard title="MATERIAL AVAILABILITY" className="material-availability-card">
+            <KPICard ref={materialRef} title="MATERIAL AVAILABILITY" className="material-availability-card">
               <div className="material-availability-content">
                 <div className="material-info-card">
                   <CircularProgress 
@@ -5605,7 +5653,7 @@ function SummaryDashboard() {
             </KPICard>
 
             {/* WIP */}
-            <KPICard title="WIP" className="wip-card">
+            <KPICard ref={wipRef} title="WIP" className="wip-card">
               <div className="wip-content" style={{ 
                 height: '100%', 
                 display: 'grid', 
@@ -5815,7 +5863,7 @@ function SummaryDashboard() {
             </KPICard>
 
             {/* PCT */}
-            <KPICard title="PCT" className="pct-card">
+            <KPICard ref={cycletimeRef} title="PCT" className="pct-card">
               <div className="pct-content">
                 <div className="pct-speedometer">
                   <div 
@@ -5866,8 +5914,10 @@ function SummaryDashboard() {
               </div>
             </KPICard>
 
-            {/* Inventory Obat Jadi */}
-            <KPICard title="INVENTORY OBAT JADI" className="inventory-oj-card">
+            {/* Inventory Section - All Three Cards */}
+            <div ref={inventoryRef} className="inventory-section-wrapper">
+              {/* Inventory Obat Jadi */}
+              <KPICard title="INVENTORY OBAT JADI" className="inventory-oj-card">
               <div className="inventory-oj-content">
                 <div className="inventory-grid">
                   <div className="inventory-item">
@@ -5997,6 +6047,7 @@ function SummaryDashboard() {
                 </div>
               </div>
             </KPICard>
+            </div>
           </div>
         </div>
         
@@ -6151,6 +6202,33 @@ function SummaryDashboard() {
           bbbkData={bbbkRawData}
           itemType="BK"
         />
+
+        {/* Help Modal */}
+        <HelpModal 
+          isOpen={helpModalOpen}
+          onClose={() => setHelpModalOpen(false)}
+          dashboardType="summary"
+        />
+
+        {/* Contextual Help Modal */}
+        {helpMode && activeTopic && (
+          <ContextualHelpModal
+            topic={activeTopic}
+            dashboardType="summary"
+            onClose={() => selectTopic(null)}
+            targetRef={{
+              sales: salesRef,
+              coverage: coverageRef,
+              ota: otaRef,
+              wip: wipRef,
+              stockout: stockoutRef,
+              material: materialRef,
+              of1: of1Ref,
+              cycletime: cycletimeRef,
+              inventory: inventoryRef
+            }[activeTopic]}
+          />
+        )}
       </main>
     </div>
   );

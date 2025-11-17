@@ -471,8 +471,21 @@ body, html, #root {
   cursor: not-allowed;
 }
 
+.sidebar-btn.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .sidebar-btn span {
   flex: 1;
+  transition: opacity 0.3s ease;
+}
+
+/* Help Mode Styles */
+.sidebar.help-mode-active {
+  opacity: 0.3;
+  pointer-events: none;
   transition: opacity 0.3s ease;
 }
 

@@ -1,6 +1,7 @@
 import React from "react";
 import { BrowserRouter, Routes, Route } from "react-router";
 import { AuthProvider } from "./context/AuthContext";
+import { HelpProvider } from "./context/HelpContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import App from "./App";
 import Reports from "./Reports";
@@ -25,6 +26,7 @@ export default function AppRouter() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <HelpProvider>
         <AuthHandler>
           <Routes>
             <Route path="/" element={<ProtectedRoute pageName="home"><LandingPage /></ProtectedRoute>} />
@@ -106,6 +108,7 @@ export default function AppRouter() {
         <Route path="/stock-forecast" element={<ProtectedRoute pageName="stock-forecast"><StockForecastDashboard /></ProtectedRoute>} />
       </Routes>
       </AuthHandler>
+      </HelpProvider>
       </AuthProvider>
     </BrowserRouter>
   );

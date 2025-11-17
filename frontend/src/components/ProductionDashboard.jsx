@@ -8,6 +8,8 @@ import { loadDashboardCache, saveDashboardCache, clearDashboardCache, isCacheVal
 import DashboardLoading from './DashboardLoading';
 import Sidebar from './Sidebar';
 import Modal from './Modal';
+import ContextualHelpModal from './ContextualHelpModal';
+import { useHelp } from '../context/HelpContext';
 import { apiUrl } from '../api';
 import './ProductionDashboard.css';
 
@@ -791,6 +793,9 @@ const Speedometer = ({ label, value, maxValue = 50, color = '#4f8cff', animated 
 };
 
 const ProductionDashboard = () => {
+  // Help context
+  const { helpMode, activeTopic, selectTopic, setCurrentDashboard } = useHelp();
+  
   const [loading, setLoading] = useState(true);
   const [rawWipData, setRawWipData] = useState([]);
   const [processedWipData, setProcessedWipData] = useState([]);
@@ -829,6 +834,33 @@ const ProductionDashboard = () => {
   const pctDonutRef = useRef(null);
   const wipPN1ChartRef = useRef(null);
   const wipPN2ChartRef = useRef(null);
+
+  // Help system refs
+  const outputRef = useRef(null);
+  const pctRef = useRef(null);
+  const wipRef = useRef(null);
+
+  // Register this dashboard with help system
+  useEffect(() => {
+    setCurrentDashboard('production');
+    return () => setCurrentDashboard(null);
+  }, [setCurrentDashboard]);
+
+  // Handle help topic selection - scroll to section
+  useEffect(() => {
+    if (helpMode && activeTopic) {
+      const refMap = {
+        output: outputRef,
+        pct: pctRef,
+        wip: wipRef
+      };
+      
+      const targetRef = refMap[activeTopic];
+      if (targetRef && targetRef.current) {
+        targetRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [helpMode, activeTopic]);
 
   // Process raw WIP data according to business rules
   const processWIPData = (rawData) => {
@@ -3265,7 +3297,7 @@ const ProductionDashboard = () => {
             </div>
           )}
           <div className="pct-row">
-            <div className="pct-placeholder-card">
+            <div ref={outputRef} className="pct-placeholder-card">
               <div style={{ width: '100%' }}>
                 <div className="pct-description">
                   <h3 style={{ margin: '0 0 8px 0', fontSize: '1.1rem', color: '#2c3e50' }}>Production Output</h3>
@@ -3287,7 +3319,7 @@ const ProductionDashboard = () => {
                 )}
               </div>
             </div>
-            <div className="pct-card" style={{ position: 'relative' }}>
+            <div ref={pctRef} className="pct-card" style={{ position: 'relative' }}>
               {/* Vignette overlay when switching from empty MTD to YTD */}
               {showPctVignette && (
                 <div style={{
@@ -3425,7 +3457,7 @@ const ProductionDashboard = () => {
         </section>
 
         {/* WIP Section */}
-        <section className="production-section">
+        <section ref={wipRef} className="production-section">
           
           {overallDeptData.length === 0 ? (
             <div className="no-data-message" style={{
@@ -4460,6 +4492,20 @@ const ProductionDashboard = () => {
           </div>
         </div>
       </Modal>
+
+      {/* Contextual Help Modal */}
+      {helpMode && activeTopic && (
+        <ContextualHelpModal
+          topic={activeTopic}
+          dashboardType="production"
+          onClose={() => selectTopic(null)}
+          targetRef={{
+            output: outputRef,
+            pct: pctRef,
+            wip: wipRef
+          }[activeTopic]}
+        />
+      )}
     </div>
   );
 };

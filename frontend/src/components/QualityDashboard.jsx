@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Chart as ChartJS, ArcElement, BarElement, CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend } from 'chart.js';
 import { Bar, Line, Doughnut } from 'react-chartjs-2';
 import Sidebar from './Sidebar';
 import Modal from './Modal';
 import DashboardLoading from './DashboardLoading';
+import ContextualHelpModal from './ContextualHelpModal';
+import { useHelp } from '../context/HelpContext';
 import { apiUrl } from '../api';
 import './QualityDashboard.css';
 
@@ -501,6 +503,50 @@ const QualityDashboard = () => {
   const [selectedWipStageData, setSelectedWipStageData] = useState(null);
   const [wipTaskModalOpen, setWipTaskModalOpen] = useState(false);
   const [selectedWipTaskData, setSelectedWipTaskData] = useState(null);
+
+  // Help system
+  const { helpMode, activeTopic, selectTopic, setCurrentDashboard } = useHelp();
+
+  // Help system refs
+  const sidebarRef = useRef(null);
+  const releasedRef = useRef(null);
+  const leadTimeRef = useRef(null);
+  const of1Ref = useRef(null);
+  const wipSectionRef = useRef(null);
+
+  // Callback ref for sidebar - finds the actual aside.sidebar element
+  const sidebarCallbackRef = useCallback((wrapperDiv) => {
+    if (wrapperDiv) {
+      const sidebarElement = wrapperDiv.querySelector('.sidebar');
+      sidebarRef.current = sidebarElement;
+    } else {
+      sidebarRef.current = null;
+    }
+  }, []);
+
+  // Register dashboard with help system
+  useEffect(() => {
+    setCurrentDashboard('quality');
+    return () => setCurrentDashboard(null);
+  }, [setCurrentDashboard]);
+
+  // Handle help topic selection - scroll to section
+  useEffect(() => {
+    if (helpMode && activeTopic) {
+      const refMap = {
+        sidebar: sidebarRef,
+        released: releasedRef,
+        leadtime: leadTimeRef,
+        of1: of1Ref,
+        wip: wipSectionRef
+      };
+      
+      const targetRef = refMap[activeTopic];
+      if (targetRef && targetRef.current) {
+        targetRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [helpMode, activeTopic]);
 
   // Helper function to parse SQL datetime without timezone conversion
   const parseSQLDateTime = (sqlDateTime) => {
@@ -2596,7 +2642,9 @@ const QualityDashboard = () => {
 
   return (
     <div className="quality-dashboard">
-      <Sidebar />
+      <div ref={sidebarCallbackRef} className="sidebar-wrapper">
+        <Sidebar />
+      </div>
       
       {/* Loading Screen */}
       <DashboardLoading 
@@ -2708,7 +2756,7 @@ const QualityDashboard = () => {
 
           <div className={`quality-charts-container ${sidebarMinimized ? 'sidebar-minimized' : ''}`}>
             {/* Combined Monthly/Daily Output - Auto-rotating */}
-            <div className="quality-chart-card">
+            <div ref={releasedRef} className="quality-chart-card">
               <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
                   <h3>{currentView === 'monthly' ? 'Monthly Released' : 'Daily Released'}</h3>
@@ -2793,7 +2841,7 @@ const QualityDashboard = () => {
             </div>
 
             {/* Lead Time - Always visible, takes Daily OF1 position when sidebar minimized */}
-            <div className="quality-chart-card">
+            <div ref={leadTimeRef} className="quality-chart-card">
               <div className="chart-card-header">
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                   <div>
@@ -2856,7 +2904,7 @@ const QualityDashboard = () => {
 
             {/* Daily OF1 - Only visible when sidebar is minimized */}
             {sidebarMinimized && (
-              <div className="quality-chart-card">
+              <div ref={of1Ref} className="quality-chart-card">
                 <div className="chart-card-header">
                   <h3>Daily OF1</h3>
                   <span className="chart-card-subtitle">Order fulfillment for current month batches</span>
@@ -2869,7 +2917,7 @@ const QualityDashboard = () => {
           </div>
 
           {/* WIP Speedometers Section */}
-          <div className="quality-wip-section">
+          <div ref={wipSectionRef} className="quality-wip-section">
             {wipStages.length === 0 ? (
               <div style={{
                 textAlign: 'center',
@@ -4177,6 +4225,22 @@ const QualityDashboard = () => {
             </div>
           </div>
         </Modal>
+      )}
+
+      {/* Contextual Help Modal */}
+      {helpMode && activeTopic && (
+        <ContextualHelpModal
+          topic={activeTopic}
+          dashboardType="quality"
+          onClose={() => selectTopic(null)}
+          targetRef={{
+            sidebar: sidebarRef,
+            released: releasedRef,
+            leadtime: leadTimeRef,
+            of1: of1Ref,
+            wip: wipSectionRef
+          }[activeTopic]}
+        />
       )}
     </div>
   );

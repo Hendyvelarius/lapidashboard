@@ -1,0 +1,256 @@
+.help-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10000;
+  padding: 20px;
+}
+
+.help-modal-container {
+  background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+  border-radius: 16px;
+  max-width: 900px;
+  width: 100%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.help-modal-header {
+  padding: 24px 28px;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 16px 16px 0 0;
+}
+
+.help-modal-header h2 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 28px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.help-modal-header h2::before {
+  content: '📚';
+  font-size: 32px;
+}
+
+.help-modal-close {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: #ffffff;
+  font-size: 28px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  line-height: 1;
+  padding: 0;
+}
+
+.help-modal-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: rotate(90deg);
+}
+
+.help-modal-body {
+  padding: 28px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.help-modal-body::-webkit-scrollbar {
+  width: 10px;
+}
+
+.help-modal-body::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 5px;
+}
+
+.help-modal-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 5px;
+}
+
+.help-modal-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.help-intro {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 18px 20px;
+  border-radius: 12px;
+  margin-bottom: 24px;
+  border-left: 4px solid #4CAF50;
+}
+
+.help-intro p {
+  margin: 0;
+  color: #ffffff;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.help-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.help-section {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.help-section:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.help-section-header {
+  width: 100%;
+  padding: 18px 20px;
+  background: none;
+  border: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.help-section-header:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.help-section-header.expanded {
+  background: rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.help-section-title {
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 600;
+  flex: 1;
+}
+
+.help-section-toggle {
+  color: #ffffff;
+  font-size: 14px;
+  margin-left: 12px;
+  transition: transform 0.2s ease;
+}
+
+.help-section-content {
+  padding: 20px 24px;
+  animation: expandContent 0.3s ease-out;
+}
+
+@keyframes expandContent {
+  from {
+    opacity: 0;
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    max-height: 1000px;
+  }
+}
+
+.help-content-block {
+  margin-bottom: 20px;
+}
+
+.help-content-block:last-child {
+  margin-bottom: 0;
+}
+
+.help-content-block h4 {
+  color: #4FC3F7;
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 10px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.help-content-block h4::before {
+  content: '▪';
+  color: #4CAF50;
+  font-size: 20px;
+}
+
+.help-content-block p {
+  color: #e0e0e0;
+  font-size: 14px;
+  line-height: 1.7;
+  margin: 0;
+  padding-left: 20px;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .help-modal-container {
+    max-width: 100%;
+    max-height: 95vh;
+    margin: 10px;
+  }
+
+  .help-modal-header {
+    padding: 18px 20px;
+  }
+
+  .help-modal-header h2 {
+    font-size: 22px;
+  }
+
+  .help-modal-body {
+    padding: 20px;
+  }
+
+  .help-section-title {
+    font-size: 16px;
+  }
+
+  .help-content-block h4 {
+    font-size: 15px;
+  }
+
+  .help-content-block p {
+    font-size: 13px;
+  }
+}

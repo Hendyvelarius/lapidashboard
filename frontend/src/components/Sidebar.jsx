@@ -15,12 +15,15 @@ import {
 
 import { Link, useLocation } from 'react-router';
 import { useAuth } from '../context/AuthContext';
+import { useHelp } from '../context/HelpContext';
 import { clearAuthData } from '../utils/auth';
+import HelpSidePanel from './HelpSidePanel';
 
 function Sidebar() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [sidebarMinimized, setSidebarMinimized] = useState(false);
   const { user, setIsAuthenticated, isLoading, isDecrypting } = useAuth();
+  const { helpMode, currentDashboard, isHelpAvailable, toggleHelpMode, selectTopic, closeHelp } = useHelp();
   
   // Extract user information with fallbacks
   const userName = user?.Nama || 'User';
@@ -69,8 +72,14 @@ function Sidebar() {
   }, [sidebarMinimized]);
 
   const location = useLocation();
+
+  const handleTopicSelect = (topicId) => {
+    selectTopic(topicId);
+  };
+
   return (
-    <aside className={`sidebar sidebar-dark sidebar-fixed ${sidebarMinimized ? 'sidebar-minimized' : ''}`}>
+    <>
+    <aside className={`sidebar sidebar-dark sidebar-fixed ${sidebarMinimized ? 'sidebar-minimized' : ''} ${helpMode ? 'help-mode-active' : ''}`}>
       {/* Logo Section */}
       <div className="sidebar-logo">
         {sidebarMinimized ? (
@@ -153,9 +162,10 @@ function Sidebar() {
             {!sidebarMinimized && <span>Settings</span>}
           </button>
           <button 
-            className="sidebar-btn" 
-            disabled
-            title={sidebarMinimized ? 'Help' : ''}
+            className={`sidebar-btn${helpMode ? ' active' : ''}${!isHelpAvailable ? ' disabled' : ''}`}
+            onClick={toggleHelpMode}
+            disabled={!isHelpAvailable}
+            title={sidebarMinimized ? (isHelpAvailable ? 'Help' : 'Help not available for this page') : ''}
           >
             <HelpCircle size={20} />
             {!sidebarMinimized && <span>Help</span>}
@@ -206,6 +216,16 @@ function Sidebar() {
         )}
       </div>
     </aside>
+    
+    {/* Help Side Panel */}
+    {helpMode && currentDashboard && (
+      <HelpSidePanel 
+        dashboardType={currentDashboard}
+        onTopicSelect={handleTopicSelect}
+        onClose={closeHelp}
+      />
+    )}
+    </>
   )
 }
 

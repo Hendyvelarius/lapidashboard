@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Chart as ChartJS, ArcElement, BarElement, CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend } from 'chart.js';
 import { Bar, Line, Doughnut } from 'react-chartjs-2';
 import Sidebar from './Sidebar';
 import Modal from './Modal';
 import DashboardLoading from './DashboardLoading';
+import ContextualHelpModal from './ContextualHelpModal';
+import { useHelp } from '../context/HelpContext';
 import { apiUrl } from '../api';
 import './LinePN1Dashboard.css';
 
@@ -466,6 +468,9 @@ const Speedometer = ({ label, value, maxValue = 50, stageName, batches = [], onC
 };
 
 const LinePN1Dashboard = () => {
+  // Help context
+  const { helpMode, activeTopic, selectTopic, setCurrentDashboard } = useHelp();
+  
   const [sidebarMinimized, setSidebarMinimized] = useState(false);
   const [currentView, setCurrentView] = useState('monthly'); // 'monthly' or 'daily'
   const [autoMode, setAutoMode] = useState(true); // Auto-switch between monthly/daily
@@ -494,6 +499,47 @@ const LinePN1Dashboard = () => {
   const [selectedWipStageData, setSelectedWipStageData] = useState(null);
   const [wipTaskModalOpen, setWipTaskModalOpen] = useState(false);
   const [selectedWipTaskData, setSelectedWipTaskData] = useState(null);
+
+  // Help system refs
+  const sidebarRef = useRef(null);
+  const outputRef = useRef(null);
+  const of1Ref = useRef(null);
+  const wipSectionRef = useRef(null);
+  const wipSummaryRef = useRef(null);
+
+  // Callback ref for sidebar - finds the actual aside.sidebar element
+  const sidebarCallbackRef = useCallback((wrapperDiv) => {
+    if (wrapperDiv) {
+      const sidebarElement = wrapperDiv.querySelector('.sidebar');
+      sidebarRef.current = sidebarElement;
+    } else {
+      sidebarRef.current = null;
+    }
+  }, []);
+
+  // Register dashboard with help system
+  useEffect(() => {
+    setCurrentDashboard('linepn1');
+    return () => setCurrentDashboard(null);
+  }, [setCurrentDashboard]);
+
+  // Handle help topic selection - scroll to section
+  useEffect(() => {
+    if (helpMode && activeTopic) {
+      const refMap = {
+        sidebar: sidebarRef,
+        output: outputRef,
+        of1: of1Ref,
+        wip: wipSectionRef,
+        wipsummary: wipSummaryRef
+      };
+      
+      const targetRef = refMap[activeTopic];
+      if (targetRef && targetRef.current) {
+        targetRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [helpMode, activeTopic]);
 
   // Helper function to parse SQL datetime without timezone conversion
   const parseSQLDateTime = (sqlDateTime) => {
@@ -2253,7 +2299,9 @@ const LinePN1Dashboard = () => {
 
   return (
     <div className="line-pn1-dashboard">
-      <Sidebar />
+      <div ref={sidebarCallbackRef} className="sidebar-wrapper">
+        <Sidebar />
+      </div>
       
       {/* Loading Screen */}
       <DashboardLoading 
@@ -2365,7 +2413,7 @@ const LinePN1Dashboard = () => {
 
           <div className={`line-pn1-charts-container ${sidebarMinimized ? 'sidebar-minimized' : ''}`}>
             {/* Combined Monthly/Daily Output - Auto-rotating */}
-            <div className="line-pn1-chart-card">
+            <div ref={outputRef} className="line-pn1-chart-card">
               <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
                   <h3>{currentView === 'monthly' ? 'Monthly Output' : 'Daily Output'}</h3>
@@ -2450,7 +2498,7 @@ const LinePN1Dashboard = () => {
             </div>
 
             {/* Daily OF1 */}
-            <div className="line-pn1-chart-card">
+            <div ref={of1Ref} className="line-pn1-chart-card">
               <div className="chart-card-header">
                 <h3>Daily OF1</h3>
                 <span className="chart-card-subtitle">Order fulfillment for current month batches</span>
@@ -2462,7 +2510,7 @@ const LinePN1Dashboard = () => {
 
             {/* WIP Summary - Only visible when sidebar is minimized */}
             {sidebarMinimized && (
-              <div className="line-pn1-chart-card">
+              <div ref={wipSummaryRef} className="line-pn1-chart-card">
                 <div className="chart-card-header">
                   <h3>WIP Summary</h3>
                   <span className="chart-card-subtitle">Batches by production stage</span>
@@ -2475,7 +2523,7 @@ const LinePN1Dashboard = () => {
           </div>
 
           {/* WIP Speedometers Section */}
-          <div className="line-pn1-wip-section">
+          <div ref={wipSectionRef} className="line-pn1-wip-section">
             {wipStages.length === 0 ? (
               <div style={{
                 textAlign: 'center',
@@ -3614,6 +3662,22 @@ const LinePN1Dashboard = () => {
             )}
           </div>
         </Modal>
+      )}
+
+      {/* Contextual Help Modal */}
+      {helpMode && activeTopic && (
+        <ContextualHelpModal
+          topic={activeTopic}
+          dashboardType="linepn1"
+          onClose={() => selectTopic(null)}
+          targetRef={{
+            sidebar: sidebarRef,
+            output: outputRef,
+            of1: of1Ref,
+            wip: wipSectionRef,
+            wipsummary: wipSummaryRef
+          }[activeTopic]}
+        />
       )}
     </div>
   );
