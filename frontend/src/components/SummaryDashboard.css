@@ -1112,7 +1112,7 @@
 .ota-center-text {
   position: absolute;
   top: 50%;
-  left: 30%; /* Adjusted for visual centering within the donut chart */
+  left: 27.5%; /* Calculated: Chart occupies ~65% width, center is at 65%/2 = 32.5% */
   transform: translate(-50%, -50%);
   text-align: center;
   z-index: 10;

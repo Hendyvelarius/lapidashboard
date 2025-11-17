@@ -685,8 +685,8 @@ const LinePN1Dashboard = () => {
     // Define the Proses sub-stages we want to track
     const prosesStages = [
       'Terima Bahan',
-      'Filling',
       'Mixing',
+      'Filling',
       'Granulasi',
       'Cetak',
       'Coating',
@@ -2139,7 +2139,7 @@ const LinePN1Dashboard = () => {
         pointHoverRadius: 4
       },
       {
-        label: 'Average Product Completion',
+        label: 'Achievement MTD',
         data: of1ComparisonData.actualCumulativeData,
         borderColor: '#4caf50',
         backgroundColor: 'rgba(76, 175, 80, 0.1)',

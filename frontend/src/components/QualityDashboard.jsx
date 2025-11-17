@@ -2387,7 +2387,7 @@ const QualityDashboard = () => {
         pointHoverRadius: 4
       },
       {
-        label: 'Average Product Completion',
+        label: 'Achievement MTD',
         data: of1ComparisonData.actualCumulativeData,
         borderColor: '#4caf50',
         backgroundColor: 'rgba(76, 175, 80, 0.1)',
@@ -2711,7 +2711,7 @@ const QualityDashboard = () => {
             <div className="quality-chart-card">
               <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
-                  <h3>{currentView === 'monthly' ? 'Monthly Output' : 'Daily Output'}</h3>
+                  <h3>{currentView === 'monthly' ? 'Monthly Released' : 'Daily Released'}</h3>
                   <span className="chart-card-subtitle">
                     {currentView === 'monthly' ? 'Total batches released per month' : 'MTD batch release trend (current month)'}
                   </span>
