@@ -6,6 +6,7 @@ import Modal from './Modal';
 import DashboardLoading from './DashboardLoading';
 import ContextualHelpModal from './ContextualHelpModal';
 import { useHelp } from '../context/HelpContext';
+import { loadLinePN1Cache, saveLinePN1Cache, clearLinePN1Cache, isLinePN1CacheValid } from '../utils/dashboardCache';
 import { apiUrl } from '../api';
 import './LinePN1Dashboard.css';
 
@@ -576,6 +577,26 @@ const LinePN1Dashboard = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        // Try to load cached data first
+        const cachedData = loadLinePN1Cache();
+        
+        if (cachedData) {
+          // Use cached data - no loading needed!
+          setWipData(cachedData.wipData || []);
+          setForecastData(cachedData.forecastData || []);
+          setDailyProductionData(cachedData.dailyProductionData || []);
+          setProductGroupDept(cachedData.productGroupDept || {});
+          setProductCategories(cachedData.productCategories || {});
+          setProductNames(cachedData.productNames || {});
+          setOfTargetData(cachedData.ofTargetData || []);
+          setOfActualData(cachedData.ofActualData || []);
+          setLastFetchTime(cachedData.fetchTime);
+          
+          // Data loaded from cache - set loading false immediately
+          setLoading(false);
+          return;
+        }
+        
         setLoading(true);
         
         // Fetch all required data
@@ -599,34 +620,38 @@ const LinePN1Dashboard = () => {
           fetch(apiUrl('/api/releasedBatches'))
         ]);
 
+        // Variables to store fetched data for caching
+        let wipResult, forecastResult, dailyProductionResult, ofTargetResult, ofActualResult;
+        let deptMap = {}, categories = {}, names = {};
+
         // Process WIP data
         if (wipResponse.ok) {
-          const wipResult = await wipResponse.json();
+          wipResult = await wipResponse.json();
           setWipData(wipResult.data || []);
         }
 
         // Process forecast data
         if (forecastResponse.ok) {
-          const forecastResult = await forecastResponse.json();
+          forecastResult = await forecastResponse.json();
           setForecastData(forecastResult.data || forecastResult || []);
         }
 
         // Process daily production data
         if (dailyProductionResponse.ok) {
-          const dailyProductionResult = await dailyProductionResponse.json();
+          dailyProductionResult = await dailyProductionResponse.json();
           setDailyProductionData(dailyProductionResult.data || []);
         }
 
         // Process OF target data (from sp_Dashboard_OF1)
         if (ofTargetResponse.ok) {
-          const ofTargetResult = await ofTargetResponse.json();
+          ofTargetResult = await ofTargetResponse.json();
           // This endpoint returns data directly, not wrapped in { data: ... }
           setOfTargetData(ofTargetResult || []);
         }
 
         // Process OF actual data (from t_dnc_product)
         if (ofActualResponse.ok) {
-          const ofActualResult = await ofActualResponse.json();
+          ofActualResult = await ofActualResponse.json();
           setOfActualData(ofActualResult.data || []);
         }
 
@@ -636,7 +661,6 @@ const LinePN1Dashboard = () => {
           const groupDeptData = groupDeptResult.data || [];
           
           // Create mapping of Product_ID to Group_Dept
-          const deptMap = {};
           groupDeptData.forEach(item => {
             deptMap[item.Group_ProductID] = item.Group_Dept;
           });
@@ -655,8 +679,6 @@ const LinePN1Dashboard = () => {
           const otcProductIds = new Set(otcProducts.map(p => p.Product_ID));
 
           // Categorize products as Generik, OTC, or ETH and map product names
-          const categories = {};
-          const names = {};
           productList.forEach(product => {
             const productId = product.Product_ID;
             const productName = (product.Product_Name || '').toLowerCase();
@@ -675,6 +697,19 @@ const LinePN1Dashboard = () => {
           setProductCategories(categories);
           setProductNames(names);
         }
+        
+        // Save all fetched data to cache
+        const cacheData = {
+          wipData: wipResult?.data || [],
+          forecastData: forecastResult?.data || forecastResult || [],
+          dailyProductionData: dailyProductionResult?.data || [],
+          productGroupDept: deptMap,
+          productCategories: categories,
+          productNames: names,
+          ofTargetData: ofTargetResult || [],
+          ofActualData: ofActualResult?.data || []
+        };
+        saveLinePN1Cache(cacheData);
 
       } catch (error) {
         console.error('Error fetching data:', error);
@@ -1269,31 +1304,47 @@ const LinePN1Dashboard = () => {
         fetch(apiUrl('/api/releasedBatches'))
       ]);
       
+      // Variables to store fetched data for caching
+      let wipResult, forecastResult, dailyProductionResult, ofTargetResult, ofActualResult;
+      
       if (wipResponse.ok) {
-        const result = await wipResponse.json();
-        setWipData(result.data || []);
+        wipResult = await wipResponse.json();
+        setWipData(wipResult.data || []);
       }
       
       if (forecastResponse.ok) {
-        const result = await forecastResponse.json();
-        setForecastData(result.data || result || []);
+        forecastResult = await forecastResponse.json();
+        setForecastData(forecastResult.data || forecastResult || []);
       }
       
       if (dailyProductionResponse.ok) {
-        const result = await dailyProductionResponse.json();
-        setDailyProductionData(result.data || []);
+        dailyProductionResult = await dailyProductionResponse.json();
+        setDailyProductionData(dailyProductionResult.data || []);
       }
 
       if (ofTargetResponse.ok) {
-        const result = await ofTargetResponse.json();
+        ofTargetResult = await ofTargetResponse.json();
         // This endpoint returns data directly, not wrapped in { data: ... }
-        setOfTargetData(result || []);
+        setOfTargetData(ofTargetResult || []);
       }
 
       if (ofActualResponse.ok) {
-        const result = await ofActualResponse.json();
-        setOfActualData(result.data || []);
+        ofActualResult = await ofActualResponse.json();
+        setOfActualData(ofActualResult.data || []);
       }
+      
+      // Save refreshed data to cache
+      const cacheData = {
+        wipData: wipResult?.data || [],
+        forecastData: forecastResult?.data || forecastResult || [],
+        dailyProductionData: dailyProductionResult?.data || [],
+        productGroupDept: productGroupDept,
+        productCategories: productCategories,
+        productNames: productNames,
+        ofTargetData: ofTargetResult || [],
+        ofActualData: ofActualResult?.data || []
+      };
+      saveLinePN1Cache(cacheData);
     } catch (error) {
       console.error('Error refreshing data:', error);
     }
@@ -2029,7 +2080,15 @@ const LinePN1Dashboard = () => {
         }
       },
       tooltip: {
+        mode: 'index',
         callbacks: {
+          afterTitle: function(tooltipItems) {
+            let total = 0;
+            tooltipItems.forEach(item => {
+              total += item.parsed.y;
+            });
+            return 'Total: ' + total.toLocaleString() + ' units';
+          },
           label: function(context) {
             return context.dataset.label + ': ' + context.parsed.y.toLocaleString() + ' units';
           }

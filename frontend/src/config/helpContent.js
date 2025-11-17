@@ -371,10 +371,10 @@ export const helpContent = {
         description: 'Fitur hide/show sidebar',
         pages: [
           {
-            subtitle: 'Mengapa Sidebar Bisa Disembunyikan?',
-            description: 'Sidebar dapat disembunyikan untuk memberikan ruang lebih luas pada grafik. Saat sidebar disembunyikan, layout otomatis berubah dan menampilkan grafik WIP Summary yang tidak terlihat saat sidebar aktif.',
+            subtitle: 'Sidebar bisa di Hide / Expand.',
+            description: 'Di beberapa dashboard, beberapa grafik akan tersembunyi jika sidebar tidak di Hide dikarenakan keterbatasan ruang.',
             details: [
-              'Klik tombol toggle (☰) di kanan atas untuk menyembunyikan/menampilkan sidebar',
+              'Klik tombol Hide (<) di tengah Sidebar untuk menyembunyikan/menampilkan sidebar',
               'Layout berubah dari 2 kolom menjadi 3 kolom saat sidebar disembunyikan',
               'Grafik WIP Summary muncul sebagai grafik ketiga saat sidebar disembunyikan',
               'Berguna saat ingin fokus melihat data produksi dengan layar lebih luas'
@@ -491,10 +491,10 @@ export const helpContent = {
         description: 'Fitur hide/show sidebar',
         pages: [
           {
-            subtitle: 'Mengapa Sidebar Bisa Disembunyikan?',
-            description: 'Sidebar dapat disembunyikan untuk memberikan ruang lebih luas pada grafik. Saat sidebar disembunyikan, layout otomatis berubah dan menampilkan grafik WIP Summary yang tidak terlihat saat sidebar aktif.',
+            subtitle: 'Sidebar bisa di Hide / Expand.',
+            description: 'Di beberapa dashboard, beberapa grafik akan tersembunyi jika sidebar tidak di Hide dikarenakan keterbatasan ruang.',
             details: [
-              'Klik tombol toggle (☰) di kanan atas untuk menyembunyikan/menampilkan sidebar',
+              'Klik tombol Hide (<) di tengah Sidebar untuk menyembunyikan/menampilkan sidebar',
               'Layout berubah dari 2 kolom menjadi 3 kolom saat sidebar disembunyikan',
               'Grafik WIP Summary muncul sebagai grafik ketiga saat sidebar disembunyikan',
               'Berguna saat ingin fokus melihat data produksi dengan layar lebih luas'
@@ -611,10 +611,10 @@ export const helpContent = {
         description: 'Fitur hide/show sidebar',
         pages: [
           {
-            subtitle: 'Mengapa Sidebar Bisa Disembunyikan?',
-            description: 'Sidebar dapat disembunyikan untuk memberikan ruang lebih luas pada grafik. Saat sidebar disembunyikan, layout otomatis berubah dan menampilkan grafik Daily OF1 yang tidak terlihat saat sidebar aktif.',
+            subtitle: 'Sidebar bisa di Hide / Expand.',
+            description: 'Di beberapa dashboard, beberapa grafik akan tersembunyi jika sidebar tidak di Hide dikarenakan keterbatasan ruang.',
             details: [
-              'Klik tombol toggle (☰) di kanan atas untuk menyembunyikan/menampilkan sidebar',
+              'Klik tombol Hide (<) di tengah Sidebar untuk menyembunyikan/menampilkan sidebar',
               'Layout berubah dari 2 kolom menjadi 3 kolom saat sidebar disembunyikan',
               'Grafik Daily OF1 muncul sebagai grafik ketiga saat sidebar disembunyikan',
               'Berguna saat ingin fokus melihat data quality control dengan layar lebih luas'
