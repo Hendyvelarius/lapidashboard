@@ -126,11 +126,11 @@ export default function LandingPage() {
           stats: 'Comprehensive view'
         },
         {
-          title: 'Dashboard Menu',
-          description: 'Akses semua dashboard dan modul pelaporan',
+          title: 'Product Cycle Time',
+          description: 'Ringkasan informasi Product Cycle Time (PCT) utama',
           icon: '📋',
           color: '#f59e0b',
-          path: '/reports',
+          path: '/reports/pct-monthly',
           stats: 'All modules'
         },
         {

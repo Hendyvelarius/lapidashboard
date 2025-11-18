@@ -863,8 +863,8 @@ const QualityDashboard = () => {
           // Check if batch is in waiting status
           const isWaiting = isBatchWaiting(batch.entries);
           
-          // Batch must be either in progress, have display flag, or be waiting
-          if (!isWaiting && !((hasStartDate && hasMissingEndDate) || hasDisplayFlag)) {
+          // Only include batches actively in progress, exclude waiting batches
+          if (isWaiting || !((hasStartDate && hasMissingEndDate) || hasDisplayFlag)) {
             stageData[stageKey].batches.delete(batchNo);
             return; // Skip this batch - not actually in progress
           }
@@ -906,7 +906,8 @@ const QualityDashboard = () => {
         // Check if batch is in waiting status
         const isWaiting = isBatchWaiting(batch.entries);
 
-        if (isWaiting || (hasStartDate && hasMissingEndDate) || hasDisplayFlag) {
+        // Only include batches actively in progress, exclude waiting batches
+        if (!isWaiting && ((hasStartDate && hasMissingEndDate) || hasDisplayFlag)) {
           // Calculate days in stage using EARLIEST IdleStartDate from all entries
           let earliestIdleDate = null;
           batch.entries.forEach(entry => {
@@ -951,25 +952,21 @@ const QualityDashboard = () => {
     return stageOrder.map(stageKey => {
       const allBatches = Array.from(stageData[stageKey].batches.values());
       
-      // Separate batches into in-progress and waiting
+      // Only include batches that are actively in progress (exclude waiting batches)
       const inProgressBatches = allBatches.filter(b => !b.isWaiting);
-      const waitingBatches = allBatches.filter(b => b.isWaiting);
       
       // Sort in-progress batches by days descending
       inProgressBatches.sort((a, b) => b.daysInStage - a.daysInStage);
-      
-      // Combine: in-progress first, waiting after
-      const sortedBatches = [...inProgressBatches, ...waitingBatches];
 
       return {
         name: stageKey,
-        value: inProgressBatches.length, // Only count in-progress batches in the speedometer value
-        waitingCount: waitingBatches.length, // Track waiting batches separately
-        totalCount: allBatches.length, // Total of both in-progress and waiting
+        value: inProgressBatches.length, // Only count in-progress batches
+        waitingCount: 0, // Waiting batches are not displayed
+        totalCount: inProgressBatches.length, // Only in-progress batches
         avgDays: inProgressBatches.length > 0 
           ? Math.round(inProgressBatches.reduce((sum, b) => sum + b.daysInStage, 0) / inProgressBatches.length)
           : 0,
-        batches: sortedBatches // All batches: in-progress first, then waiting
+        batches: inProgressBatches // Only in-progress batches (waiting batches excluded)
       };
     });
   };
@@ -1963,14 +1960,14 @@ const QualityDashboard = () => {
       
       const isWaiting = isBatchWaiting(batch.entries);
       const isInProgress = (batch.hasStartDate && batch.hasMissingEndDate) || batch.hasDisplayFlag;
-      return isInProgress || isWaiting;
+      // Only include batches actively in progress, exclude waiting batches
+      return isInProgress && !isWaiting;
     });
 
-    // Separate batches into In Progress and Waiting
+    // All batches are in progress (waiting batches excluded)
     const inProgressBatches = [];
-    const waitingBatches = [];
 
-    // Calculate days in stage for each batch and categorize
+    // Calculate days in stage for each batch
     activeBatches.forEach(batch => {
       let idleDate = null;
       
@@ -2031,28 +2028,19 @@ const QualityDashboard = () => {
         batch.stageStart = 'N/A';
       }
 
-      // Check if batch is waiting
-      const isWaiting = isBatchWaiting(batch.entries);
-      batch.isWaiting = isWaiting;
-
-      if (isWaiting) {
-        waitingBatches.push(batch);
-      } else {
-        inProgressBatches.push(batch);
-      }
+      // All batches here are in progress (waiting excluded earlier)
+      batch.isWaiting = false;
+      inProgressBatches.push(batch);
     });
 
     // Sort in-progress batches by longest duration first
     inProgressBatches.sort((a, b) => b.daysInStage - a.daysInStage);
 
-    // Combine: in-progress first, waiting after
-    const allBatches = [...inProgressBatches, ...waitingBatches];
-
     setSelectedWipStageData({
       stageName: stageName,
-      batches: allBatches,
+      batches: inProgressBatches,
       inProgressCount: inProgressBatches.length,
-      waitingCount: waitingBatches.length,
+      waitingCount: 0,
       color: '#4f8cff',
     });
     setWipStageModalOpen(true);
@@ -2182,13 +2170,38 @@ const QualityDashboard = () => {
       fullBatchData.stageStart = 'N/A';
     }
 
-    // Get all active batches for the stage modal
+    // Get all active batches for the stage modal (exclude waiting batches)
     const activeBatches = Object.values(batchDetails).filter(batch => {
       if (!batch.hasMissingEndDate && !batch.hasDisplayFlag) {
         return false;
       }
+      
+      // Special check for QA stage - only include if all 4 required steps have started
+      if (actualStageName === 'QA') {
+        const requiredQASteps = [
+          'Cek Dokumen PC oleh QA',
+          'Cek Dokumen PN oleh QA',
+          'Cek Dokumen MC oleh QA',
+          'Cek Dokumen QC oleh QA'
+        ];
+        
+        const qaStepsWithIdleDate = batch.entries.filter(entry => 
+          requiredQASteps.includes(entry.nama_tahapan) && entry.IdleStartDate
+        );
+        
+        const allRequiredStepsStarted = requiredQASteps.every(stepName =>
+          qaStepsWithIdleDate.some(entry => entry.nama_tahapan === stepName)
+        );
+        
+        if (!allRequiredStepsStarted) {
+          return false;
+        }
+      }
+      
+      const isWaiting = isBatchWaiting(batch.entries);
       const isInProgress = (batch.hasStartDate && batch.hasMissingEndDate) || batch.hasDisplayFlag;
-      return isInProgress;
+      // Only include batches actively in progress, exclude waiting batches
+      return isInProgress && !isWaiting;
     });
 
     // Calculate days for all batches

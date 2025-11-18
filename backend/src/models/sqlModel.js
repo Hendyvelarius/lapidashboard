@@ -786,4 +786,25 @@ async function getDailyProduction() {
   return result.recordset;
 }
 
-module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTSummary, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime};
+async function getOF1Target() {
+  const db = await connect();
+  
+  // Get current year to filter data
+  const currentYear = new Date().getFullYear();
+  
+  const query = `
+    SELECT 
+      periode,
+      product_id,
+      target,
+      release
+    FROM r_target_of1_dashboard
+    WHERE periode LIKE '${currentYear}%'
+    ORDER BY periode, product_id
+  `;
+  
+  const result = await db.request().query(query);
+  return result.recordset;
+}
+
+module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTSummary, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target};

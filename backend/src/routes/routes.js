@@ -56,4 +56,7 @@ router.get('/productGroupDept', SqlController.getProductGroupDept);
 router.get('/releasedBatches', SqlController.getReleasedBatches);
 router.get('/releasedBatchesYTD', SqlController.getReleasedBatchesYTD);
 
+// Routing OF1 Target
+router.get('/of1Target', SqlController.getOF1Target);
+
 module.exports = router;

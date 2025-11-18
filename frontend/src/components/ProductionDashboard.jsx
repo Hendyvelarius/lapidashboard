@@ -809,7 +809,12 @@ const ProductionDashboard = () => {
   const [isInitialLoad, setIsInitialLoad] = useState(true); // Track if this is the first load
   const [forecastData, setForecastData] = useState([]); // Store forecast vs production data
   const [forecastRawData, setForecastRawData] = useState([]); // Store raw forecast data for detailed view
+  const [of1TargetData, setOf1TargetData] = useState([]); // Store OF1 target vs release data
+  const [of1TargetRawData, setOf1TargetRawData] = useState([]); // Store raw OF1 data for modal
+  const [ofSummaryData, setOfSummaryData] = useState([]); // Store OF1 summary (target batches) for current month
+  const [releasedBatchesData, setReleasedBatchesData] = useState([]); // Store released batches (actual) for current month
   const [productCategories, setProductCategories] = useState({}); // Store product categories (Generik, OTC, ETH)
+  const [productNameMap, setProductNameMap] = useState({}); // Store product ID to name mapping
   const [error, setError] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedStageData, setSelectedStageData] = useState(null);
@@ -819,6 +824,8 @@ const ProductionDashboard = () => {
   const [selectedPctStage, setSelectedPctStage] = useState(null); // Selected PCT stage data
   const [targetModalOpen, setTargetModalOpen] = useState(false); // Production target detail modal
   const [selectedTargetData, setSelectedTargetData] = useState(null); // Selected month target data
+  const [of1ModalOpen, setOf1ModalOpen] = useState(false); // OF1 accomplishment detail modal
+  const [selectedOf1Data, setSelectedOf1Data] = useState(null); // Selected month OF1 data
   const [isExpanded, setIsExpanded] = useState(false); // Single expansion state for both PN1 and PN2
   const [speedometerAnimated, setSpeedometerAnimated] = useState({}); // Track animation state for speedometers
   const [lastRefreshTime, setLastRefreshTime] = useState(null); // Track last data refresh time
@@ -1409,6 +1416,13 @@ const ProductionDashboard = () => {
       // Create a Set of OTC product IDs for quick lookup
       const otcProductIds = new Set(otcProducts.map(p => p.Product_ID));
 
+      // Create product name mapping
+      const productNames = {};
+      productList.forEach(product => {
+        productNames[product.Product_ID] = product.Product_Name || product.Product_ID;
+      });
+      setProductNameMap(productNames);
+
       // Categorize products
       const categories = {};
       productList.forEach(product => {
@@ -1577,9 +1591,41 @@ const ProductionDashboard = () => {
       const processedForecast = processForecastData(forecastRawData, categories);
       setForecastData(processedForecast);
       
+      // Fetch OF1 Target data (historical monthly data)
+      const of1TargetResponse = await fetch(apiUrl('/api/of1Target'));
+      if (!of1TargetResponse.ok) {
+        throw new Error(`OF1 Target API error! status: ${of1TargetResponse.status}`);
+      }
+
+      const of1TargetResult = await of1TargetResponse.json();
+      const of1TargetRawData = of1TargetResult.data || [];
+      
+      // Fetch OF Summary data (target batches for current month)
+      const ofSummaryResponse = await fetch(apiUrl('/api/ofsummary'));
+      const ofSummaryResult = ofSummaryResponse.ok ? await ofSummaryResponse.json() : [];
+      const ofSummary = ofSummaryResult.data || ofSummaryResult || [];
+      setOfSummaryData(ofSummary);
+      
+      // Fetch Released Batches data (actual released for current month)
+      const releasedBatchesDataResponse = await fetch(apiUrl('/api/releasedBatches'));
+      const releasedBatchesDataResult = releasedBatchesDataResponse.ok ? await releasedBatchesDataResponse.json() : {};
+      const releasedBatchesForOF1 = releasedBatchesDataResult.data || [];
+      setReleasedBatchesData(releasedBatchesForOF1);
+      
+      // Merge historical OF1 data with current month data from ofSummary and releasedBatches
+      const mergedOf1Data = mergeOF1Data(of1TargetRawData, ofSummary, releasedBatchesForOF1);
+      
+      // Store raw OF1 data (merged)
+      setOf1TargetRawData(mergedOf1Data);
+      
+      // Process OF1 target data
+      const processedOf1 = processOF1TargetData(mergedOf1Data);
+      setOf1TargetData(processedOf1);
+      
       // Save all data to cache (same as in fetchData)
       const cacheData = {
         productCategories: categories,
+        productNameMap: productNames,
         productDeptMap,
         pctRawData: pctBatchData,
         avgTotalDays: calculatedAvgTotalDays,
@@ -1589,7 +1635,11 @@ const ProductionDashboard = () => {
         processedWipData: processed,
         overallDeptData: overallDept,
         forecastRawData,
-        processedForecast
+        processedForecast,
+        ofSummary,
+        releasedBatches: releasedBatchesForOF1,
+        of1TargetRawData: mergedOf1Data,
+        processedOf1
       };
       
       saveDashboardCache(cacheData);
@@ -2378,6 +2428,42 @@ const ProductionDashboard = () => {
     setTargetModalOpen(true);
   };
 
+  // Handle OF1 chart click
+  const handleOf1BarClick = (monthIndex) => {
+    const monthData = of1TargetData[monthIndex];
+    if (!monthData || !monthData.hasData) return;
+
+    const periode = monthData.periode;
+    
+    // Filter raw OF1 data for this periode and get product details
+    const periodProducts = of1TargetRawData
+      .filter(item => item.periode.toString() === periode)
+      .map(item => {
+        const target = parseFloat(item.target) || 0;
+        const release = parseFloat(item.release) || 0;
+        let fulfillment = target > 0 ? (release / target) * 100 : 0;
+        fulfillment = Math.min(fulfillment, 100); // Cap at 100%
+        
+        return {
+          productId: item.product_id,
+          productName: productNameMap[item.product_id] || item.product_id,
+          target: target,
+          release: release,
+          fulfillment: fulfillment
+        };
+      })
+      .sort((a, b) => b.fulfillment - a.fulfillment); // Sort by fulfillment descending
+
+    setSelectedOf1Data({
+      monthName: monthData.monthName,
+      periode: periode,
+      avgFulfillment: monthData.fulfillmentPercentage,
+      products: periodProducts,
+      totalProducts: periodProducts.length
+    });
+    setOf1ModalOpen(true);
+  };
+
   // Process forecast data to get monthly totals for current year
   const processForecastData = (rawForecastData, categories = {}) => {
     if (!rawForecastData || rawForecastData.length === 0) return [];
@@ -2437,6 +2523,147 @@ const ProductionDashboard = () => {
     return monthlyData;
   };
 
+  // Merge historical OF1 data with current month's data from Daily OF1 endpoints
+  const mergeOF1Data = (historicalData, ofSummary, releasedBatches) => {
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth() + 1; // 0-indexed
+    const currentPeriode = `${currentYear}${currentMonth.toString().padStart(2, '0')}`; // e.g., "202511"
+    
+    // Filter out current month from historical data (if it exists)
+    const filteredHistorical = historicalData.filter(item => {
+      const periode = item.periode.toString();
+      return periode !== currentPeriode;
+    });
+    
+    // Process ofSummary data to extract target batches per product
+    // ofSummary structure: ProductID, Product_Name, ListBet (batch number), group_stdoutput
+    const productTargets = {}; // { productId: { targetBatches: count, totalBatches: count } }
+    
+    ofSummary.forEach(item => {
+      const productId = item.ProductID;
+      
+      if (!productTargets[productId]) {
+        productTargets[productId] = {
+          targetBatches: 0,
+          releasedBatches: 0
+        };
+      }
+      
+      // Each row represents one target batch
+      productTargets[productId].targetBatches++;
+    });
+    
+    // Process releasedBatches to count released batches per product in current month
+    // releasedBatches structure: DNc_ProductID, DNc_BatchNo, Process_Date
+    releasedBatches.forEach(item => {
+      const productId = item.DNc_ProductID;
+      const processDate = item.Process_Date;
+      
+      if (!processDate) return;
+      
+      const date = new Date(processDate);
+      const itemYear = date.getFullYear();
+      const itemMonth = date.getMonth() + 1;
+      
+      // Only count batches released in the current month
+      if (itemYear === currentYear && itemMonth === currentMonth) {
+        if (!productTargets[productId]) {
+          productTargets[productId] = {
+            targetBatches: 0,
+            releasedBatches: 0
+          };
+        }
+        
+        productTargets[productId].releasedBatches++;
+      }
+    });
+    
+    // Convert productTargets to the same format as historical data
+    // Historical format: { periode: "202511", product_id: "ABC123", target: 10, release: 8 }
+    // Cap release at target to ensure max 100% fulfillment
+    const currentMonthData = Object.keys(productTargets).map(productId => {
+      const target = productTargets[productId].targetBatches;
+      const release = productTargets[productId].releasedBatches;
+      
+      return {
+        periode: currentPeriode,
+        product_id: productId,
+        target: target,
+        release: Math.min(release, target) // Cap at target to prevent >100%
+      };
+    });
+    
+    // Merge historical data with current month data
+    return [...filteredHistorical, ...currentMonthData];
+  };
+
+  const processOF1TargetData = (rawOf1Data) => {
+    if (!rawOf1Data || rawOf1Data.length === 0) return [];
+
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth() + 1; // 0-indexed, so add 1
+
+    // Group data by periode
+    const periodeMap = {};
+    rawOf1Data.forEach(item => {
+      const periode = item.periode.toString();
+      if (!periodeMap[periode]) {
+        periodeMap[periode] = [];
+      }
+      periodeMap[periode].push(item);
+    });
+
+    // Calculate monthly average fulfillment percentages
+    const monthlyData = [];
+    for (let month = 1; month <= 12; month++) {
+      const periode = `${currentYear}${month.toString().padStart(2, '0')}`; // e.g., "202501"
+      const monthData = periodeMap[periode] || [];
+      
+      // Calculate fulfillment percentage for each product and count fulfilled/unfulfilled
+      let productsFulfilled = 0;
+      let productsUnfulfilled = 0;
+      
+      const fulfillmentPercentages = monthData.map(item => {
+        const target = parseFloat(item.target) || 0;
+        const release = parseFloat(item.release) || 0;
+        // Calculate fulfillment percentage (release / target * 100)
+        // If target is 0, consider it 0% fulfillment
+        // Cap at 100% - if they produced more than target, only count as 100%
+        let fulfillmentPct = target > 0 ? (release / target) * 100 : 0;
+        fulfillmentPct = Math.min(fulfillmentPct, 100); // Cap at 100%
+        
+        // Count as fulfilled if >= 100%
+        if (fulfillmentPct >= 100) {
+          productsFulfilled++;
+        } else {
+          productsUnfulfilled++;
+        }
+        
+        return fulfillmentPct;
+      });
+
+      // Calculate average fulfillment percentage for this month
+      const avgFulfillment = fulfillmentPercentages.length > 0
+        ? fulfillmentPercentages.reduce((sum, val) => sum + val, 0) / fulfillmentPercentages.length
+        : 0;
+
+      monthlyData.push({
+        month: month,
+        monthName: new Date(currentYear, month - 1).toLocaleString('en-US', { month: 'short' }),
+        periode: periode,
+        fulfillmentPercentage: Math.round(avgFulfillment * 10) / 10, // Round to 1 decimal
+        totalProducts: monthData.length,
+        productsFulfilled: productsFulfilled,
+        productsUnfulfilled: productsUnfulfilled,
+        hasData: month <= currentMonth // Only show data for past/current months
+      });
+    }
+
+    return monthlyData;
+  };
+
   useEffect(() => {
     const loadData = async () => {
       // Try to load cached data first
@@ -2445,6 +2672,7 @@ const ProductionDashboard = () => {
       if (cachedData) {
         // Use cached data - no loading needed!
         setProductCategories(cachedData.productCategories);
+        setProductNameMap(cachedData.productNameMap || {});
         setPctRawData(cachedData.pctRawData);
         setAvgTotalDays(cachedData.avgTotalDays);
         setPctData(cachedData.pctData);
@@ -2454,6 +2682,10 @@ const ProductionDashboard = () => {
         setOverallDeptData(cachedData.overallDeptData);
         setForecastRawData(cachedData.forecastRawData);
         setForecastData(cachedData.processedForecast);
+        setOfSummaryData(cachedData.ofSummary || []);
+        setReleasedBatchesData(cachedData.releasedBatches || []);
+        setOf1TargetRawData(cachedData.of1TargetRawData || []);
+        setOf1TargetData(cachedData.processedOf1 || []);
         setLastRefreshTime(cachedData.fetchTime);
         setLoading(false);
         
@@ -2496,6 +2728,13 @@ const ProductionDashboard = () => {
 
         // Create a Set of OTC product IDs for quick lookup
         const otcProductIds = new Set(otcProducts.map(p => p.Product_ID));
+
+        // Create product name mapping
+        const productNames = {};
+        productList.forEach(product => {
+          productNames[product.Product_ID] = product.Product_Name || product.Product_ID;
+        });
+        setProductNameMap(productNames);
 
         // Categorize products
         const categories = {};
@@ -2670,9 +2909,39 @@ const ProductionDashboard = () => {
         const processedForecast = processForecastData(forecastRawData, categories);
         setForecastData(processedForecast);
         
+        // Fetch OF1 Target data (historical monthly data)
+        const of1TargetResponse = await fetch(apiUrl('/api/of1Target'));
+        if (!of1TargetResponse.ok) {
+          throw new Error(`OF1 Target API error! status: ${of1TargetResponse.status}`);
+        }
+
+        const of1TargetResult = await of1TargetResponse.json();
+        const of1TargetRawData = of1TargetResult.data || [];
+        
+        // Fetch OF Summary data (target batches for current month)
+        const ofSummaryResponse = await fetch(apiUrl('/api/ofsummary'));
+        const ofSummaryResult = ofSummaryResponse.ok ? await ofSummaryResponse.json() : [];
+        const ofSummary = ofSummaryResult.data || ofSummaryResult || [];
+        setOfSummaryData(ofSummary);
+        
+        // Fetch Released Batches data (actual released for current month) - same data used for filtering WIP
+        // We already fetched this above for WIP filtering, so use the same releasedBatches variable
+        setReleasedBatchesData(releasedBatches);
+        
+        // Merge historical OF1 data with current month data from ofSummary and releasedBatches
+        const mergedOf1Data = mergeOF1Data(of1TargetRawData, ofSummary, releasedBatches);
+        
+        // Store raw OF1 data (merged)
+        setOf1TargetRawData(mergedOf1Data);
+        
+        // Process OF1 target data to monthly averages
+        const processedOf1 = processOF1TargetData(mergedOf1Data);
+        setOf1TargetData(processedOf1);
+        
         // Save all data to cache
         const cacheData = {
           productCategories: categories,
+          productNameMap: productNames,
           productDeptMap,
           pctRawData: pctBatchData,
           avgTotalDays: calculatedAvgTotalDays,
@@ -2682,7 +2951,11 @@ const ProductionDashboard = () => {
           processedWipData: processed,
           overallDeptData: overallDept,
           forecastRawData,
-          processedForecast
+          processedForecast,
+          ofSummary,
+          releasedBatches,
+          of1TargetRawData: mergedOf1Data,
+          processedOf1
         };
         
         saveDashboardCache(cacheData);
@@ -3165,6 +3438,98 @@ const ProductionDashboard = () => {
     },
   };
 
+  // OF1 Accomplishment Chart Data
+  const of1ChartData = {
+    labels: of1TargetData.map(d => d.monthName),
+    datasets: [
+      {
+        label: 'OF1 Fulfillment %',
+        data: of1TargetData.map(d => d.hasData ? d.fulfillmentPercentage : null),
+        backgroundColor: 'rgba(147, 51, 234, 0.6)', // Purple
+        borderColor: '#9333ea',
+        borderWidth: 2,
+        borderRadius: 4,
+      },
+    ],
+  };
+
+  const of1ChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    onClick: (event, elements) => {
+      if (elements.length > 0) {
+        const elementIndex = elements[0].index;
+        handleOf1BarClick(elementIndex);
+      }
+    },
+    interaction: {
+      mode: 'index',
+      intersect: false,
+    },
+    plugins: {
+      legend: {
+        display: false,
+      },
+      tooltip: {
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        padding: 12,
+        titleFont: {
+          size: 13,
+          weight: 'bold',
+        },
+        bodyFont: {
+          size: 12,
+        },
+        callbacks: {
+          label: function(context) {
+            const monthData = of1TargetData[context.dataIndex];
+            if (!monthData || !monthData.hasData) {
+              return 'Fulfillment: ' + context.parsed.y + '%';
+            }
+            return [
+              'Fulfillment: ' + context.parsed.y + '%',
+              `Products Fulfilled: ${monthData.productsFulfilled} / ${monthData.totalProducts} products`,
+              `Products Unfulfilled: ${monthData.productsUnfulfilled} / ${monthData.totalProducts} products`
+            ];
+          },
+        },
+      },
+      datalabels: {
+        display: false,
+      },
+    },
+    scales: {
+      y: {
+        type: 'linear',
+        display: true,
+        position: 'left',
+        beginAtZero: true,
+        max: 100,
+        title: {
+          display: true,
+          text: 'Fulfillment %',
+          font: {
+            weight: 'bold',
+            size: 11,
+          },
+        },
+        ticks: {
+          callback: function(value) {
+            return value + '%';
+          },
+        },
+        grid: {
+          color: 'rgba(0, 0, 0, 0.05)',
+        },
+      },
+      x: {
+        grid: {
+          display: false,
+        },
+      },
+    },
+  };
+
   return (
     <div className="production-dashboard">
       <Sidebar />
@@ -3297,26 +3662,58 @@ const ProductionDashboard = () => {
             </div>
           )}
           <div className="pct-row">
-            <div ref={outputRef} className="pct-placeholder-card">
-              <div style={{ width: '100%' }}>
-                <div className="pct-description">
-                  <h3 style={{ margin: '0 0 8px 0', fontSize: '1.1rem', color: '#2c3e50' }}>Production Output</h3>
-                  <p style={{ margin: '4px 0' }}>Monthly production tracking on yearly basis.</p>
-                  <small style={{ color: '#666', fontSize: '0.85rem' }}>
-                    � Click to see individual production for each product.
+            {/* Production Output Section - Split into two */}
+            <div ref={outputRef} className="pct-placeholder-card" style={{ flex: '0.95 1 0', display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'stretch', justifyContent: 'flex-start', width: '100%' }}>
+              {/* Top Row: Titles for both charts */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', width: '100%' }}>
+                {/* Production Output Title */}
+                <div style={{ flex: 1 }}>
+                  <h3 style={{ margin: '0 0 4px 0', fontSize: '1.1rem', color: '#2c3e50' }}>Production Output</h3>
+                  <p style={{ margin: '0', fontSize: '0.85rem', color: '#666' }}>Monthly production tracking on yearly basis.</p>
+                  <small style={{ color: '#666', fontSize: '0.75rem' }}>
+                    📊 Click to see individual production for each product.
                   </small>
                 </div>
                 
-                {forecastData.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '24px', color: '#9ca3af' }}>
-                    <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📊</div>
-                    <p style={{ fontSize: '0.9rem' }}>Loading forecast data...</p>
-                  </div>
-                ) : (
-                  <div className="pct-chart-container">
-                    <Bar ref={forecastChartRef} data={forecastChartData} options={forecastChartOptions} />
-                  </div>
-                )}
+                {/* OF1 Accomplishment Title */}
+                <div style={{ flex: 1 }}>
+                  <h3 style={{ margin: '0 0 4px 0', fontSize: '1.1rem', color: '#2c3e50' }}>OF1 Accomplishment</h3>
+                  <p style={{ margin: '0', fontSize: '0.85rem', color: '#666' }}>Order fulfillment percentage by month (YTD).</p>
+                  <small style={{ color: '#666', fontSize: '0.75rem' }}>
+                    📈 Click to see target vs actual releases per product.
+                  </small>
+                </div>
+              </div>
+
+              {/* Bottom Row: Both charts side by side */}
+              <div style={{ display: 'flex', gap: '1rem', flex: 1, width: '100%' }}>
+                {/* Production Output Chart */}
+                <div style={{ flex: 1, minHeight: '300px' }}>
+                  {forecastData.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '24px', color: '#9ca3af', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                      <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📊</div>
+                      <p style={{ fontSize: '0.9rem' }}>Loading forecast data...</p>
+                    </div>
+                  ) : (
+                    <div className="pct-chart-container" style={{ height: '100%' }}>
+                      <Bar ref={forecastChartRef} data={forecastChartData} options={forecastChartOptions} />
+                    </div>
+                  )}
+                </div>
+
+                {/* OF1 Accomplishment Chart */}
+                <div style={{ flex: 1, minHeight: '300px', cursor: 'pointer' }}>
+                  {of1TargetData.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '24px', color: '#9ca3af', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                      <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📈</div>
+                      <p style={{ fontSize: '0.9rem' }}>Loading OF1 data...</p>
+                    </div>
+                  ) : (
+                    <div className="pct-chart-container" style={{ height: '100%', cursor: 'pointer' }}>
+                      <Bar data={of1ChartData} options={of1ChartOptions} />
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
             <div ref={pctRef} className="pct-card" style={{ position: 'relative' }}>
@@ -4335,6 +4732,155 @@ const ProductionDashboard = () => {
                           <div style={{ color: '#9ca3af', marginBottom: '4px' }}>Production</div>
                           <div style={{ fontWeight: '700', color: '#10b981' }}>
                             {product.production.toLocaleString()}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+
+      {/* OF1 Accomplishment Details Modal */}
+      <Modal
+        open={of1ModalOpen}
+        onClose={() => setOf1ModalOpen(false)}
+        title={selectedOf1Data ? `OF1 Accomplishment - ${selectedOf1Data.monthName} (${selectedOf1Data.periode})` : ''}
+      >
+        {selectedOf1Data && (
+          <div style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+            {/* Summary Card */}
+            <div style={{
+              backgroundColor: '#faf5ff',
+              border: '1px solid #e9d5ff',
+              borderRadius: '8px',
+              padding: '16px',
+              marginBottom: '16px',
+            }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase' }}>
+                    Total Products
+                  </div>
+                  <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#9333ea' }}>
+                    {selectedOf1Data.totalProducts}
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>products</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase' }}>
+                    Total Target
+                  </div>
+                  <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#f59e0b' }}>
+                    {selectedOf1Data.products.reduce((sum, p) => sum + p.target, 0).toLocaleString()}
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>batches</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase' }}>
+                    Total Released
+                  </div>
+                  <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#10b981' }}>
+                    {selectedOf1Data.products.reduce((sum, p) => sum + p.release, 0).toLocaleString()}
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>batches</div>
+                </div>
+              </div>
+              <div style={{ 
+                marginTop: '12px', 
+                paddingTop: '12px', 
+                borderTop: '1px solid #e9d5ff',
+                textAlign: 'center'
+              }}>
+                <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase' }}>
+                  Average Fulfillment
+                </div>
+                <div style={{ fontSize: '2rem', fontWeight: '700', color: '#9333ea' }}>
+                  {selectedOf1Data.avgFulfillment.toFixed(1)}%
+                </div>
+              </div>
+            </div>
+
+            {/* Product List */}
+            <div style={{ marginBottom: '8px', fontSize: '0.85rem', fontWeight: '600', color: '#6b7280' }}>
+              ORDER FULFILLMENT BY PRODUCT ({selectedOf1Data.products.length} items)
+            </div>
+            
+            {selectedOf1Data.products.length === 0 ? (
+              <div style={{
+                textAlign: 'center',
+                padding: '32px',
+                color: '#9ca3af',
+                fontSize: '0.9rem',
+              }}>
+                <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📈</div>
+                <p>No OF1 data available for this period.</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {selectedOf1Data.products.map((product, index) => {
+                  const fulfillmentColor = product.fulfillment >= 100 ? '#10b981' :
+                                          product.fulfillment >= 80 ? '#f59e0b' : '#ef4444';
+                  const fulfillmentBg = product.fulfillment >= 100 ? '#d1fae5' :
+                                       product.fulfillment >= 80 ? '#fef3c7' : '#fee2e2';
+                  
+                  return (
+                    <div
+                      key={`${product.productId}-${index}`}
+                      style={{
+                        backgroundColor: 'white',
+                        border: '1px solid #e5e7eb',
+                        borderLeft: `4px solid ${fulfillmentColor}`,
+                        borderRadius: '8px',
+                        padding: '12px',
+                        transition: 'all 0.2s ease',
+                      }}
+                    >
+                      <div style={{ marginBottom: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                          <div>
+                            <div style={{ fontSize: '0.95rem', fontWeight: '600', color: '#2c3e50' }}>
+                              {product.productName}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '2px' }}>
+                              {product.productId}
+                            </div>
+                          </div>
+                          <div style={{
+                            display: 'inline-block',
+                            backgroundColor: fulfillmentBg,
+                            color: fulfillmentColor,
+                            padding: '4px 12px',
+                            borderRadius: '6px',
+                            fontSize: '0.85rem',
+                            fontWeight: '700',
+                          }}>
+                            {product.fulfillment.toFixed(1)}%
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div style={{ 
+                        display: 'grid', 
+                        gridTemplateColumns: 'repeat(2, 1fr)', 
+                        gap: '12px',
+                        fontSize: '0.75rem',
+                        paddingTop: '12px',
+                        borderTop: '1px solid #e5e7eb',
+                      }}>
+                        <div>
+                          <div style={{ color: '#9ca3af', marginBottom: '4px' }}>Target</div>
+                          <div style={{ fontWeight: '600', color: '#f59e0b' }}>
+                            {product.target} {product.target === 1 ? 'batch' : 'batches'}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ color: '#9ca3af', marginBottom: '4px' }}>Released</div>
+                          <div style={{ fontWeight: '700', color: '#10b981' }}>
+                            {product.release} {product.release === 1 ? 'batch' : 'batches'}
                           </div>
                         </div>
                       </div>
