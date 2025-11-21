@@ -18,16 +18,18 @@ import { useAuth } from '../context/AuthContext';
 import { useHelp } from '../context/HelpContext';
 import { clearAuthData } from '../utils/auth';
 import HelpSidePanel from './HelpSidePanel';
+import SettingsModal from './SettingsModal';
 
 function Sidebar() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [sidebarMinimized, setSidebarMinimized] = useState(false);
+  const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const { user, setIsAuthenticated, isLoading, isDecrypting } = useAuth();
   const { helpMode, currentDashboard, isHelpAvailable, toggleHelpMode, selectTopic, closeHelp } = useHelp();
   
-  // Extract user information with fallbacks
-  const userName = user?.Nama || 'User';
-  const userRole = user?.Jabatan || 'Staff';
+  // Extract user information with fallbacks (handle both uppercase and lowercase field names)
+  const userName = user?.nama || user?.Nama || 'User';
+  const userRole = user?.jabatan || user?.Jabatan || 'Staff';
   
   // Function to truncate long job titles
   const truncateRole = (role, maxLength = 20) => {
@@ -45,10 +47,10 @@ function Sidebar() {
   
   // Handle logout
   const handleLogout = () => {
+    // Redirect first, then clear data
+    window.location.href = 'http://192.168.1.24/lms/';
+    // Clear auth data after redirect is initiated
     clearAuthData();
-    setIsAuthenticated(false);
-    setUserMenuOpen(false);
-    window.location.reload(); // Refresh to trigger auth check
   };
 
   // Toggle sidebar minimize
@@ -155,7 +157,7 @@ function Sidebar() {
         <nav className="sidebar-nav">
           <button 
             className="sidebar-btn" 
-            disabled
+            onClick={() => setSettingsModalOpen(true)}
             title={sidebarMinimized ? 'Settings' : ''}
           >
             <Settings size={20} />
@@ -224,6 +226,11 @@ function Sidebar() {
         onTopicSelect={handleTopicSelect}
         onClose={closeHelp}
       />
+    )}
+    
+    {/* Settings Modal */}
+    {settingsModalOpen && (
+      <SettingsModal onClose={() => setSettingsModalOpen(false)} />
     )}
     </>
   )
