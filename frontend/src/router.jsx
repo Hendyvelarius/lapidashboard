@@ -24,14 +24,12 @@ function AuthHandler({ children }) {
 
 export default function AppRouter() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/eDashboard">
       <AuthProvider>
         <HelpProvider>
         <AuthHandler>
           <Routes>
             <Route path="/" element={<ProtectedRoute pageName="home"><LandingPage /></ProtectedRoute>} />
-            {/* <Route path="/beta" element={<ProtectedRoute pageName="beta"><App /></ProtectedRoute>} /> */}
-            <Route path="/eDashboard" element={<ProtectedRoute pageName="home"><LandingPage /></ProtectedRoute>} />
             <Route path="/summary" element={<ProtectedRoute pageName="summary"><SummaryDashboard /></ProtectedRoute>} />
             <Route path="/reports" element={<ProtectedRoute pageName="reports"><Reports /></ProtectedRoute>} />
         <Route
