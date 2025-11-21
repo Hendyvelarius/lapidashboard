@@ -4204,26 +4204,49 @@ function SummaryDashboard() {
     // Apply business logic
     const processedOfData = applyOFBusinessLogic(ofData);
 
-    const total = processedOfData.length;
-    
-    // Calculate percentages for each OF stage using the processed data
-    const turunPpiTrue = processedOfData.filter(item => item.TurunPPI === 1).length;
-    const potongStockTrue = processedOfData.filter(item => item.PotongStock === 1).length;
-    const prosesTrue = processedOfData.filter(item => item.Proses === 1).length;
-    const kemasTrue = processedOfData.filter(item => item.Kemas === 1).length;
-    const dokumenTrue = processedOfData.filter(item => item.Dok === 1).length;
-    const qcTrue = processedOfData.filter(item => item.QC === 1).length;
-    const qaTrue = processedOfData.filter(item => item.QA === 1).length;
+    // Group by Product_ID (check for different field names)
+    const productGroups = {};
+    processedOfData.forEach(item => {
+      const productId = item.Product_ID || item.ProductID || item.product_id || 'UNKNOWN';
+      if (!productGroups[productId]) {
+        productGroups[productId] = [];
+      }
+      productGroups[productId].push(item);
+    });
 
+    // Calculate percentage for each product, then average across all products
+    const calculateStagePercentage = (stageName) => {
+      const productPercentages = [];
+      
+      Object.keys(productGroups).forEach(productId => {
+        const batches = productGroups[productId];
+        const totalBatches = batches.length;
+        
+        // Filter out products with 0 batches (shouldn't happen, but safety check)
+        if (totalBatches === 0) return;
+        
+        // Count batches where stage is completed (value = 1)
+        const completedBatches = batches.filter(batch => batch[stageName] === 1).length;
+        
+        // Calculate percentage for this product (0-100)
+        const productPercentage = (completedBatches / totalBatches) * 100;
+        productPercentages.push(productPercentage);
+      });
+      
+      // Calculate average percentage across all products
+      if (productPercentages.length === 0) return 0;
+      const avgPercentage = productPercentages.reduce((sum, pct) => sum + pct, 0) / productPercentages.length;
+      return Math.round(avgPercentage);
+    };
 
     const result = {
-      turunPpi: Math.round((turunPpiTrue / total) * 100),
-      potongStock: Math.round((potongStockTrue / total) * 100),
-      proses: Math.round((prosesTrue / total) * 100),
-      kemas: Math.round((kemasTrue / total) * 100),
-      dokumen: Math.round((dokumenTrue / total) * 100),
-      rilisQc: Math.round((qcTrue / total) * 100),
-      rilisQa: Math.round((qaTrue / total) * 100)
+      turunPpi: calculateStagePercentage('TurunPPI'),
+      potongStock: calculateStagePercentage('PotongStock'),
+      proses: calculateStagePercentage('Proses'),
+      kemas: calculateStagePercentage('Kemas'),
+      dokumen: calculateStagePercentage('Dok'),
+      rilisQc: calculateStagePercentage('QC'),
+      rilisQa: calculateStagePercentage('QA')
     };
 
     return result;
