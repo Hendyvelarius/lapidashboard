@@ -258,6 +258,28 @@ export default function LandingPage() {
           </div>
         </section>
 
+        {/* Quick Access Section */}
+        <section className="quick-access-section">
+          <div className="quick-access-grid">
+            {quickAccessCards.map((card, index) => (
+              <div
+                key={index}
+                className="access-card"
+                onClick={() => navigate(card.path)}
+                style={{ '--card-color': card.color }}
+              >
+                <div className="card-icon">{card.icon}</div>
+                <div className="card-content">
+                  <h3 className="card-title">{card.title}</h3>
+                  <p className="card-description">{card.description}</p>
+                  <div className="card-stats">{card.stats}</div>
+                </div>
+                <div className="card-arrow">→</div>
+              </div>
+            ))}
+          </div>
+        </section>
+
         {/* Information Section */}
         <section className="info-section">
           <div className="info-card">
@@ -282,28 +304,6 @@ export default function LandingPage() {
                 <button className="help-btn">Support</button>
               </div>
             </div>
-          </div>
-        </section>
-
-        {/* Quick Access Section */}
-        <section className="quick-access-section">
-          <div className="quick-access-grid">
-            {quickAccessCards.map((card, index) => (
-              <div
-                key={index}
-                className="access-card"
-                onClick={() => navigate(card.path)}
-                style={{ '--card-color': card.color }}
-              >
-                <div className="card-icon">{card.icon}</div>
-                <div className="card-content">
-                  <h3 className="card-title">{card.title}</h3>
-                  <p className="card-description">{card.description}</p>
-                  <div className="card-stats">{card.stats}</div>
-                </div>
-                <div className="card-arrow">→</div>
-              </div>
-            ))}
           </div>
         </section>
 

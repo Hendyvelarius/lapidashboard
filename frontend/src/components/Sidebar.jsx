@@ -10,7 +10,8 @@ import {
   BarChart,
   ChevronLeft,
   ChevronRight,
-  Home
+  Home,
+  Maximize
 } from 'lucide-react'
 
 import { Link, useLocation } from 'react-router';
@@ -24,6 +25,7 @@ function Sidebar() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [sidebarMinimized, setSidebarMinimized] = useState(false);
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const { user, setIsAuthenticated, isLoading, isDecrypting } = useAuth();
   const { helpMode, currentDashboard, isHelpAvailable, toggleHelpMode, selectTopic, closeHelp } = useHelp();
   
@@ -58,6 +60,43 @@ function Sidebar() {
     setSidebarMinimized(!sidebarMinimized);
     setUserMenuOpen(false); // Close user menu when toggling
   };
+
+  // Toggle fullscreen mode
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      // Enter fullscreen
+      document.documentElement.requestFullscreen().then(() => {
+        setIsFullscreen(true);
+        setSidebarMinimized(true); // Hide sidebar when entering fullscreen
+      }).catch(err => {
+        console.error('Error entering fullscreen:', err);
+      });
+    } else {
+      // Exit fullscreen
+      document.exitFullscreen().then(() => {
+        setIsFullscreen(false);
+        setSidebarMinimized(false); // Show sidebar when exiting fullscreen
+      }).catch(err => {
+        console.error('Error exiting fullscreen:', err);
+      });
+    }
+  };
+
+  // Listen for fullscreen changes (e.g., user presses ESC)
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isCurrentlyFullscreen = !!document.fullscreenElement;
+      setIsFullscreen(isCurrentlyFullscreen);
+      if (!isCurrentlyFullscreen) {
+        setSidebarMinimized(false); // Restore sidebar when exiting fullscreen
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, []);
 
   // Effect to manage body class for layout adjustments
   useEffect(() => {
@@ -162,6 +201,14 @@ function Sidebar() {
           >
             <Settings size={20} />
             {!sidebarMinimized && <span>Settings</span>}
+          </button>
+          <button 
+            className={`sidebar-btn${isFullscreen ? ' active' : ''}`}
+            onClick={toggleFullscreen}
+            title={sidebarMinimized ? (isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen') : ''}
+          >
+            <Maximize size={20} />
+            {!sidebarMinimized && <span>{isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}</span>}
           </button>
           <button 
             className={`sidebar-btn${helpMode ? ' active' : ''}${!isHelpAvailable ? ' disabled' : ''}`}

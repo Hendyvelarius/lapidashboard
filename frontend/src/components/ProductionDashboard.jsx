@@ -2621,17 +2621,22 @@ const ProductionDashboard = () => {
       const periode = `${currentYear}${month.toString().padStart(2, '0')}`; // e.g., "202501"
       const monthData = periodeMap[periode] || [];
       
+      // Filter out products with 0 target before calculating fulfillment
+      const productsWithTarget = monthData.filter(item => {
+        const target = parseFloat(item.target) || 0;
+        return target > 0;
+      });
+      
       // Calculate fulfillment percentage for each product and count fulfilled/unfulfilled
       let productsFulfilled = 0;
       let productsUnfulfilled = 0;
       
-      const fulfillmentPercentages = monthData.map(item => {
+      const fulfillmentPercentages = productsWithTarget.map(item => {
         const target = parseFloat(item.target) || 0;
         const release = parseFloat(item.release) || 0;
         // Calculate fulfillment percentage (release / target * 100)
-        // If target is 0, consider it 0% fulfillment
         // Cap at 100% - if they produced more than target, only count as 100%
-        let fulfillmentPct = target > 0 ? (release / target) * 100 : 0;
+        let fulfillmentPct = (release / target) * 100;
         fulfillmentPct = Math.min(fulfillmentPct, 100); // Cap at 100%
         
         // Count as fulfilled if >= 100%
@@ -2654,7 +2659,7 @@ const ProductionDashboard = () => {
         monthName: new Date(currentYear, month - 1).toLocaleString('en-US', { month: 'short' }),
         periode: periode,
         fulfillmentPercentage: Math.round(avgFulfillment * 10) / 10, // Round to 1 decimal
-        totalProducts: monthData.length,
+        totalProducts: productsWithTarget.length, // Only count products with target > 0
         productsFulfilled: productsFulfilled,
         productsUnfulfilled: productsUnfulfilled,
         hasData: month <= currentMonth // Only show data for past/current months
