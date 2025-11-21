@@ -23,7 +23,11 @@ import SettingsModal from './SettingsModal';
 
 function Sidebar() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [sidebarMinimized, setSidebarMinimized] = useState(false);
+  const [sidebarMinimized, setSidebarMinimized] = useState(() => {
+    // Initialize from localStorage, default to false if not set
+    const saved = localStorage.getItem('sidebarMinimized');
+    return saved === 'true';
+  });
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const { user, setIsAuthenticated, isLoading, isDecrypting } = useAuth();
@@ -57,7 +61,12 @@ function Sidebar() {
 
   // Toggle sidebar minimize
   const toggleSidebar = () => {
-    setSidebarMinimized(!sidebarMinimized);
+    setSidebarMinimized(prev => {
+      const newState = !prev;
+      // Save to localStorage so it persists across page navigation
+      localStorage.setItem('sidebarMinimized', newState.toString());
+      return newState;
+    });
     setUserMenuOpen(false); // Close user menu when toggling
   };
 
@@ -68,6 +77,7 @@ function Sidebar() {
       document.documentElement.requestFullscreen().then(() => {
         setIsFullscreen(true);
         setSidebarMinimized(true); // Hide sidebar when entering fullscreen
+        localStorage.setItem('sidebarMinimized', 'true'); // Save state
       }).catch(err => {
         console.error('Error entering fullscreen:', err);
       });
@@ -75,7 +85,7 @@ function Sidebar() {
       // Exit fullscreen
       document.exitFullscreen().then(() => {
         setIsFullscreen(false);
-        setSidebarMinimized(false); // Show sidebar when exiting fullscreen
+        // Don't auto-restore sidebar, let user manually expand if needed
       }).catch(err => {
         console.error('Error exiting fullscreen:', err);
       });
@@ -87,9 +97,8 @@ function Sidebar() {
     const handleFullscreenChange = () => {
       const isCurrentlyFullscreen = !!document.fullscreenElement;
       setIsFullscreen(isCurrentlyFullscreen);
-      if (!isCurrentlyFullscreen) {
-        setSidebarMinimized(false); // Restore sidebar when exiting fullscreen
-      }
+      // Don't auto-restore sidebar when exiting fullscreen
+      // User can manually expand if needed
     };
 
     document.addEventListener('fullscreenchange', handleFullscreenChange);
