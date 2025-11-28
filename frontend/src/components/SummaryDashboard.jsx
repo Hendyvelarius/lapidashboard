@@ -2518,26 +2518,9 @@ const LostSalesDetailsModal = ({ isOpen, onClose, lostSalesData, forecastData })
   
   if (!isOpen || !lostSalesData) return null;
 
-  // Get current period (YYYYMM format)
-  const currentDate = new Date();
-  const currentPeriod = `${currentDate.getFullYear()}${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
-  
-  // Get stocked-out products (Release = 0) from forecast data for current period
-  // Forecast uses Product_ID, Lost Sales uses MSO_ProductID - they should match
-  const stockedOutProductIds = new Set(
-    (forecastData || [])
-      .filter(item => 
-        String(item.Periode || '').toString() === currentPeriod && 
-        (item.Release || 0) === 0
-      )
-      .map(item => item.Product_ID)
-  );
-  
-  // Filter lost sales to only include products that are actually stocked out
-  // Match using MSO_ProductID from lost sales with Product_ID from forecast
-  const filteredLostSalesData = lostSalesData.filter(item => 
-    stockedOutProductIds.has(item.MSO_ProductID)
-  );
+  // Filter lost sales to only include products with TotalPending > 0
+  // TotalPending represents the value (in Rupiah) that cannot be fulfilled with current stock (Saldo)
+  const filteredLostSalesData = lostSalesData.filter(item => (item.TotalPending || 0) > 0);
 
   // Split by Product_Group and sort by potential (TotalPending) in descending order
   const allFokusProducts = filteredLostSalesData
@@ -2610,19 +2593,25 @@ const LostSalesDetailsModal = ({ isOpen, onClose, lostSalesData, forecastData })
               </h3>
               <div className="of-batch-list">
                 {fokusProducts.length > 0 ? (
-                  fokusProducts.map((product, index) => (
-                    <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #ef4444' }}>
-                      <div className="batch-code">ID: {product.MSO_ProductID}</div>
-                      <div className="product-info">
-                        <span className="product-name">{product.Product_Name || 'N/A'}</span>
-                        <span className="product-id">
-                          Booked: {product.Qty_Booked || 0} | 
-                          Price: {formatNumber(product.Product_SalesHNA || 0)} | 
-                          Potential: {formatNumber(product.TotalPending || 0)}
-                        </span>
+                  fokusProducts.map((product, index) => {
+                    const qtyBooked = product.Qty_Booked || 0;
+                    const saldo = product.Saldo || 0;
+                    const pending = Math.max(0, qtyBooked - saldo);
+                    
+                    return (
+                      <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #ef4444' }}>
+                        <div className="batch-code">ID: {product.MSO_ProductID}</div>
+                        <div className="product-info">
+                          <span className="product-name">{product.Product_Name || 'N/A'}</span>
+                          <span className="product-id">
+                            Pending: {formatNumber(pending)} | 
+                            Price: {formatNumber(product.Product_SalesHNA || 0)} | 
+                            Potential: {formatNumber(product.TotalPending || 0)}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div className="no-data">Tidak ada produk fokus dengan lost sales</div>
                 )}
@@ -2636,19 +2625,25 @@ const LostSalesDetailsModal = ({ isOpen, onClose, lostSalesData, forecastData })
               </h3>
               <div className="of-batch-list">
                 {nonFokusProducts.length > 0 ? (
-                  nonFokusProducts.map((product, index) => (
-                    <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #f59e0b' }}>
-                      <div className="batch-code">ID: {product.MSO_ProductID}</div>
-                      <div className="product-info">
-                        <span className="product-name">{product.Product_Name || 'N/A'}</span>
-                        <span className="product-id">
-                          Booked: {product.Qty_Booked || 0} | 
-                          Price: {formatNumber(product.Product_SalesHNA || 0)} | 
-                          Potential: {formatNumber(product.TotalPending || 0)}
-                        </span>
+                  nonFokusProducts.map((product, index) => {
+                    const qtyBooked = product.Qty_Booked || 0;
+                    const saldo = product.Saldo || 0;
+                    const pending = Math.max(0, qtyBooked - saldo);
+                    
+                    return (
+                      <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #f59e0b' }}>
+                        <div className="batch-code">ID: {product.MSO_ProductID}</div>
+                        <div className="product-info">
+                          <span className="product-name">{product.Product_Name || 'N/A'}</span>
+                          <span className="product-id">
+                            Pending: {formatNumber(pending)} | 
+                            Price: {formatNumber(product.Product_SalesHNA || 0)} | 
+                            Potential: {formatNumber(product.TotalPending || 0)}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div className="no-data">Tidak ada produk non fokus dengan lost sales</div>
                 )}
@@ -3829,37 +3824,36 @@ function SummaryDashboard() {
       String(item.Periode || '').toString() === currentPeriod
     );
     
-    // Calculate stock out products from forecast API (Release = 0) for current period only
-    const totalProducts = currentPeriodData.length;
-    const stockOutProducts = currentPeriodData.filter(item => (item.Release || 0) === 0);
+    // Filter lost sales data to only products with TotalPending > 0
+    // These are products where Qty_Booked > Saldo (current stock cannot fulfill orders)
+    const productsWithLostSales = lostSalesData.filter(item => (item.TotalPending || 0) > 0);
     
-    // Get list of Product_IDs that are stocked out (forecast uses Product_ID)
-    const stockOutProductIds = new Set(stockOutProducts.map(item => item.Product_ID));
+    // Total lost sales = sum of all TotalPending
+    const totalLostSalesValue = productsWithLostSales.reduce((sum, item) => sum + (item.TotalPending || 0), 0);
     
-    // Calculate lost sales ONLY for products that are actually stocked out
-    // Lost sales API uses MSO_ProductID which should match forecast's Product_ID
-    const totalLostSalesForStockOut = lostSalesData
-      .filter(item => stockOutProductIds.has(item.MSO_ProductID))
-      .reduce((sum, item) => sum + (item.TotalPending || 0), 0);
+    // For the cards: Count products that have BOTH zero stock (Saldo = 0) AND pending sales (Qty_Booked > 0)
+    const stockedOutWithPending = lostSalesData.filter(item => 
+      (item.Saldo || 0) === 0 && (item.Qty_Booked || 0) > 0
+    );
     
-    // Count focus and non-focus products based on Product_Group for current period
-    const focusProducts = stockOutProducts.filter(item => 
+    const focusProducts = stockedOutWithPending.filter(item => 
       item.Product_Group === "1. PRODUK FOKUS"
     ).length;
     
-    const nonFocusProducts = stockOutProducts.filter(item => 
+    const nonFocusProducts = stockedOutWithPending.filter(item => 
       item.Product_Group === "2. PRODUK NON FOKUS"
     ).length;
     
-    const totalStockOut = stockOutProducts.length;
+    const totalProductsWithLostSales = productsWithLostSales.length;
+    const totalProducts = currentPeriodData.length;
     
     return {
-      total: totalStockOut,
-      percentage: totalProducts > 0 ? (totalStockOut / totalProducts) * 100 : 0,
+      total: totalProductsWithLostSales,
+      percentage: totalProducts > 0 ? (totalProductsWithLostSales / totalProducts) * 100 : 0,
       focus: focusProducts,
       nonFocus: nonFocusProducts,
-      lostSales: totalLostSalesForStockOut,
-      lostSalesFormatted: formatNumber(totalLostSalesForStockOut)
+      lostSales: totalLostSalesValue,
+      lostSalesFormatted: formatNumber(totalLostSalesValue)
     };
   };
 
