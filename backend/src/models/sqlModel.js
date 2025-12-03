@@ -807,4 +807,78 @@ async function getOF1Target() {
   return result.recordset;
 }
 
-module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTSummary, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target};
+async function getBatchExpiry() {
+  const db = await connect();
+  
+  const query = `
+    DECLARE @Periode2 AS NVARCHAR(7)
+    SET @Periode2 = CONVERT(VARCHAR(4), YEAR(GETDATE())) + ' ' + RIGHT('0' + CONVERT(VARCHAR(2), MONTH(GETDATE())), 2)
+
+    -- Get first day of current month for comparison (compatible with older SQL Server)
+    DECLARE @CurrentMonthStart AS DATETIME
+    SET @CurrentMonthStart = CAST(CONVERT(VARCHAR(6), GETDATE(), 112) + '01' AS DATETIME)
+
+    SELECT 
+        psp.St_ProductID AS Product_ID,
+        psp.St_BatchNo AS Batch_No,
+        psp.St_Periode AS Periode,
+        -- Product info
+        mp.Product_Name,
+        mp.Product_SalesHNA AS HNA,
+        -- Available released stock for this batch
+        CASE 
+            WHEN lock.Lock_BatchNo IS NOT NULL THEN 0
+            ELSE psp.st_awalrelease + psp.st_terimarelease + psp.st_terimalangsung - psp.st_keluarrelease 
+        END AS BatchStockRelease,
+        -- Quarantine stock for this batch
+        CASE 
+            WHEN lock.Lock_BatchNo IS NOT NULL THEN 0
+            ELSE psp.st_awalkarantina + psp.st_terimakarantina - psp.st_keluarkarantina 
+        END AS BatchStockKarantina,
+        -- Total stock for this batch
+        CASE 
+            WHEN lock.Lock_BatchNo IS NOT NULL THEN 0
+            ELSE (psp.st_awalrelease + psp.st_terimarelease + psp.st_terimalangsung - psp.st_keluarrelease)
+                 + (psp.st_awalkarantina + psp.st_terimakarantina - psp.st_keluarkarantina)
+        END AS BatchStockTotal,
+        -- Expiry date info from t_Register_Perintah_Produksi_Header
+        rpp.Reg_ManufDate AS ManufDate,
+        rpp.Reg_ExpDate AS ExpDate,
+        -- Days until expiry
+        DATEDIFF(DAY, GETDATE(), rpp.Reg_ExpDate) AS DaysUntilExpiry,
+        -- Months until expiry
+        DATEDIFF(MONTH, GETDATE(), rpp.Reg_ExpDate) AS MonthsUntilExpiry,
+        -- Is batch locked?
+        CASE WHEN lock.Lock_BatchNo IS NOT NULL THEN 1 ELSE 0 END AS IsLocked
+    FROM t_product_stock_position psp
+    -- Join to get product details
+    LEFT JOIN m_product mp 
+        ON mp.Product_ID = psp.St_ProductID
+    -- Join to get expiry date (excluding REPACK types)
+    LEFT JOIN t_Register_Perintah_Produksi_Header rpp 
+        ON rpp.Reg_BatchNo = psp.St_BatchNo 
+        AND rpp.Reg_ProductID = psp.St_ProductID
+        AND ISNULL(rpp.Reg_Type, '') NOT IN ('REPACK PPK', 'REPACK NR')
+    -- Join to check locked batches
+    LEFT JOIN dbo.vwbatchlock lock 
+        ON lock.Lock_ProductID = psp.St_ProductID 
+        AND lock.Lock_Batchno = psp.St_BatchNo
+    WHERE psp.st_periode = @Periode2
+      -- Only batches with stock > 0
+      AND (psp.st_awalrelease + psp.st_terimarelease + psp.st_terimalangsung - psp.st_keluarrelease 
+           + psp.st_awalkarantina + psp.st_terimakarantina - psp.st_keluarkarantina) > 0
+      -- Exclude locked batches
+      AND lock.Lock_BatchNo IS NULL
+      -- Only batches with expiry date from current month onwards
+      AND rpp.Reg_ExpDate >= @CurrentMonthStart
+    ORDER BY 
+        rpp.Reg_ExpDate ASC,
+        psp.St_ProductID, 
+        psp.St_BatchNo
+  `;
+  
+  const result = await db.request().query(query);
+  return result.recordset;
+}
+
+module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTSummary, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry};
