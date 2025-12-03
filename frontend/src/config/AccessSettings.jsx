@@ -99,6 +99,8 @@ export const PAGE_ACCESS = {
       { department: 'NT', jobLevel: 'MGR' },
       { department: 'NT', jobLevel: 'SPV' },
       { department: 'NT', jobLevel: 'OFC' },
+
+      { department: 'MS', jobLevel: 'MGR' },
     ],
   },
 
@@ -123,6 +125,8 @@ export const PAGE_ACCESS = {
       { department: 'PC', jobLevel: 'ASM' },
       { department: 'PC', jobLevel: 'SPV' },
       { department: 'PC', jobLevel: 'OFC' },
+
+      { department: 'MS', jobLevel: 'MGR' },
     ],
   },
 
@@ -148,6 +152,8 @@ export const PAGE_ACCESS = {
       { department: 'PC', jobLevel: 'ASM' },
       { department: 'PC', jobLevel: 'SPV' },
       { department: 'PC', jobLevel: 'OFC' },
+
+       { department: 'MS', jobLevel: 'MGR' },
     ],
   },
 
@@ -180,6 +186,8 @@ export const PAGE_ACCESS = {
       { department: 'PC', jobLevel: 'ASM' },
       { department: 'PC', jobLevel: 'SPV' },
       { department: 'PC', jobLevel: 'OFC' },
+
+       { department: 'MS', jobLevel: 'MGR' },
     ],
   },
 
