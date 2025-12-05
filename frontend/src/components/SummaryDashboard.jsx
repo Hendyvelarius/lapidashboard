@@ -448,6 +448,206 @@ const InventoryOJReturnDetailsModal = ({ isOpen, onClose, forecastData }) => {
   );
 };
 
+// Near Expiry Details Modal Component
+const NearExpiryDetailsModal = ({ isOpen, onClose, batchExpiryData }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  if (!isOpen || !batchExpiryData) return null;
+
+  // Filter batches expiring within 12 months
+  const nearExpiryBatches = batchExpiryData.filter(batch => {
+    const monthsUntilExpiry = batch.MonthsUntilExpiry || 0;
+    return monthsUntilExpiry >= 0 && monthsUntilExpiry < 12;
+  });
+  
+  // Filter based on search term
+  const filterItems = (items) => {
+    if (!searchTerm.trim()) return items;
+    
+    return items.filter(item => {
+      const productId = (item.Product_ID || '').toString().toLowerCase();
+      const productName = (item.Product_Name || '').toLowerCase();
+      const batchNo = (item.Batch_No || '').toString().toLowerCase();
+      const search = searchTerm.toLowerCase();
+      
+      return productId.includes(search) || productName.includes(search) || batchNo.includes(search);
+    });
+  };
+
+  const filteredBatches = filterItems(nearExpiryBatches)
+    .sort((a, b) => (a.DaysUntilExpiry || 0) - (b.DaysUntilExpiry || 0)); // Sort by closest expiry first
+
+  // Calculate totals
+  const totalValue = filteredBatches.reduce((sum, batch) => 
+    sum + ((batch.BatchStockTotal || 0) * (batch.HNA || 0)), 0
+  );
+  
+  // Get urgency color based on months until expiry
+  const getUrgencyColor = (monthsUntilExpiry) => {
+    if (monthsUntilExpiry <= 3) return '#ef4444'; // Red - Critical
+    if (monthsUntilExpiry <= 6) return '#f59e0b'; // Orange - Warning
+    return '#06b6d4'; // Cyan - Monitor
+  };
+
+  const getUrgencyLabel = (monthsUntilExpiry) => {
+    if (monthsUntilExpiry <= 3) return 'Critical';
+    if (monthsUntilExpiry <= 6) return 'Warning';
+    return 'Monitor';
+  };
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return 'N/A';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content of-modal" onClick={e => e.stopPropagation()} style={{ 
+        maxWidth: '1000px', 
+        width: '95vw' 
+      }}>
+        <div className="modal-header">
+          <h2>Detail Near Expiry Batches (&lt;12 Months)</h2>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <div className="modal-body">
+          {/* Summary Stats */}
+          <div style={{ 
+            display: 'flex', 
+            gap: '20px', 
+            marginBottom: '20px',
+            flexWrap: 'wrap'
+          }}>
+            <div style={{ 
+              padding: '15px 20px', 
+              background: 'linear-gradient(135deg, #06b6d4, #0891b2)', 
+              borderRadius: '8px',
+              color: 'white',
+              flex: 1,
+              minWidth: '150px'
+            }}>
+              <div style={{ fontSize: '24px', fontWeight: 'bold' }}>{filteredBatches.length}</div>
+              <div style={{ fontSize: '12px', opacity: 0.9 }}>Total Batches</div>
+            </div>
+            <div style={{ 
+              padding: '15px 20px', 
+              background: 'linear-gradient(135deg, #ef4444, #dc2626)', 
+              borderRadius: '8px',
+              color: 'white',
+              flex: 1,
+              minWidth: '150px'
+            }}>
+              <div style={{ fontSize: '24px', fontWeight: 'bold' }}>
+                {filteredBatches.filter(b => (b.MonthsUntilExpiry || 0) <= 3).length}
+              </div>
+              <div style={{ fontSize: '12px', opacity: 0.9 }}>Critical (≤3 months)</div>
+            </div>
+            <div style={{ 
+              padding: '15px 20px', 
+              background: 'linear-gradient(135deg, #f59e0b, #d97706)', 
+              borderRadius: '8px',
+              color: 'white',
+              flex: 1,
+              minWidth: '150px'
+            }}>
+              <div style={{ fontSize: '24px', fontWeight: 'bold' }}>
+                {filteredBatches.filter(b => (b.MonthsUntilExpiry || 0) > 3 && (b.MonthsUntilExpiry || 0) <= 6).length}
+              </div>
+              <div style={{ fontSize: '12px', opacity: 0.9 }}>Warning (4-6 months)</div>
+            </div>
+            <div style={{ 
+              padding: '15px 20px', 
+              background: 'linear-gradient(135deg, #10b981, #059669)', 
+              borderRadius: '8px',
+              color: 'white',
+              flex: 1,
+              minWidth: '150px'
+            }}>
+              <div style={{ fontSize: '24px', fontWeight: 'bold' }}>{formatNumber(totalValue)}</div>
+              <div style={{ fontSize: '12px', opacity: 0.9 }}>Total Value</div>
+            </div>
+          </div>
+
+          {/* Search Bar */}
+          <div className="search-container" style={{ marginBottom: '20px' }}>
+            <input
+              type="text"
+              placeholder="Search by product ID, name, or batch number..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px 15px',
+                border: '1px solid #d1d5db',
+                borderRadius: '8px',
+                fontSize: '14px',
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+          
+          {/* Search Results Summary */}
+          {searchTerm.trim() && (
+            <div style={{ marginBottom: '15px', fontSize: '14px', color: '#6b7280' }}>
+              Found {filteredBatches.length} results for "{searchTerm}"
+              {filteredBatches.length !== nearExpiryBatches.length && 
+                ` (filtered from ${nearExpiryBatches.length} total)`}
+            </div>
+          )}
+          
+          <div className="of-details-container-full">
+            {/* Near Expiry Batches */}
+            <div className="of-details-section">
+              <h3 className="of-section-title pending">
+                ⏰ Near Expiry Batches ({filteredBatches.length})
+              </h3>
+              <div className="of-batch-list" style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                {filteredBatches.length > 0 ? (
+                  filteredBatches.map((batch, index) => (
+                    <div key={index} className="of-batch-item pending" style={{
+                      borderLeft: `4px solid ${getUrgencyColor(batch.MonthsUntilExpiry || 0)}`
+                    }}>
+                      <div className="batch-code" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>Batch: {batch.Batch_No || 'N/A'}</span>
+                        <span style={{ 
+                          padding: '2px 8px', 
+                          borderRadius: '4px', 
+                          fontSize: '11px',
+                          fontWeight: 'bold',
+                          color: 'white',
+                          background: getUrgencyColor(batch.MonthsUntilExpiry || 0)
+                        }}>
+                          {getUrgencyLabel(batch.MonthsUntilExpiry || 0)}
+                        </span>
+                      </div>
+                      <div className="product-info">
+                        <span className="product-name">{batch.Product_Name || 'N/A'}</span>
+                        <span className="product-id" style={{ fontSize: '12px' }}>
+                          ID: {batch.Product_ID || 'N/A'} | 
+                          Exp: {formatDate(batch.ExpDate)} ({batch.DaysUntilExpiry || 0} days)
+                        </span>
+                        <span className="product-id" style={{ fontSize: '12px' }}>
+                          Stock: {(batch.BatchStockTotal || 0).toLocaleString()} | 
+                          HNA: {formatNumber(batch.HNA || 0)} | 
+                          Value: {formatNumber((batch.BatchStockTotal || 0) * (batch.HNA || 0))}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-data">Tidak ada batch mendekati kadaluarsa</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Inventory OJ Slow Moving & Dead Stock Details Modal Component
 const InventoryOJSlowDeadStockDetailsModal = ({ isOpen, onClose, forecastData }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -3137,6 +3337,8 @@ function SummaryDashboard() {
     title: 'Detail Material Availability',
     type: null
   });
+  const [batchExpiryRawData, setBatchExpiryRawData] = useState([]);
+  const [nearExpiryModalOpen, setNearExpiryModalOpen] = useState(false);
   const [data, setData] = useState({
     sales: null,
     inventory: null,
@@ -3210,6 +3412,7 @@ function SummaryDashboard() {
           setPctRawData(cachedData.rawData.pctData || []);
           setOtaRawData(cachedData.rawData.otaData || []);
           setMaterialRawData(cachedData.rawData.materialData || []);
+          setBatchExpiryRawData(cachedData.rawData.batchExpiryData || []);
           setLastFetchTime(cachedData.timestamp);
           setLoading(false);
           return;
@@ -3222,7 +3425,7 @@ function SummaryDashboard() {
         setLoading(true);
       }
       
-      const [wipRes, ofRes, pctRes, forecastRes, bbbkRes, dailySalesRes, lostSalesRes, otaRes, materialRes] = await Promise.all([
+      const [wipRes, ofRes, pctRes, forecastRes, bbbkRes, dailySalesRes, lostSalesRes, otaRes, materialRes, batchExpiryRes] = await Promise.all([
         fetch(apiUrl('/api/wip')),
         fetch(apiUrl('/api/ofsummary')),
         fetch(apiUrl('/api/pctAverage')),
@@ -3231,7 +3434,8 @@ function SummaryDashboard() {
         fetch(apiUrl('/api/dailySales')),
         fetch(apiUrl('/api/lostSales')),
         fetch(apiUrl('/api/ota')),
-        fetch(apiUrl('/api/material'))
+        fetch(apiUrl('/api/material')),
+        fetch(apiUrl('/api/batchExpiry'))
       ]);
 
       const wipData = await wipRes.json();
@@ -3243,6 +3447,7 @@ function SummaryDashboard() {
       const lostSalesData = await lostSalesRes.json();
       const otaData = await otaRes.json();
       const materialData = await materialRes.json();
+      const batchExpiryData = await batchExpiryRes.json();
       
       // Store raw data
       const rawData = {
@@ -3253,7 +3458,8 @@ function SummaryDashboard() {
         wipData: wipData?.data || wipData || [],
         pctData: pctData?.data || pctData || [],
         otaData: otaData || [],
-        materialData: materialData || []
+        materialData: materialData || [],
+        batchExpiryData: batchExpiryData?.data || batchExpiryData || []
       };
 
       setOfRawData(applyOFBusinessLogic(rawData.ofData));
@@ -3264,6 +3470,7 @@ function SummaryDashboard() {
       setPctRawData(rawData.pctData);
       setOtaRawData(rawData.otaData);
       setMaterialRawData(rawData.materialData);
+      setBatchExpiryRawData(rawData.batchExpiryData);
       
       // Process and set data
       const processedData = {
@@ -3277,6 +3484,7 @@ function SummaryDashboard() {
         orderFulfillment: processOrderFulfillmentData(ofData || []),
         materialAvailability: processMaterialAvailabilityData(materialData || []),
         inventoryOJ: processInventoryOJData(forecastData || []),
+        nearExpiry: processNearExpiryData(rawData.batchExpiryData),
         inventoryBB: processInventoryBBData(bbbkData || []),
         inventoryBK: processInventoryBKData(bbbkData || []),
         inventoryBBBK: processInventoryBBBKData(bbbkData || []),
@@ -3367,6 +3575,10 @@ function SummaryDashboard() {
 
   const handleInventoryOJReturnClick = () => {
     setInventoryOJReturnModalOpen(true);
+  };
+
+  const handleNearExpiryClick = () => {
+    setNearExpiryModalOpen(true);
   };
 
   const handleInventoryBBBKClick = () => {
@@ -4433,6 +4645,49 @@ function SummaryDashboard() {
     };
     
     return result;
+  };
+
+  // Process near expiry data - batches expiring within 6 months
+  const processNearExpiryData = (batchExpiryData) => {
+    if (!batchExpiryData || batchExpiryData.length === 0) {
+      return {
+        nearExpiry: 0,
+        nearExpiryPercentage: 0,
+        totalValue: 0,
+        batchCount: 0,
+        batches: []
+      };
+    }
+
+    // Filter batches expiring within 12 months
+    const nearExpiryBatches = batchExpiryData.filter(batch => {
+      const monthsUntilExpiry = batch.MonthsUntilExpiry || 0;
+      return monthsUntilExpiry >= 0 && monthsUntilExpiry < 12;
+    });
+
+    // Calculate total near expiry value
+    let nearExpiryValue = 0;
+    nearExpiryBatches.forEach(batch => {
+      const stock = batch.BatchStockTotal || 0;
+      const hna = batch.HNA || 0;
+      nearExpiryValue += stock * hna;
+    });
+
+    // Calculate total inventory value from all batches
+    let totalInventoryValue = 0;
+    batchExpiryData.forEach(batch => {
+      const stock = batch.BatchStockTotal || 0;
+      const hna = batch.HNA || 0;
+      totalInventoryValue += stock * hna;
+    });
+
+    return {
+      nearExpiry: nearExpiryValue,
+      nearExpiryPercentage: totalInventoryValue > 0 ? (nearExpiryValue / totalInventoryValue) * 100 : 0,
+      totalValue: totalInventoryValue,
+      batchCount: nearExpiryBatches.length,
+      batches: nearExpiryBatches.sort((a, b) => (a.DaysUntilExpiry || 0) - (b.DaysUntilExpiry || 0))
+    };
   };
 
   const processInventoryBBData = (bbbkData) => {
@@ -5879,30 +6134,32 @@ function SummaryDashboard() {
               </div>
             </KPICard>
 
-            {/* PCT */}
-            <KPICard ref={cycletimeRef} title="PCT" className="pct-card">
-              <div className="pct-content">
-                <div className="pct-speedometer">
-                  <div 
-                    className="circular-progress clickable"
-                    style={{ width: 70, height: 70, position: 'relative', cursor: 'pointer' }}
-                    title={`Average PCT: ${data.pct?.average || 0} hari\nPCT Terlama: ${data.pct?.longest || 0} hari`}
-                    onClick={handlePCTClick}
-                  >
-                    <svg width={70} height={70} style={{ transform: 'rotate(-90deg)' }}>
-                      <circle
-                        cx={35}
-                        cy={35}
-                        r={29}
-                        stroke="#e5e7eb"
-                        strokeWidth={12}
-                        fill="transparent"
-                      />
-                      <circle
-                        cx={35}
-                        cy={35}
-                        r={29}
-                        stroke="#3b82f6"
+            {/* Row 4 Container - PCT and Inventory */}
+            <div className="row-4-wrapper">
+              {/* PCT */}
+              <KPICard ref={cycletimeRef} title="PCT" className="pct-card">
+                <div className="pct-content">
+                  <div className="pct-speedometer">
+                    <div 
+                      className="circular-progress clickable"
+                      style={{ width: 70, height: 70, position: 'relative', cursor: 'pointer' }}
+                      title={`Average PCT: ${data.pct?.average || 0} hari\nPCT Terlama: ${data.pct?.longest || 0} hari`}
+                      onClick={handlePCTClick}
+                    >
+                      <svg width={70} height={70} style={{ transform: 'rotate(-90deg)' }}>
+                        <circle
+                          cx={35}
+                          cy={35}
+                          r={29}
+                          stroke="#e5e7eb"
+                          strokeWidth={12}
+                          fill="transparent"
+                        />
+                        <circle
+                          cx={35}
+                          cy={35}
+                          r={29}
+                          stroke="#3b82f6"
                         strokeWidth={12}
                         fill="transparent"
                         strokeDasharray={182.2}
@@ -5972,6 +6229,18 @@ function SummaryDashboard() {
                       showPercentage={false}
                     />
                     <div className="inventory-label">Return</div>
+                  </div>
+                  <div className="inventory-item">
+                    <CircularProgress 
+                      percentage={data.nearExpiry?.nearExpiryPercentage || 0} 
+                      color="#06b6d4"
+                      size={60}
+                      onClick={handleNearExpiryClick}
+                      title="Click to view near expiry batches (<12 months)"
+                      centerContent={formatNumber(data.nearExpiry?.nearExpiry || 0)}
+                      showPercentage={false}
+                    />
+                    <div className="inventory-label">Near Expiry</div>
                   </div>
                 </div>
               </div>
@@ -6065,6 +6334,7 @@ function SummaryDashboard() {
               </div>
             </KPICard>
             </div>
+            </div> {/* Close row-4-wrapper */}
           </div>
         </div>
         
@@ -6103,6 +6373,13 @@ function SummaryDashboard() {
           isOpen={inventoryOJReturnModalOpen}
           onClose={() => setInventoryOJReturnModalOpen(false)}
           forecastData={forecastRawData}
+        />
+
+        {/* Near Expiry Details Modal */}
+        <NearExpiryDetailsModal 
+          isOpen={nearExpiryModalOpen}
+          onClose={() => setNearExpiryModalOpen(false)}
+          batchExpiryData={batchExpiryRawData}
         />
         
         {/* Inventory OJ Slow Moving & Dead Stock Details Modal */}
