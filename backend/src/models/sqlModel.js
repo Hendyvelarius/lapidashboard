@@ -818,6 +818,21 @@ async function getBatchExpiry() {
     DECLARE @CurrentMonthStart AS DATETIME
     SET @CurrentMonthStart = CAST(CONVERT(VARCHAR(6), GETDATE(), 112) + '01' AS DATETIME)
 
+    -- CTE to get the latest production record per batch (by Reg_Date)
+    ;WITH LatestBatchRecords AS (
+        SELECT 
+            Reg_BatchNo,
+            Reg_ProductID,
+            Reg_ManufDate,
+            Reg_ExpDate,
+            Reg_Date,
+            ROW_NUMBER() OVER (
+                PARTITION BY Reg_BatchNo, Reg_ProductID 
+                ORDER BY Reg_Date DESC
+            ) AS RowNum
+        FROM t_Register_Perintah_Produksi_Header
+    )
+
     SELECT 
         psp.St_ProductID AS Product_ID,
         psp.St_BatchNo AS Batch_No,
@@ -854,11 +869,11 @@ async function getBatchExpiry() {
     -- Join to get product details
     LEFT JOIN m_product mp 
         ON mp.Product_ID = psp.St_ProductID
-    -- Join to get expiry date (excluding REPACK types)
-    LEFT JOIN t_Register_Perintah_Produksi_Header rpp 
+    -- Join to get expiry date (using latest record per batch)
+    LEFT JOIN LatestBatchRecords rpp 
         ON rpp.Reg_BatchNo = psp.St_BatchNo 
         AND rpp.Reg_ProductID = psp.St_ProductID
-        AND ISNULL(rpp.Reg_Type, '') NOT IN ('REPACK PPK', 'REPACK NR')
+        AND rpp.RowNum = 1
     -- Join to check locked batches
     LEFT JOIN dbo.vwbatchlock lock 
         ON lock.Lock_ProductID = psp.St_ProductID 
@@ -869,8 +884,6 @@ async function getBatchExpiry() {
            + psp.st_awalkarantina + psp.st_terimakarantina - psp.st_keluarkarantina) > 0
       -- Exclude locked batches
       AND lock.Lock_BatchNo IS NULL
-      -- Only batches with expiry date from current month onwards
-      AND rpp.Reg_ExpDate >= @CurrentMonthStart
     ORDER BY 
         rpp.Reg_ExpDate ASC,
         psp.St_ProductID, 

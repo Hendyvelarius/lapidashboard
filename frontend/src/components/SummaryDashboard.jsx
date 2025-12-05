@@ -454,10 +454,10 @@ const NearExpiryDetailsModal = ({ isOpen, onClose, batchExpiryData }) => {
   
   if (!isOpen || !batchExpiryData) return null;
 
-  // Filter batches expiring within 12 months
+  // Filter batches: expired or expiring within 12 months
   const nearExpiryBatches = batchExpiryData.filter(batch => {
     const monthsUntilExpiry = batch.MonthsUntilExpiry || 0;
-    return monthsUntilExpiry >= 0 && monthsUntilExpiry < 12;
+    return monthsUntilExpiry < 12;
   });
   
   // Filter based on search term
@@ -484,14 +484,14 @@ const NearExpiryDetailsModal = ({ isOpen, onClose, batchExpiryData }) => {
   
   // Get urgency color based on months until expiry
   const getUrgencyColor = (monthsUntilExpiry) => {
-    if (monthsUntilExpiry <= 3) return '#ef4444'; // Red - Critical
-    if (monthsUntilExpiry <= 6) return '#f59e0b'; // Orange - Warning
+    if (monthsUntilExpiry < 0) return '#ef4444'; // Red - Expired
+    if (monthsUntilExpiry < 6) return '#f59e0b'; // Yellow/Orange - Critical
     return '#06b6d4'; // Cyan - Monitor
   };
 
   const getUrgencyLabel = (monthsUntilExpiry) => {
-    if (monthsUntilExpiry <= 3) return 'Critical';
-    if (monthsUntilExpiry <= 6) return 'Warning';
+    if (monthsUntilExpiry < 0) return 'Expired';
+    if (monthsUntilExpiry < 6) return 'Critical';
     return 'Monitor';
   };
 
@@ -539,9 +539,9 @@ const NearExpiryDetailsModal = ({ isOpen, onClose, batchExpiryData }) => {
               minWidth: '150px'
             }}>
               <div style={{ fontSize: '24px', fontWeight: 'bold' }}>
-                {filteredBatches.filter(b => (b.MonthsUntilExpiry || 0) <= 3).length}
+                {filteredBatches.filter(b => (b.MonthsUntilExpiry || 0) < 0).length}
               </div>
-              <div style={{ fontSize: '12px', opacity: 0.9 }}>Critical (≤3 months)</div>
+              <div style={{ fontSize: '12px', opacity: 0.9 }}>Expired</div>
             </div>
             <div style={{ 
               padding: '15px 20px', 
@@ -552,9 +552,9 @@ const NearExpiryDetailsModal = ({ isOpen, onClose, batchExpiryData }) => {
               minWidth: '150px'
             }}>
               <div style={{ fontSize: '24px', fontWeight: 'bold' }}>
-                {filteredBatches.filter(b => (b.MonthsUntilExpiry || 0) > 3 && (b.MonthsUntilExpiry || 0) <= 6).length}
+                {filteredBatches.filter(b => (b.MonthsUntilExpiry || 0) >= 0 && (b.MonthsUntilExpiry || 0) < 6).length}
               </div>
-              <div style={{ fontSize: '12px', opacity: 0.9 }}>Warning (4-6 months)</div>
+              <div style={{ fontSize: '12px', opacity: 0.9 }}>Critical (&lt;6 months)</div>
             </div>
             <div style={{ 
               padding: '15px 20px', 
@@ -629,9 +629,12 @@ const NearExpiryDetailsModal = ({ isOpen, onClose, batchExpiryData }) => {
                           Exp: {formatDate(batch.ExpDate)} ({batch.DaysUntilExpiry || 0} days)
                         </span>
                         <span className="product-id" style={{ fontSize: '12px' }}>
-                          Stock: {(batch.BatchStockTotal || 0).toLocaleString()} | 
-                          HNA: {formatNumber(batch.HNA || 0)} | 
-                          Value: {formatNumber((batch.BatchStockTotal || 0) * (batch.HNA || 0))}
+                          Stock: {(batch.BatchStockRelease || 0).toLocaleString()} | 
+                          Quarantine: {(batch.BatchStockKarantina || 0).toLocaleString()} | 
+                          HNA: {formatNumber(batch.HNA || 0)}
+                        </span>
+                        <span className="product-id" style={{ fontSize: '12px' }}>
+                          Total Value: {formatNumber((batch.BatchStockTotal || 0) * (batch.HNA || 0))}
                         </span>
                       </div>
                     </div>
@@ -4659,10 +4662,10 @@ function SummaryDashboard() {
       };
     }
 
-    // Filter batches expiring within 12 months
+    // Filter batches: expired or expiring within 12 months
     const nearExpiryBatches = batchExpiryData.filter(batch => {
       const monthsUntilExpiry = batch.MonthsUntilExpiry || 0;
-      return monthsUntilExpiry >= 0 && monthsUntilExpiry < 12;
+      return monthsUntilExpiry < 12;
     });
 
     // Calculate total near expiry value
