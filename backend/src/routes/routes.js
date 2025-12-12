@@ -62,4 +62,7 @@ router.get('/of1Target', SqlController.getOF1Target);
 // Routing Batch Expiry
 router.get('/batchExpiry', SqlController.getBatchExpiry);
 
+// Routing Holidays for working days calculation
+router.get('/holidays', SqlController.getHolidays);
+
 module.exports = router;

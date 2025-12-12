@@ -5,6 +5,7 @@ import { Doughnut, Bar, Line } from 'react-chartjs-2';
 import * as XLSX from 'xlsx';
 import pptxgen from 'pptxgenjs';
 import { loadDashboardCache, saveDashboardCache, clearDashboardCache, isCacheValid } from '../utils/dashboardCache';
+import { calculateWorkingDaysToToday, setHolidays } from '../utils/workingDays';
 import DashboardLoading from './DashboardLoading';
 import Sidebar from './Sidebar';
 import Modal from './Modal';
@@ -462,7 +463,8 @@ const isBatchWaiting = (entries) => {
   return allIdleDateEntriesCompleted && hasRemainingSteps;
 };
 
-// Helper function to calculate days in stage from batch date
+// Helper function to calculate working days in stage from batch date
+// Uses calculateWorkingDaysToToday to exclude weekends and holidays
 const calculateDaysInStage = (entries, stageName = '') => {
   if (!entries || entries.length === 0) return 0;
   
@@ -503,15 +505,9 @@ const calculateDaysInStage = (entries, stageName = '') => {
     
     if (!latestIdleDate) return null;
     
-    // Calculate days from the latest IdleStartDate to today
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    latestIdleDate.setHours(0, 0, 0, 0);
-    
-    const diffTime = today - latestIdleDate;
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-    
-    return Math.max(0, diffDays);
+    // Calculate working days from the latest IdleStartDate to today
+    // Using working days calculation that excludes weekends and holidays
+    return calculateWorkingDaysToToday(latestIdleDate);
   }
   
   // Default logic for all other stages - use earliest IdleStartDate
@@ -527,18 +523,9 @@ const calculateDaysInStage = (entries, stageName = '') => {
   
   if (!earliestIdleDate) return 0;
   
-  // Normalize both dates to start of day (midnight) to avoid time-of-day issues
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  
-  earliestIdleDate.setHours(0, 0, 0, 0);
-  
-  // Calculate difference in days
-  const diffTime = today - earliestIdleDate;
-  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-  
-  // Ensure we never return negative values (if start date is today or in future, return 0)
-  return Math.max(0, diffDays);
+  // Calculate working days from earliest IdleStartDate to today
+  // Using working days calculation that excludes weekends and holidays
+  return calculateWorkingDaysToToday(earliestIdleDate);
 };
 
 // Get earliest IdleStartDate from entries and format it
@@ -982,7 +969,8 @@ const ProductionDashboard = () => {
             
             if (startDates.length > 0) {
               const oldestStartDate = new Date(Math.min(...startDates));
-              const durationInDays = Math.floor((currentDate - oldestStartDate) / (1000 * 60 * 60 * 24));
+              // Use working days calculation (excludes weekends and holidays)
+              const durationInDays = calculateWorkingDaysToToday(oldestStartDate);
               batchDurations.push(durationInDays);
             }
           }
@@ -1182,7 +1170,8 @@ const ProductionDashboard = () => {
               
               if (startDates.length > 0) {
                 const oldestStartDate = new Date(Math.min(...startDates));
-                const durationInDays = Math.floor((currentDate - oldestStartDate) / (1000 * 60 * 60 * 24));
+                // Use working days calculation (excludes weekends and holidays)
+                const durationInDays = calculateWorkingDaysToToday(oldestStartDate);
                 batchDurations.push(durationInDays);
               }
             }
@@ -2714,6 +2703,18 @@ const ProductionDashboard = () => {
       try {
         setLoading(true);
         setError(null);
+
+        // Fetch holidays first to initialize working days calculation
+        try {
+          const holidaysResponse = await fetch(apiUrl('/api/holidays'));
+          if (holidaysResponse.ok) {
+            const holidaysData = await holidaysResponse.json();
+            const holidays = (holidaysData.data || []).map(h => h.day_date);
+            setHolidays(holidays);
+          }
+        } catch (holidayErr) {
+          console.warn('Could not fetch holidays, using weekends only:', holidayErr);
+        }
 
         // Fetch Product List and OTC Products for categorization
         const [productListResponse, otcProductsResponse] = await Promise.all([

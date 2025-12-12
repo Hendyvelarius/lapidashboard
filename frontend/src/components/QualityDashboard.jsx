@@ -7,6 +7,7 @@ import DashboardLoading from './DashboardLoading';
 import ContextualHelpModal from './ContextualHelpModal';
 import { useHelp } from '../context/HelpContext';
 import { loadQualityCache, saveQualityCache, clearQualityCache, isQualityCacheValid } from '../utils/dashboardCache';
+import { calculateWorkingDaysToToday, setHolidays } from '../utils/workingDays';
 import { apiUrl } from '../api';
 import './QualityDashboard.css';
 
@@ -607,6 +608,18 @@ const QualityDashboard = () => {
         
         setLoading(true);
         
+        // Fetch holidays first to initialize working days calculation
+        try {
+          const holidaysResponse = await fetch(apiUrl('/api/holidays'));
+          if (holidaysResponse.ok) {
+            const holidaysData = await holidaysResponse.json();
+            const holidays = (holidaysData.data || []).map(h => h.day_date);
+            setHolidays(holidays);
+          }
+        } catch (holidayErr) {
+          console.warn('Could not fetch holidays, using weekends only:', holidayErr);
+        }
+        
         // Fetch all required data
         const [
           wipResponse, 
@@ -884,13 +897,8 @@ const QualityDashboard = () => {
           
           let daysInStage = 0;
           if (latestIdleDate) {
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            latestIdleDate.setHours(0, 0, 0, 0);
-            
-            const diffTime = today - latestIdleDate;
-            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-            daysInStage = Math.max(0, diffDays);
+            // Use working days calculation (excludes weekends and holidays)
+            daysInStage = calculateWorkingDaysToToday(latestIdleDate);
           }
           
           batch.daysInStage = daysInStage;
@@ -923,17 +931,8 @@ const QualityDashboard = () => {
 
           let daysInStage = 0;
           if (earliestIdleDate) {
-            // Normalize both dates to midnight to avoid time-of-day issues
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            earliestIdleDate.setHours(0, 0, 0, 0);
-            
-            // Calculate difference in days
-            const diffTime = today - earliestIdleDate;
-            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-            
-            // Ensure we never return negative values
-            daysInStage = Math.max(0, diffDays);
+            // Use working days calculation (excludes weekends and holidays)
+            daysInStage = calculateWorkingDaysToToday(earliestIdleDate);
           }
 
           // Update the batch with calculated days and waiting status
@@ -2016,12 +2015,8 @@ const QualityDashboard = () => {
       }
 
       if (idleDate) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        idleDate.setHours(0, 0, 0, 0);
-        const diffTime = today - idleDate;
-        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-        batch.daysInStage = Math.max(0, diffDays);
+        // Use working days calculation (excludes weekends and holidays)
+        batch.daysInStage = calculateWorkingDaysToToday(idleDate);
         batch.stageStart = idleDate.toLocaleDateString('en-GB');
       } else {
         batch.daysInStage = 0;
@@ -2158,12 +2153,8 @@ const QualityDashboard = () => {
     });
 
     if (earliestIdleDate) {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      earliestIdleDate.setHours(0, 0, 0, 0);
-      const diffTime = today - earliestIdleDate;
-      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-      fullBatchData.daysInStage = Math.max(0, diffDays);
+      // Use working days calculation (excludes weekends and holidays)
+      fullBatchData.daysInStage = calculateWorkingDaysToToday(earliestIdleDate);
       fullBatchData.stageStart = earliestIdleDate.toLocaleDateString('en-GB');
     } else {
       fullBatchData.daysInStage = 0;
@@ -2224,12 +2215,8 @@ const QualityDashboard = () => {
         });
 
         if (earliestIdleDate) {
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          earliestIdleDate.setHours(0, 0, 0, 0);
-          const diffTime = today - earliestIdleDate;
-          const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-          batch.daysInStage = Math.max(0, diffDays);
+          // Use working days calculation (excludes weekends and holidays)
+          batch.daysInStage = calculateWorkingDaysToToday(earliestIdleDate);
           batch.stageStart = earliestIdleDate.toLocaleDateString('en-GB');
         } else {
           batch.daysInStage = 0;

@@ -1504,11 +1504,11 @@ const WIPBatchesModal = ({ isOpen, onClose, wipData }) => {
     if (!searchTerm.trim()) return batches;
     
     return batches.filter(batch => {
-      const batchId = (batch.id || '').toString().toLowerCase();
+      const batchCode = (batch.batch || '').toString().toLowerCase();
       const productName = (batch.name || '').toString().toLowerCase();
       const searchLower = searchTerm.toLowerCase();
       
-      return batchId.includes(searchLower) || productName.includes(searchLower);
+      return batchCode.includes(searchLower) || productName.includes(searchLower);
     });
   };
 
@@ -1548,7 +1548,7 @@ const WIPBatchesModal = ({ isOpen, onClose, wipData }) => {
           <div className="search-container" style={{ marginBottom: '20px' }}>
             <input
               type="text"
-              placeholder="Search by batch ID or product name..."
+              placeholder="Search by batch code or product name..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               style={{
@@ -1582,7 +1582,7 @@ const WIPBatchesModal = ({ isOpen, onClose, wipData }) => {
                     .sort((a, b) => (a.duration || 0) - (b.duration || 0)) // Sort by duration ascending
                     .map((batch, index) => (
                       <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #10b981', marginBottom: '8px' }}>
-                        <div className="batch-code">Batch: {batch.id || 'N/A'}</div>
+                        <div className="batch-code">Batch: {batch.batch || 'N/A'}</div>
                         <div className="product-info">
                           <span className="product-name" style={{ fontSize: '12px', fontWeight: '500' }}>
                             {batch.name || 'Unknown Product'}
@@ -1610,7 +1610,7 @@ const WIPBatchesModal = ({ isOpen, onClose, wipData }) => {
                     .sort((a, b) => (b.duration || 0) - (a.duration || 0)) // Sort by duration descending (most late first)
                     .map((batch, index) => (
                       <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #ef4444', marginBottom: '8px' }}>
-                        <div className="batch-code">Batch: {batch.id || 'N/A'}</div>
+                        <div className="batch-code">Batch: {batch.batch || 'N/A'}</div>
                         <div className="product-info">
                           <span className="product-name" style={{ fontSize: '12px', fontWeight: '500' }}>
                             {batch.name || 'Unknown Product'}

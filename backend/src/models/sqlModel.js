@@ -98,7 +98,8 @@ async function getProductCycleTime() {
       ISNULL(ms.Dept, 'Belum Ada') AS Dept,
       MIN(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%timbang bb%' THEN fa.EndDate END) AS SelesaiTimbang,
       MAX(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%tempel label%' THEN fa.EndDate END) AS SelesaiLabel,
-      DATEDIFF(DAY, 
+      -- Using fn_JumlahHariKerja for working days calculation (excluding weekends and holidays)
+      dbo.fn_JumlahHariKerja(
         MIN(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%timbang bb%' THEN fa.EndDate END),
         MAX(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%tempel label%' THEN fa.EndDate END)
       ) AS PCT
@@ -147,7 +148,8 @@ async function getProductCycleTimeYearly() {
       ISNULL(ms.Dept, 'Belum Ada') AS Dept,
       MIN(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%timbang bb%' THEN fa.EndDate END) AS SelesaiTimbang,
       MAX(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%tempel label%' THEN fa.EndDate END) AS SelesaiLabel,
-      DATEDIFF(DAY, 
+      -- Using fn_JumlahHariKerja for working days calculation (excluding weekends and holidays)
+      dbo.fn_JumlahHariKerja(
         MIN(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%timbang bb%' THEN fa.EndDate END),
         MAX(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%tempel label%' THEN fa.EndDate END)
       ) AS PCT
@@ -369,6 +371,8 @@ async function getPCTBreakdown(period = 'MTD') {
         AND MONTH(EndDate) = MONTH(GETDATE())`;
   }
   
+  // Using fn_JumlahHariKerja to calculate working days (excluding weekends and holidays)
+  // This replaces the simple DATEDIFF calculation
   const query = `
     WITH FilteredAlur AS (
       SELECT 
@@ -392,39 +396,39 @@ async function getPCTBreakdown(period = 'MTD') {
         AND EndDate IS NOT NULL
         ${dateFilter}
     )
-    -- Return batch-level details with stage durations
+    -- Return batch-level details with stage durations using working days calculation
     SELECT 
       fa.Batch_No,
       fa.Batch_Date,
       fa.Product_ID,
       fa.Product_Name,
-      -- Total days from earliest StartDate to Tempel Label Realese EndDate
-      DATEDIFF(DAY,
+      -- Total working days from earliest StartDate to Tempel Label Realese EndDate
+      dbo.fn_JumlahHariKerja(
         MIN(fa.StartDate),
         MAX(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%tempel%label%realese%' THEN fa.EndDate END)
       ) AS Total_Days,
-      -- Timbang stage
-      DATEDIFF(DAY,
+      -- Timbang stage working days
+      dbo.fn_JumlahHariKerja(
         MIN(CASE WHEN fa.tahapan_group = 'Timbang' THEN fa.StartDate END),
         MAX(CASE WHEN fa.tahapan_group = 'Timbang' THEN fa.EndDate END)
       ) AS Timbang_Days,
-      -- QC stage
-      DATEDIFF(DAY,
+      -- QC stage working days
+      dbo.fn_JumlahHariKerja(
         MIN(CASE WHEN fa.tahapan_group = 'QC' THEN fa.StartDate END),
         MAX(CASE WHEN fa.tahapan_group = 'QC' THEN fa.EndDate END)
       ) AS QC_Days,
-      -- Mikro stage
-      DATEDIFF(DAY,
+      -- Mikro stage working days
+      dbo.fn_JumlahHariKerja(
         MIN(CASE WHEN fa.tahapan_group = 'Mikro' THEN fa.StartDate END),
         MAX(CASE WHEN fa.tahapan_group = 'Mikro' THEN fa.EndDate END)
       ) AS Mikro_Days,
-      -- QA stage
-      DATEDIFF(DAY,
+      -- QA stage working days
+      dbo.fn_JumlahHariKerja(
         MIN(CASE WHEN fa.tahapan_group = 'QA' THEN fa.StartDate END),
         MAX(CASE WHEN fa.tahapan_group = 'QA' THEN fa.EndDate END)
       ) AS QA_Days,
-      -- Proses stage (everything else that's not null and not the above categories)
-      DATEDIFF(DAY,
+      -- Proses stage working days (everything else that's not null and not the above categories)
+      dbo.fn_JumlahHariKerja(
         MIN(CASE 
           WHEN fa.tahapan_group NOT IN ('Timbang', 'QC', 'Mikro', 'QA') 
             AND fa.tahapan_group <> 'Other'
@@ -442,23 +446,23 @@ async function getPCTBreakdown(period = 'MTD') {
     INNER JOIN CompletedBatches cb ON fa.Batch_No = cb.Batch_No
     GROUP BY fa.Batch_No, fa.Batch_Date, fa.Product_ID, fa.Product_Name
     HAVING (
-      DATEDIFF(DAY,
+      dbo.fn_JumlahHariKerja(
         MIN(CASE WHEN fa.tahapan_group = 'Timbang' THEN fa.StartDate END),
         MAX(CASE WHEN fa.tahapan_group = 'Timbang' THEN fa.EndDate END)
       ) IS NOT NULL
-      OR DATEDIFF(DAY,
+      OR dbo.fn_JumlahHariKerja(
         MIN(CASE WHEN fa.tahapan_group = 'QC' THEN fa.StartDate END),
         MAX(CASE WHEN fa.tahapan_group = 'QC' THEN fa.EndDate END)
       ) IS NOT NULL
-      OR DATEDIFF(DAY,
+      OR dbo.fn_JumlahHariKerja(
         MIN(CASE WHEN fa.tahapan_group = 'Mikro' THEN fa.StartDate END),
         MAX(CASE WHEN fa.tahapan_group = 'Mikro' THEN fa.EndDate END)
       ) IS NOT NULL
-      OR DATEDIFF(DAY,
+      OR dbo.fn_JumlahHariKerja(
         MIN(CASE WHEN fa.tahapan_group = 'QA' THEN fa.StartDate END),
         MAX(CASE WHEN fa.tahapan_group = 'QA' THEN fa.EndDate END)
       ) IS NOT NULL
-      OR DATEDIFF(DAY,
+      OR dbo.fn_JumlahHariKerja(
         MIN(CASE 
           WHEN fa.tahapan_group NOT IN ('Timbang', 'QC', 'Mikro', 'QA') 
             AND fa.tahapan_group <> 'Other'
@@ -638,14 +642,14 @@ async function getPCTSummary() {
         AND EndDate IS NOT NULL
         ${dateFilter}
     ),
-    -- Batch-level details with Total_Days
+    -- Batch-level details with Total_Days using working days calculation
     BatchDetails AS (
       SELECT 
         fa.Batch_No,
         fa.Product_ID,
         fa.Product_Name,
-        -- Total days from earliest StartDate to Tempel Label Realese EndDate
-        DATEDIFF(DAY,
+        -- Total working days from earliest StartDate to Tempel Label Realese EndDate
+        dbo.fn_JumlahHariKerja(
           MIN(fa.StartDate),
           MAX(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%tempel%label%realese%' THEN fa.EndDate END)
         ) AS Total_Days
@@ -894,4 +898,23 @@ async function getBatchExpiry() {
   return result.recordset;
 }
 
-module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTSummary, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry};
+/**
+ * Get holidays from m_holiday table for working days calculation
+ * Returns active holidays that can be used by frontend to skip non-working days
+ */
+async function getHolidays() {
+  const db = await connect();
+  const query = `
+    SELECT 
+      day_date,
+      day_name,
+      day_description
+    FROM m_holiday 
+    WHERE isActive = 1
+    ORDER BY day_date DESC
+  `;
+  const result = await db.request().query(query);
+  return result.recordset;
+}
+
+module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTSummary, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays};
