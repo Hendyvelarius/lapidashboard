@@ -65,4 +65,18 @@ router.get('/batchExpiry', SqlController.getBatchExpiry);
 // Routing Holidays for working days calculation
 router.get('/holidays', SqlController.getHolidays);
 
+// Cache management endpoints
+const { cache } = require('../utils/cache');
+
+// Get cache statistics
+router.get('/cache/stats', (req, res) => {
+  res.json(cache.getStats());
+});
+
+// Clear cache (for admin/debugging purposes)
+router.post('/cache/clear', (req, res) => {
+  cache.clear();
+  res.json({ success: true, message: 'Cache cleared successfully' });
+});
+
 module.exports = router;

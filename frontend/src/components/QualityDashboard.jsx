@@ -8,7 +8,7 @@ import ContextualHelpModal from './ContextualHelpModal';
 import { useHelp } from '../context/HelpContext';
 import { loadQualityCache, saveQualityCache, clearQualityCache, isQualityCacheValid } from '../utils/dashboardCache';
 import { calculateWorkingDaysToToday, setHolidays } from '../utils/workingDays';
-import { apiUrl } from '../api';
+import { apiUrl, apiUrlWithRefresh } from '../api';
 import './QualityDashboard.css';
 
 ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend);
@@ -1411,22 +1411,15 @@ const QualityDashboard = () => {
   const handleRefresh = async () => {
     setRefreshing(true);
     
-    // Fetch fresh data
+    // Fetch fresh data - use apiUrlWithRefresh to bypass server cache
     try {
-      const [
-        wipResponse, 
-        forecastResponse, 
-        dailyProductionResponse,
-        ofTargetResponse,
-        ofActualResponse,
-        leadTimeResponse
-      ] = await Promise.all([
-        fetch(apiUrl('/api/wipData')),
-        fetch(apiUrl('/api/forecast')),
-        fetch(apiUrl('/api/dailyProduction')),
-        fetch(apiUrl('/api/ofsummary')),
-        fetch(apiUrl('/api/releasedBatchesYTD')),
-        fetch(apiUrl('/api/leadTime?period=MTD'))
+      const [wipResponse, forecastResponse, dailyProductionResponse, ofTargetResponse, ofActualResponse, leadTimeResponse] = await Promise.all([
+        fetch(apiUrlWithRefresh('/api/wipData', true)),
+        fetch(apiUrlWithRefresh('/api/forecast', true)),
+        fetch(apiUrlWithRefresh('/api/dailyProduction', true)),
+        fetch(apiUrlWithRefresh('/api/ofsummary', true)),
+        fetch(apiUrlWithRefresh('/api/releasedBatchesYTD', true)),
+        fetch(apiUrlWithRefresh('/api/leadTime?period=MTD', true))
       ]);
       
       // Variables to store fetched data for caching

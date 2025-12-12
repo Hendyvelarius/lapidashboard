@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement, Filler } from 'chart.js';
 import { Line, Bar, Doughnut } from 'react-chartjs-2';
 import { useNavigate } from 'react-router';
-import { apiUrl } from '../api';
+import { apiUrl, apiUrlWithRefresh } from '../api';
 import Sidebar from './Sidebar';
 import DashboardLoading from './DashboardLoading';
 import HelpModal from './HelpModal';
@@ -3428,17 +3428,20 @@ function SummaryDashboard() {
         setLoading(true);
       }
       
+      // Use apiUrlWithRefresh to bypass server cache when forceRefresh is true
+      const buildUrl = (path) => forceRefresh ? apiUrlWithRefresh(path, true) : apiUrl(path);
+      
       const [wipRes, ofRes, pctRes, forecastRes, bbbkRes, dailySalesRes, lostSalesRes, otaRes, materialRes, batchExpiryRes] = await Promise.all([
-        fetch(apiUrl('/api/wip')),
-        fetch(apiUrl('/api/ofsummary')),
-        fetch(apiUrl('/api/pctAverage')),
-        fetch(apiUrl('/api/forecast')),
-        fetch(apiUrl('/api/bbbk')),
-        fetch(apiUrl('/api/dailySales')),
-        fetch(apiUrl('/api/lostSales')),
-        fetch(apiUrl('/api/ota')),
-        fetch(apiUrl('/api/material')),
-        fetch(apiUrl('/api/batchExpiry'))
+        fetch(buildUrl('/api/wip')),
+        fetch(buildUrl('/api/ofsummary')),
+        fetch(buildUrl('/api/pctAverage')),
+        fetch(buildUrl('/api/forecast')),
+        fetch(buildUrl('/api/bbbk')),
+        fetch(buildUrl('/api/dailySales')),
+        fetch(buildUrl('/api/lostSales')),
+        fetch(buildUrl('/api/ota')),
+        fetch(buildUrl('/api/material')),
+        fetch(buildUrl('/api/batchExpiry'))
       ]);
 
       const wipData = await wipRes.json();

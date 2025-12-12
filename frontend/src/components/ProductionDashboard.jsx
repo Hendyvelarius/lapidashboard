@@ -11,7 +11,7 @@ import Sidebar from './Sidebar';
 import Modal from './Modal';
 import ContextualHelpModal from './ContextualHelpModal';
 import { useHelp } from '../context/HelpContext';
-import { apiUrl } from '../api';
+import { apiUrl, apiUrlWithRefresh } from '../api';
 import './ProductionDashboard.css';
 
 // Don't register ChartDataLabels globally - it will be added per-chart basis
@@ -1386,10 +1386,18 @@ const ProductionDashboard = () => {
       setLoading(true);
       setError(null);
 
-      // Fetch Product List and OTC Products for categorization
-      const [productListResponse, otcProductsResponse] = await Promise.all([
-        fetch(apiUrl('/api/productList')),
-        fetch(apiUrl('/api/otcProducts'))
+      // OPTIMIZATION: Fetch all initial data in parallel
+      // Use apiUrlWithRefresh(path, true) to bypass server cache on manual refresh
+      const [productListResponse, otcProductsResponse, groupDeptResponse, pctResponse, wipResponse, releasedBatchesResponse, forecastResponse, of1TargetResponse, ofSummaryResponse] = await Promise.all([
+        fetch(apiUrlWithRefresh('/api/productList', true)),
+        fetch(apiUrlWithRefresh('/api/otcProducts', true)),
+        fetch(apiUrlWithRefresh('/api/productGroupDept', true)),
+        fetch(apiUrlWithRefresh(`/api/pctBreakdown?period=${pctPeriod}`, true)),
+        fetch(apiUrlWithRefresh('/api/wipData', true)),
+        fetch(apiUrlWithRefresh('/api/releasedBatches', true)),
+        fetch(apiUrlWithRefresh('/api/forecast', true)),
+        fetch(apiUrlWithRefresh('/api/of1Target', true)),
+        fetch(apiUrlWithRefresh('/api/ofsummary', true))
       ]);
 
       if (!productListResponse.ok || !otcProductsResponse.ok) {
@@ -1429,8 +1437,7 @@ const ProductionDashboard = () => {
 
       setProductCategories(categories);
 
-      // Fetch Product Group Dept data
-      const groupDeptResponse = await fetch(apiUrl('/api/productGroupDept'));
+      // Process Product Group Dept data
       if (!groupDeptResponse.ok) {
         throw new Error(`Group Dept API error! status: ${groupDeptResponse.status}`);
       }
@@ -1444,8 +1451,7 @@ const ProductionDashboard = () => {
         productDeptMap[item.Group_ProductID] = item.Group_Dept;
       });
 
-      // Fetch PCT Breakdown data with period parameter
-      const pctResponse = await fetch(apiUrl(`/api/pctBreakdown?period=${pctPeriod}`));
+      // Process PCT Breakdown data
       if (!pctResponse.ok) {
         throw new Error(`PCT API error! status: ${pctResponse.status}`);
       }
@@ -1532,8 +1538,7 @@ const ProductionDashboard = () => {
         setPctDeptData(pctDeptDataLocal);
       }
 
-      // Fetch WIP data
-      const wipResponse = await fetch(apiUrl('/api/wipData'));
+      // Process WIP data (already fetched in parallel above)
       if (!wipResponse.ok) {
         throw new Error(`WIP API error! status: ${wipResponse.status}`);
       }
@@ -1541,8 +1546,7 @@ const ProductionDashboard = () => {
       const wipResult = await wipResponse.json();
       let wipRawData = wipResult.data || [];
       
-      // Fetch released batches from t_dnc_product
-      const releasedBatchesResponse = await fetch(apiUrl('/api/releasedBatches'));
+      // Process released batches (already fetched in parallel above)
       if (!releasedBatchesResponse.ok) {
         throw new Error(`Released Batches API error! status: ${releasedBatchesResponse.status}`);
       }
@@ -1565,8 +1569,7 @@ const ProductionDashboard = () => {
       const overallDept = processOverallDeptData(wipRawData);
       setOverallDeptData(overallDept);
 
-      // Fetch Forecast data
-      const forecastResponse = await fetch(apiUrl('/api/forecast'));
+      // Process Forecast data (already fetched in parallel above)
       if (!forecastResponse.ok) {
         throw new Error(`Forecast API error! status: ${forecastResponse.status}`);
       }
@@ -1580,8 +1583,7 @@ const ProductionDashboard = () => {
       const processedForecast = processForecastData(forecastRawData, categories);
       setForecastData(processedForecast);
       
-      // Fetch OF1 Target data (historical monthly data)
-      const of1TargetResponse = await fetch(apiUrl('/api/of1Target'));
+      // Process OF1 Target data (already fetched in parallel above)
       if (!of1TargetResponse.ok) {
         throw new Error(`OF1 Target API error! status: ${of1TargetResponse.status}`);
       }
@@ -1589,20 +1591,16 @@ const ProductionDashboard = () => {
       const of1TargetResult = await of1TargetResponse.json();
       const of1TargetRawData = of1TargetResult.data || [];
       
-      // Fetch OF Summary data (target batches for current month)
-      const ofSummaryResponse = await fetch(apiUrl('/api/ofsummary'));
+      // Process OF Summary data (already fetched in parallel above)
       const ofSummaryResult = ofSummaryResponse.ok ? await ofSummaryResponse.json() : [];
       const ofSummary = ofSummaryResult.data || ofSummaryResult || [];
       setOfSummaryData(ofSummary);
       
-      // Fetch Released Batches data (actual released for current month)
-      const releasedBatchesDataResponse = await fetch(apiUrl('/api/releasedBatches'));
-      const releasedBatchesDataResult = releasedBatchesDataResponse.ok ? await releasedBatchesDataResponse.json() : {};
-      const releasedBatchesForOF1 = releasedBatchesDataResult.data || [];
-      setReleasedBatchesData(releasedBatchesForOF1);
+      // Use the already-fetched releasedBatches for OF1 calculation
+      setReleasedBatchesData(releasedBatches);
       
       // Merge historical OF1 data with current month data from ofSummary and releasedBatches
-      const mergedOf1Data = mergeOF1Data(of1TargetRawData, ofSummary, releasedBatchesForOF1);
+      const mergedOf1Data = mergeOF1Data(of1TargetRawData, ofSummary, releasedBatches);
       
       // Store raw OF1 data (merged)
       setOf1TargetRawData(mergedOf1Data);
@@ -1626,7 +1624,7 @@ const ProductionDashboard = () => {
         forecastRawData,
         processedForecast,
         ofSummary,
-        releasedBatches: releasedBatchesForOF1,
+        releasedBatches: releasedBatches,
         of1TargetRawData: mergedOf1Data,
         processedOf1
       };
@@ -2704,23 +2702,30 @@ const ProductionDashboard = () => {
         setLoading(true);
         setError(null);
 
-        // Fetch holidays first to initialize working days calculation
-        try {
-          const holidaysResponse = await fetch(apiUrl('/api/holidays'));
-          if (holidaysResponse.ok) {
+        // OPTIMIZATION: Fetch all independent data in parallel
+        // Group 1: Initial data (holidays, products, OTC products, group dept)
+        const [
+          holidaysResponse,
+          productListResponse,
+          otcProductsResponse,
+          groupDeptResponse
+        ] = await Promise.all([
+          fetch(apiUrl('/api/holidays')).catch(() => ({ ok: false })),
+          fetch(apiUrl('/api/productList')),
+          fetch(apiUrl('/api/otcProducts')),
+          fetch(apiUrl('/api/productGroupDept'))
+        ]);
+
+        // Process holidays (non-critical)
+        if (holidaysResponse.ok) {
+          try {
             const holidaysData = await holidaysResponse.json();
             const holidays = (holidaysData.data || []).map(h => h.day_date);
             setHolidays(holidays);
+          } catch (holidayErr) {
+            console.warn('Could not parse holidays:', holidayErr);
           }
-        } catch (holidayErr) {
-          console.warn('Could not fetch holidays, using weekends only:', holidayErr);
         }
-
-        // Fetch Product List and OTC Products for categorization
-        const [productListResponse, otcProductsResponse] = await Promise.all([
-          fetch(apiUrl('/api/productList')),
-          fetch(apiUrl('/api/otcProducts'))
-        ]);
 
         if (!productListResponse.ok || !otcProductsResponse.ok) {
           throw new Error('Error fetching product category data');
@@ -2759,8 +2764,7 @@ const ProductionDashboard = () => {
 
         setProductCategories(categories);
 
-        // Fetch Product Group Dept data
-        const groupDeptResponse = await fetch(apiUrl('/api/productGroupDept'));
+        // Process Group Dept data
         if (!groupDeptResponse.ok) {
           throw new Error(`Group Dept API error! status: ${groupDeptResponse.status}`);
         }
@@ -2774,8 +2778,24 @@ const ProductionDashboard = () => {
           productDeptMap[item.Group_ProductID] = item.Group_Dept;
         });
 
-        // Fetch PCT Breakdown data (now batch-level details)
-        const pctResponse = await fetch(apiUrl(`/api/pctBreakdown?period=${pctPeriod}`));
+        // OPTIMIZATION: Fetch remaining data in parallel (Group 2)
+        const [
+          pctResponse,
+          wipResponse,
+          releasedBatchesResponse,
+          forecastResponse,
+          of1TargetResponse,
+          ofSummaryResponse
+        ] = await Promise.all([
+          fetch(apiUrl(`/api/pctBreakdown?period=${pctPeriod}`)),
+          fetch(apiUrl('/api/wipData')),
+          fetch(apiUrl('/api/releasedBatches')),
+          fetch(apiUrl('/api/forecast')),
+          fetch(apiUrl('/api/of1Target')),
+          fetch(apiUrl('/api/ofsummary'))
+        ]);
+
+        // Process PCT Breakdown data
         if (!pctResponse.ok) {
           throw new Error(`PCT API error! status: ${pctResponse.status}`);
         }
@@ -2865,8 +2885,7 @@ const ProductionDashboard = () => {
           });
         }
 
-        // Fetch WIP data
-        const wipResponse = await fetch(apiUrl('/api/wipData'));
+        // Process WIP data (already fetched in parallel above)
         if (!wipResponse.ok) {
           throw new Error(`WIP API error! status: ${wipResponse.status}`);
         }
@@ -2874,8 +2893,7 @@ const ProductionDashboard = () => {
         const wipResult = await wipResponse.json();
         let wipRawData = wipResult.data || [];
         
-        // Fetch released batches from t_dnc_product
-        const releasedBatchesResponse = await fetch(apiUrl('/api/releasedBatches'));
+        // Process released batches (already fetched in parallel above)
         if (!releasedBatchesResponse.ok) {
           throw new Error(`Released Batches API error! status: ${releasedBatchesResponse.status}`);
         }
@@ -2899,8 +2917,7 @@ const ProductionDashboard = () => {
         const overallDept = processOverallDeptData(wipRawData);
         setOverallDeptData(overallDept);
 
-        // Fetch Forecast data
-        const forecastResponse = await fetch(apiUrl('/api/forecast'));
+        // Process Forecast data (already fetched in parallel above)
         if (!forecastResponse.ok) {
           throw new Error(`Forecast API error! status: ${forecastResponse.status}`);
         }
@@ -2915,8 +2932,7 @@ const ProductionDashboard = () => {
         const processedForecast = processForecastData(forecastRawData, categories);
         setForecastData(processedForecast);
         
-        // Fetch OF1 Target data (historical monthly data)
-        const of1TargetResponse = await fetch(apiUrl('/api/of1Target'));
+        // Process OF1 Target data (already fetched in parallel above)
         if (!of1TargetResponse.ok) {
           throw new Error(`OF1 Target API error! status: ${of1TargetResponse.status}`);
         }
@@ -2924,14 +2940,12 @@ const ProductionDashboard = () => {
         const of1TargetResult = await of1TargetResponse.json();
         const of1TargetRawData = of1TargetResult.data || [];
         
-        // Fetch OF Summary data (target batches for current month)
-        const ofSummaryResponse = await fetch(apiUrl('/api/ofsummary'));
+        // Process OF Summary data (already fetched in parallel above)
         const ofSummaryResult = ofSummaryResponse.ok ? await ofSummaryResponse.json() : [];
         const ofSummary = ofSummaryResult.data || ofSummaryResult || [];
         setOfSummaryData(ofSummary);
         
-        // Fetch Released Batches data (actual released for current month) - same data used for filtering WIP
-        // We already fetched this above for WIP filtering, so use the same releasedBatches variable
+        // Use the already-fetched releasedBatches variable for OF1 calculation
         setReleasedBatchesData(releasedBatches);
         
         // Merge historical OF1 data with current month data from ofSummary and releasedBatches

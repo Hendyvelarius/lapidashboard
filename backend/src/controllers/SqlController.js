@@ -1,10 +1,37 @@
 const SqlModel = require('../models/sqlModel');
 const converterModel = require('../models/converterModel');
+const { cache, CACHE_TTL } = require('../utils/cache');
+
+// Helper function to get data with caching
+// If skipCache is true (from ?refresh=true query param), bypass cache and fetch fresh data
+async function getCachedData(cacheKey, fetchFn, ttl = CACHE_TTL.MEDIUM, skipCache = false) {
+  // Skip cache if requested (manual refresh)
+  if (!skipCache) {
+    // Try to get from cache first
+    const cachedData = cache.get(cacheKey);
+    if (cachedData !== null) {
+      return cachedData;
+    }
+  }
+  
+  // Fetch fresh data
+  const data = await fetchFn();
+  
+  // Store in cache (even if we skipped reading from it)
+  cache.set(cacheKey, data, ttl);
+  
+  return data;
+}
+
+// Helper to check if request wants fresh data
+function shouldSkipCache(req) {
+  return req.query.refresh === 'true';
+}
 
 // Controller for /fulfillment
 async function getFulfillment(req, res) {
   try {
-    const data = await SqlModel.getFulfillment();
+    const data = await getCachedData('fulfillment', () => SqlModel.getFulfillment(), CACHE_TTL.MEDIUM, shouldSkipCache(req));
     res.json({ data });
   } catch (err) {
     console.error('Error in fetching Fulfillment:', err);
@@ -15,7 +42,7 @@ async function getFulfillment(req, res) {
 // Controller buat ambil data WIP
 async function getWip(req, res) {
   try {
-    const data = await SqlModel.WorkInProgress();
+    const data = await getCachedData('wip', () => SqlModel.WorkInProgress(), CACHE_TTL.MEDIUM, shouldSkipCache(req));
     const converted = converterModel.WipConverter(data);
     res.json({ data: converted });
   } catch (err) {
@@ -27,7 +54,7 @@ async function getWip(req, res) {
 // Controller for /api/alur
 async function getAlur(req, res) {
   try {
-    const data = await SqlModel.WorkInProgressAlur();
+    const data = await getCachedData('alur', () => SqlModel.WorkInProgressAlur(), CACHE_TTL.MEDIUM, shouldSkipCache(req));
     res.json({ data });
   } catch (err) {
     console.error('Error in fetching Alur:', err);
@@ -54,7 +81,7 @@ async function getBatchAlur(req, res) {
 // Controller for /fulfillmentKelompok
 async function getFulfillmentPerKelompok(req, res) {
   try {
-    const data = await SqlModel.getFulfillmentPerKelompok();
+    const data = await getCachedData('fulfillmentPerKelompok', () => SqlModel.getFulfillmentPerKelompok(), CACHE_TTL.MEDIUM, shouldSkipCache(req));
     res.json({ data });
   } catch (err) {
     console.error('Error in fetching FulfillmentPerKelompok:', err);
@@ -65,7 +92,7 @@ async function getFulfillmentPerKelompok(req, res) {
 // Controller for /fulfillmentPerDept
 async function getFulfillmentPerDept(req, res) {
   try {
-    const data = await SqlModel.getFulfillmentPerDept();
+    const data = await getCachedData('fulfillmentPerDept', () => SqlModel.getFulfillmentPerDept(), CACHE_TTL.MEDIUM, shouldSkipCache(req));
     res.json({ data });
   } catch (err) {
     console.error('Error in fetching FulfillmentPerDept:', err);
@@ -75,7 +102,7 @@ async function getFulfillmentPerDept(req, res) {
 
 async function getWipProdByDept (req, res) {
   try {
-    const data = await SqlModel.getWipProdByDept();
+    const data = await getCachedData('wipProdByDept', () => SqlModel.getWipProdByDept(), CACHE_TTL.MEDIUM, shouldSkipCache(req));
     res.json({ data });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -84,7 +111,7 @@ async function getWipProdByDept (req, res) {
 
 async function getWipByGroup(req, res) {
   try {
-    const data = await SqlModel.getWipByGroup();
+    const data = await getCachedData('wipByGroup', () => SqlModel.getWipByGroup(), CACHE_TTL.MEDIUM, shouldSkipCache(req));
     res.json({ data });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -93,7 +120,7 @@ async function getWipByGroup(req, res) {
 
 async function getProductCycleTime(req, res) {
   try {
-    const data = await SqlModel.getProductCycleTime();
+    const data = await getCachedData('productCycleTime', () => SqlModel.getProductCycleTime(), CACHE_TTL.LONG, shouldSkipCache(req));
     res.json({ data });
   } catch (err) {
     console.error('Error in fetching Product Cycle Time:', err);
@@ -103,7 +130,7 @@ async function getProductCycleTime(req, res) {
 
 async function getProductCycleTimeYearly(req, res) {
   try {
-    const data = await SqlModel.getProductCycleTimeYearly();
+    const data = await getCachedData('productCycleTimeYearly', () => SqlModel.getProductCycleTimeYearly(), CACHE_TTL.LONG, shouldSkipCache(req));
     res.json({ data });
   } catch (err) {
     console.error('Error in fetching Product Cycle Time:', err);
@@ -115,7 +142,7 @@ async function getProductCycleTimeAverage(req, res) {
   try {
     // Use getPCTSummary which groups by product and calculates averages
     // Same data source as Production Dashboard but grouped for Summary view
-    const data = await SqlModel.getPCTSummary();
+    const data = await getCachedData('pctSummary', () => SqlModel.getPCTSummary(), CACHE_TTL.LONG, shouldSkipCache(req));
     res.json({ data });
   } catch (err) {
     console.error('Error in fetching Product Cycle Time Average:', err);
@@ -125,7 +152,7 @@ async function getProductCycleTimeAverage(req, res) {
 
 async function getPCTSummary(req, res) {
   try {
-    const data = await SqlModel.getPCTSummary();
+    const data = await getCachedData('pctSummary', () => SqlModel.getPCTSummary(), CACHE_TTL.LONG, shouldSkipCache(req));
     res.json({ data });
   } catch (err) {
     console.error('Error in fetching PCT Summary:', err);
@@ -135,7 +162,7 @@ async function getPCTSummary(req, res) {
 
 async function getOrderFulfillment(req, res) {
   try {
-    const data = await SqlModel.getOrderFulfillment();
+    const data = await getCachedData('orderFulfillment', () => SqlModel.getOrderFulfillment(), CACHE_TTL.MEDIUM, shouldSkipCache(req));
     res.json(data);
   } catch (err) {
     console.error('Error in fetching Order Fulfillment:', err);
@@ -145,7 +172,7 @@ async function getOrderFulfillment(req, res) {
 
 async function getStockReport(req, res) {
   try {
-    const data = await SqlModel.getStockReport();
+    const data = await getCachedData('stockReport', () => SqlModel.getStockReport(), CACHE_TTL.MEDIUM, shouldSkipCache(req));
     res.json(data);
   } catch (err) {
     console.error('Error in fetching Stock Report:', err);
@@ -169,7 +196,7 @@ async function getMonthlyForecast(req, res) {
 
 async function getForecast(req, res) {
   try {
-    const data = await SqlModel.getForecast();
+    const data = await getCachedData('forecast', () => SqlModel.getForecast(), CACHE_TTL.MEDIUM, shouldSkipCache(req));
     res.json( data );
   } catch (err) {
     console.error('Error in fetching Forecast:', err);
@@ -179,7 +206,7 @@ async function getForecast(req, res) {
 
 async function getofsummary(req, res) {
   try {
-    const data = await SqlModel.getofsummary();
+    const data = await getCachedData('ofSummary', () => SqlModel.getofsummary(), CACHE_TTL.MEDIUM, shouldSkipCache(req));
     res.json( data );
   } catch (err) {
     console.error('Error in fetching Order Fulfillment Summary:', err);
@@ -189,7 +216,7 @@ async function getofsummary(req, res) {
 
 async function getbbbk(req, res) {
   try {
-    const data = await SqlModel.getbbbk();
+    const data = await getCachedData('bbbk', () => SqlModel.getbbbk(), CACHE_TTL.MEDIUM, shouldSkipCache(req));
     res.json( data );
   } catch (err) {
     console.error('Error in fetching BBBK:', err);
@@ -199,7 +226,7 @@ async function getbbbk(req, res) {
 
 async function getDailySales(req, res) {
   try {
-    const data = await SqlModel.getDailySales();
+    const data = await getCachedData('dailySales', () => SqlModel.getDailySales(), CACHE_TTL.MEDIUM, shouldSkipCache(req));
     res.json( data );
   } catch (err) {
     console.error('Error in fetching Daily Sales:', err);
@@ -209,7 +236,7 @@ async function getDailySales(req, res) {
 
 async function getLostSales(req, res) {
   try {
-    const data = await SqlModel.getLostSales();
+    const data = await getCachedData('lostSales', () => SqlModel.getLostSales(), CACHE_TTL.MEDIUM, shouldSkipCache(req));
     res.json( data );
   } catch (err) {
     console.error('Error in fetching Lost Sales:', err);
@@ -219,7 +246,7 @@ async function getLostSales(req, res) {
 
 async function getOTA(req, res) {
   try {
-    const data = await SqlModel.getOTA();
+    const data = await getCachedData('ota', () => SqlModel.getOTA(), CACHE_TTL.MEDIUM, shouldSkipCache(req));
     res.json( data );
   } catch (err) {
     console.error('Error in fetching OTA:', err);
@@ -229,7 +256,7 @@ async function getOTA(req, res) {
 
 async function getMaterial(req, res) {
   try {
-    const data = await SqlModel.getMaterial();
+    const data = await getCachedData('material', () => SqlModel.getMaterial(), CACHE_TTL.MEDIUM, shouldSkipCache(req));
     res.json( data );
   } catch (err) {
     console.error('Error in fetching Material:', err);
@@ -240,7 +267,8 @@ async function getMaterial(req, res) {
 async function getPCTBreakdown(req, res) {
   try {
     const period = req.query.period || 'MTD'; // Default to MTD if not specified
-    const data = await SqlModel.getPCTBreakdown(period);
+    const cacheKey = `pctBreakdown_${period}`;
+    const data = await getCachedData(cacheKey, () => SqlModel.getPCTBreakdown(period), CACHE_TTL.LONG, shouldSkipCache(req));
     res.json({ data });
   } catch (err) {
     console.error('Error in fetching PCT Breakdown:', err);
@@ -250,7 +278,7 @@ async function getPCTBreakdown(req, res) {
 
 async function getWIPData(req, res) {
   try {
-    const data = await SqlModel.getWIPData();
+    const data = await getCachedData('wipData', () => SqlModel.getWIPData(), CACHE_TTL.MEDIUM, shouldSkipCache(req));
     res.json({ data });
   } catch (err) {
     console.error('Error in fetching WIP Data:', err);
@@ -260,7 +288,7 @@ async function getWIPData(req, res) {
 
 async function getProductList(req, res) {
   try {
-    const data = await SqlModel.getProductList();
+    const data = await getCachedData('productList', () => SqlModel.getProductList(), CACHE_TTL.VERY_LONG, shouldSkipCache(req));
     res.json({ data });
   } catch (err) {
     console.error('Error in fetching Product List:', err);
@@ -270,7 +298,7 @@ async function getProductList(req, res) {
 
 async function getOTCProducts(req, res) {
   try {
-    const data = await SqlModel.getOTCProducts();
+    const data = await getCachedData('otcProducts', () => SqlModel.getOTCProducts(), CACHE_TTL.VERY_LONG, shouldSkipCache(req));
     res.json({ data });
   } catch (err) {
     console.error('Error in fetching OTC Products:', err);
@@ -280,7 +308,7 @@ async function getOTCProducts(req, res) {
 
 async function getProductGroupDept(req, res) {
   try {
-    const data = await SqlModel.getProductGroupDept();
+    const data = await getCachedData('productGroupDept', () => SqlModel.getProductGroupDept(), CACHE_TTL.LONG, shouldSkipCache(req));
     res.json({ data });
   } catch (err) {
     console.error('Error in fetching Product Group Dept:', err);
@@ -290,7 +318,7 @@ async function getProductGroupDept(req, res) {
 
 async function getReleasedBatches(req, res) {
   try {
-    const data = await SqlModel.getReleasedBatches();
+    const data = await getCachedData('releasedBatches', () => SqlModel.getReleasedBatches(), CACHE_TTL.MEDIUM, shouldSkipCache(req));
     res.json({ data });
   } catch (err) {
     console.error('Error in fetching Released Batches:', err);
@@ -300,7 +328,7 @@ async function getReleasedBatches(req, res) {
 
 async function getReleasedBatchesYTD(req, res) {
   try {
-    const data = await SqlModel.getReleasedBatchesYTD();
+    const data = await getCachedData('releasedBatchesYTD', () => SqlModel.getReleasedBatchesYTD(), CACHE_TTL.MEDIUM, shouldSkipCache(req));
     res.json({ data });
   } catch (err) {
     console.error('Error in fetching Released Batches YTD:', err);
@@ -310,7 +338,7 @@ async function getReleasedBatchesYTD(req, res) {
 
 async function getDailyProduction(req, res) {
   try {
-    const data = await SqlModel.getDailyProduction();
+    const data = await getCachedData('dailyProduction', () => SqlModel.getDailyProduction(), CACHE_TTL.MEDIUM, shouldSkipCache(req));
     res.json({ data });
   } catch (err) {
     console.error('Error in fetching Daily Production:', err);
@@ -321,7 +349,8 @@ async function getDailyProduction(req, res) {
 async function getLeadTime(req, res) {
   try {
     const period = req.query.period || 'MTD'; // Default to MTD if not specified
-    const data = await SqlModel.getLeadTime(period);
+    const cacheKey = `leadTime_${period}`;
+    const data = await getCachedData(cacheKey, () => SqlModel.getLeadTime(period), CACHE_TTL.LONG, shouldSkipCache(req));
     res.json({ data });
   } catch (err) {
     console.error('Error in fetching Lead Time:', err);
@@ -331,7 +360,7 @@ async function getLeadTime(req, res) {
 
 async function getOF1Target(req, res) {
   try {
-    const data = await SqlModel.getOF1Target();
+    const data = await getCachedData('of1Target', () => SqlModel.getOF1Target(), CACHE_TTL.MEDIUM, shouldSkipCache(req));
     res.json({ data });
   } catch (err) {
     console.error('Error in fetching OF1 Target:', err);
@@ -341,7 +370,7 @@ async function getOF1Target(req, res) {
 
 async function getBatchExpiry(req, res) {
   try {
-    const data = await SqlModel.getBatchExpiry();
+    const data = await getCachedData('batchExpiry', () => SqlModel.getBatchExpiry(), CACHE_TTL.MEDIUM, shouldSkipCache(req));
     res.json({ data });
   } catch (err) {
     console.error('Error in fetching Batch Expiry:', err);
@@ -351,7 +380,8 @@ async function getBatchExpiry(req, res) {
 
 async function getHolidays(req, res) {
   try {
-    const data = await SqlModel.getHolidays();
+    // Holidays rarely change, use very long TTL
+    const data = await getCachedData('holidays', () => SqlModel.getHolidays(), CACHE_TTL.VERY_LONG, shouldSkipCache(req));
     res.json({ data });
   } catch (err) {
     console.error('Error in fetching Holidays:', err);

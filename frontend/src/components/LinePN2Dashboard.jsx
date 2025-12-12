@@ -8,7 +8,7 @@ import ContextualHelpModal from './ContextualHelpModal';
 import { useHelp } from '../context/HelpContext';
 import { loadLinePN2Cache, saveLinePN2Cache, clearLinePN2Cache, isLinePN2CacheValid } from '../utils/dashboardCache';
 import { calculateWorkingDaysToToday, setHolidays } from '../utils/workingDays';
-import { apiUrl } from '../api';
+import { apiUrl, apiUrlWithRefresh } from '../api';
 import './LinePN2Dashboard.css';
 
 ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend);
@@ -1293,20 +1293,14 @@ const LinePN2Dashboard = () => {
   const handleRefresh = async () => {
     setRefreshing(true);
     
-    // Fetch fresh data
+    // Fetch fresh data - use apiUrlWithRefresh to bypass server cache
     try {
-      const [
-        wipResponse, 
-        forecastResponse, 
-        dailyProductionResponse,
-        ofTargetResponse,
-        ofActualResponse
-      ] = await Promise.all([
-        fetch(apiUrl('/api/wipData')),
-        fetch(apiUrl('/api/forecast')),
-        fetch(apiUrl('/api/dailyProduction')),
-        fetch(apiUrl('/api/ofsummary')),
-        fetch(apiUrl('/api/releasedBatches'))
+      const [wipResponse, forecastResponse, dailyProductionResponse, ofTargetResponse, ofActualResponse] = await Promise.all([
+        fetch(apiUrlWithRefresh('/api/wipData', true)),
+        fetch(apiUrlWithRefresh('/api/forecast', true)),
+        fetch(apiUrlWithRefresh('/api/dailyProduction', true)),
+        fetch(apiUrlWithRefresh('/api/ofsummary', true)),
+        fetch(apiUrlWithRefresh('/api/releasedBatches', true))
       ]);
       
       // Variables to store fetched data for caching
