@@ -5,7 +5,7 @@ import { Doughnut, Bar, Line } from 'react-chartjs-2';
 import * as XLSX from 'xlsx';
 import pptxgen from 'pptxgenjs';
 import { loadDashboardCache, saveDashboardCache, clearDashboardCache, isCacheValid } from '../utils/dashboardCache';
-import { calculateWorkingDaysToToday, setHolidays } from '../utils/workingDays';
+import { calculateCalendarDaysToToday, setHolidays } from '../utils/workingDays';
 import DashboardLoading from './DashboardLoading';
 import Sidebar from './Sidebar';
 import Modal from './Modal';
@@ -463,8 +463,8 @@ const isBatchWaiting = (entries) => {
   return allIdleDateEntriesCompleted && hasRemainingSteps;
 };
 
-// Helper function to calculate working days in stage from batch date
-// Uses calculateWorkingDaysToToday to exclude weekends and holidays
+// Helper function to calculate calendar days in stage from batch date
+// Uses calculateCalendarDaysToToday for full calendar days (no holiday exclusions)
 const calculateDaysInStage = (entries, stageName = '') => {
   if (!entries || entries.length === 0) return 0;
   
@@ -506,8 +506,8 @@ const calculateDaysInStage = (entries, stageName = '') => {
     if (!latestIdleDate) return null;
     
     // Calculate working days from the latest IdleStartDate to today
-    // Using working days calculation that excludes weekends and holidays
-    return calculateWorkingDaysToToday(latestIdleDate);
+    // Using calendar days calculation (no exclusions)
+    return calculateCalendarDaysToToday(latestIdleDate);
   }
   
   // Default logic for all other stages - use earliest IdleStartDate
@@ -524,8 +524,8 @@ const calculateDaysInStage = (entries, stageName = '') => {
   if (!earliestIdleDate) return 0;
   
   // Calculate working days from earliest IdleStartDate to today
-  // Using working days calculation that excludes weekends and holidays
-  return calculateWorkingDaysToToday(earliestIdleDate);
+  // Using calendar days calculation (no exclusions)
+  return calculateCalendarDaysToToday(earliestIdleDate);
 };
 
 // Get earliest IdleStartDate from entries and format it
@@ -969,8 +969,8 @@ const ProductionDashboard = () => {
             
             if (startDates.length > 0) {
               const oldestStartDate = new Date(Math.min(...startDates));
-              // Use working days calculation (excludes weekends and holidays)
-              const durationInDays = calculateWorkingDaysToToday(oldestStartDate);
+              // Use calendar days calculation (no exclusions)
+              const durationInDays = calculateCalendarDaysToToday(oldestStartDate);
               batchDurations.push(durationInDays);
             }
           }
@@ -1170,8 +1170,8 @@ const ProductionDashboard = () => {
               
               if (startDates.length > 0) {
                 const oldestStartDate = new Date(Math.min(...startDates));
-                // Use working days calculation (excludes weekends and holidays)
-                const durationInDays = calculateWorkingDaysToToday(oldestStartDate);
+                // Use calendar days calculation (no exclusions)
+                const durationInDays = calculateCalendarDaysToToday(oldestStartDate);
                 batchDurations.push(durationInDays);
               }
             }

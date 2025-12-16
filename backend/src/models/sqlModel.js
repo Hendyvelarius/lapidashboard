@@ -98,8 +98,9 @@ async function getProductCycleTime() {
       ISNULL(ms.Dept, 'Belum Ada') AS Dept,
       MIN(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%timbang bb%' THEN fa.EndDate END) AS SelesaiTimbang,
       MAX(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%tempel label%' THEN fa.EndDate END) AS SelesaiLabel,
-      -- Using fn_JumlahHariKerja for working days calculation (excluding weekends and holidays)
-      dbo.fn_JumlahHariKerja(
+      -- Using DATEDIFF for calendar days calculation (no exclusions)
+      DATEDIFF(
+        DAY,
         MIN(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%timbang bb%' THEN fa.EndDate END),
         MAX(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%tempel label%' THEN fa.EndDate END)
       ) AS PCT
@@ -148,8 +149,9 @@ async function getProductCycleTimeYearly() {
       ISNULL(ms.Dept, 'Belum Ada') AS Dept,
       MIN(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%timbang bb%' THEN fa.EndDate END) AS SelesaiTimbang,
       MAX(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%tempel label%' THEN fa.EndDate END) AS SelesaiLabel,
-      -- Using fn_JumlahHariKerja for working days calculation (excluding weekends and holidays)
-      dbo.fn_JumlahHariKerja(
+      -- Using DATEDIFF for calendar days calculation (no exclusions)
+      DATEDIFF(
+        DAY,
         MIN(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%timbang bb%' THEN fa.EndDate END),
         MAX(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%tempel label%' THEN fa.EndDate END)
       ) AS PCT
@@ -371,8 +373,8 @@ async function getPCTBreakdown(period = 'MTD') {
         AND MONTH(EndDate) = MONTH(GETDATE())`;
   }
   
-  // Using fn_JumlahHariKerja to calculate working days (excluding weekends and holidays)
-  // This replaces the simple DATEDIFF calculation
+  // Using DATEDIFF to calculate calendar days (no exclusions)
+  // Changed from fn_JumlahHariKerja per management request
   const query = `
     WITH FilteredAlur AS (
       SELECT 
@@ -402,33 +404,39 @@ async function getPCTBreakdown(period = 'MTD') {
       fa.Batch_Date,
       fa.Product_ID,
       fa.Product_Name,
-      -- Total working days from earliest StartDate to Tempel Label Realese EndDate
-      dbo.fn_JumlahHariKerja(
+      -- Total calendar days from earliest StartDate to Tempel Label Realese EndDate
+      DATEDIFF(
+        DAY,
         MIN(fa.StartDate),
         MAX(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%tempel%label%realese%' THEN fa.EndDate END)
       ) AS Total_Days,
-      -- Timbang stage working days
-      dbo.fn_JumlahHariKerja(
+      -- Timbang stage calendar days
+      DATEDIFF(
+        DAY,
         MIN(CASE WHEN fa.tahapan_group = 'Timbang' THEN fa.StartDate END),
         MAX(CASE WHEN fa.tahapan_group = 'Timbang' THEN fa.EndDate END)
       ) AS Timbang_Days,
-      -- QC stage working days
-      dbo.fn_JumlahHariKerja(
+      -- QC stage calendar days
+      DATEDIFF(
+        DAY,
         MIN(CASE WHEN fa.tahapan_group = 'QC' THEN fa.StartDate END),
         MAX(CASE WHEN fa.tahapan_group = 'QC' THEN fa.EndDate END)
       ) AS QC_Days,
-      -- Mikro stage working days
-      dbo.fn_JumlahHariKerja(
+      -- Mikro stage calendar days
+      DATEDIFF(
+        DAY,
         MIN(CASE WHEN fa.tahapan_group = 'Mikro' THEN fa.StartDate END),
         MAX(CASE WHEN fa.tahapan_group = 'Mikro' THEN fa.EndDate END)
       ) AS Mikro_Days,
-      -- QA stage working days
-      dbo.fn_JumlahHariKerja(
+      -- QA stage calendar days
+      DATEDIFF(
+        DAY,
         MIN(CASE WHEN fa.tahapan_group = 'QA' THEN fa.StartDate END),
         MAX(CASE WHEN fa.tahapan_group = 'QA' THEN fa.EndDate END)
       ) AS QA_Days,
-      -- Proses stage working days (everything else that's not null and not the above categories)
-      dbo.fn_JumlahHariKerja(
+      -- Proses stage calendar days (everything else that's not null and not the above categories)
+      DATEDIFF(
+        DAY,
         MIN(CASE 
           WHEN fa.tahapan_group NOT IN ('Timbang', 'QC', 'Mikro', 'QA') 
             AND fa.tahapan_group <> 'Other'
@@ -446,23 +454,28 @@ async function getPCTBreakdown(period = 'MTD') {
     INNER JOIN CompletedBatches cb ON fa.Batch_No = cb.Batch_No
     GROUP BY fa.Batch_No, fa.Batch_Date, fa.Product_ID, fa.Product_Name
     HAVING (
-      dbo.fn_JumlahHariKerja(
+      DATEDIFF(
+        DAY,
         MIN(CASE WHEN fa.tahapan_group = 'Timbang' THEN fa.StartDate END),
         MAX(CASE WHEN fa.tahapan_group = 'Timbang' THEN fa.EndDate END)
       ) IS NOT NULL
-      OR dbo.fn_JumlahHariKerja(
+      OR DATEDIFF(
+        DAY,
         MIN(CASE WHEN fa.tahapan_group = 'QC' THEN fa.StartDate END),
         MAX(CASE WHEN fa.tahapan_group = 'QC' THEN fa.EndDate END)
       ) IS NOT NULL
-      OR dbo.fn_JumlahHariKerja(
+      OR DATEDIFF(
+        DAY,
         MIN(CASE WHEN fa.tahapan_group = 'Mikro' THEN fa.StartDate END),
         MAX(CASE WHEN fa.tahapan_group = 'Mikro' THEN fa.EndDate END)
       ) IS NOT NULL
-      OR dbo.fn_JumlahHariKerja(
+      OR DATEDIFF(
+        DAY,
         MIN(CASE WHEN fa.tahapan_group = 'QA' THEN fa.StartDate END),
         MAX(CASE WHEN fa.tahapan_group = 'QA' THEN fa.EndDate END)
       ) IS NOT NULL
-      OR dbo.fn_JumlahHariKerja(
+      OR DATEDIFF(
+        DAY,
         MIN(CASE 
           WHEN fa.tahapan_group NOT IN ('Timbang', 'QC', 'Mikro', 'QA') 
             AND fa.tahapan_group <> 'Other'
@@ -642,14 +655,15 @@ async function getPCTSummary() {
         AND EndDate IS NOT NULL
         ${dateFilter}
     ),
-    -- Batch-level details with Total_Days using working days calculation
+    -- Batch-level details with Total_Days using calendar days calculation
     BatchDetails AS (
       SELECT 
         fa.Batch_No,
         fa.Product_ID,
         fa.Product_Name,
-        -- Total working days from earliest StartDate to Tempel Label Realese EndDate
-        dbo.fn_JumlahHariKerja(
+        -- Total calendar days from earliest StartDate to Tempel Label Realese EndDate (no holiday exclusions)
+        DATEDIFF(
+          DAY,
           MIN(fa.StartDate),
           MAX(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%tempel%label%realese%' THEN fa.EndDate END)
         ) AS Total_Days

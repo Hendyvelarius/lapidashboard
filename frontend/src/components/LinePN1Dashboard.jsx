@@ -7,7 +7,7 @@ import DashboardLoading from './DashboardLoading';
 import ContextualHelpModal from './ContextualHelpModal';
 import { useHelp } from '../context/HelpContext';
 import { loadLinePN1Cache, saveLinePN1Cache, clearLinePN1Cache, isLinePN1CacheValid } from '../utils/dashboardCache';
-import { calculateWorkingDaysToToday, setHolidays } from '../utils/workingDays';
+import { calculateCalendarDaysToToday, setHolidays } from '../utils/workingDays';
 import { apiUrl, apiUrlWithRefresh } from '../api';
 import './LinePN1Dashboard.css';
 
@@ -849,7 +849,7 @@ const LinePN1Dashboard = () => {
           let daysInStage = 0;
           if (earliestIdleDate) {
             // Use working days calculation (excludes weekends and holidays)
-            daysInStage = calculateWorkingDaysToToday(earliestIdleDate);
+            daysInStage = calculateCalendarDaysToToday(earliestIdleDate);
           }
 
           // Update the batch with calculated days and waiting status
@@ -1767,8 +1767,8 @@ const LinePN1Dashboard = () => {
       });
 
       if (earliestIdleDate) {
-        // Use working days calculation (excludes weekends and holidays)
-        batch.daysInStage = calculateWorkingDaysToToday(earliestIdleDate);
+        // Use calendar days calculation (no exclusions)
+        batch.daysInStage = calculateCalendarDaysToToday(earliestIdleDate);
         batch.stageStart = earliestIdleDate.toLocaleDateString('en-GB');
       } else {
         batch.daysInStage = 0;
@@ -1911,7 +1911,7 @@ const LinePN1Dashboard = () => {
 
     if (earliestIdleDate) {
       // Use working days calculation (excludes weekends and holidays)
-      fullBatchData.daysInStage = calculateWorkingDaysToToday(earliestIdleDate);
+      fullBatchData.daysInStage = calculateCalendarDaysToToday(earliestIdleDate);
       fullBatchData.stageStart = earliestIdleDate.toLocaleDateString('en-GB');
     } else {
       fullBatchData.daysInStage = 0;
@@ -1948,7 +1948,7 @@ const LinePN1Dashboard = () => {
 
         if (earliestIdleDate) {
           // Use working days calculation (excludes weekends and holidays)
-          batch.daysInStage = calculateWorkingDaysToToday(earliestIdleDate);
+          batch.daysInStage = calculateCalendarDaysToToday(earliestIdleDate);
           batch.stageStart = earliestIdleDate.toLocaleDateString('en-GB');
         } else {
           batch.daysInStage = 0;
