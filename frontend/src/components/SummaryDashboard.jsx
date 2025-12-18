@@ -2,12 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement, Filler } from 'chart.js';
 import { Line, Bar, Doughnut } from 'react-chartjs-2';
 import { useNavigate } from 'react-router';
-import { apiUrl, apiUrlWithRefresh } from '../api';
+import { apiUrl, apiUrlWithRefresh, saveSnapshot, getSnapshot, getAvailableSnapshots } from '../api';
 import Sidebar from './Sidebar';
 import DashboardLoading from './DashboardLoading';
 import HelpModal from './HelpModal';
 import ContextualHelpModal from './ContextualHelpModal';
 import { useHelp } from '../context/HelpContext';
+import { useAuth } from '../context/AuthContext';
 import './SummaryDashboard.css';
 
 // Register Chart.js components
@@ -3285,8 +3286,16 @@ function SummaryDashboard() {
   const [lastFetchTime, setLastFetchTime] = useState(null);
   const [helpModalOpen, setHelpModalOpen] = useState(false);
   
+  // Period/Snapshot management
+  const [selectedPeriode, setSelectedPeriode] = useState(null); // null = live data
+  const [availablePeriods, setAvailablePeriods] = useState([]);
+  const [isHistoricalData, setIsHistoricalData] = useState(false);
+  const [savingSnapshot, setSavingSnapshot] = useState(false);
+  const [periodDropdownOpen, setPeriodDropdownOpen] = useState(false);
+  
   // Help system integration
   const { helpMode, activeTopic, setCurrentDashboard, selectTopic } = useHelp();
+  const { user } = useAuth();
   
   // Refs for each section
   const salesRef = useRef(null);
@@ -3386,8 +3395,24 @@ function SummaryDashboard() {
     }
   };
 
-  const formatLastUpdateTime = (timestamp) => {
-    if (!timestamp) return 'Never';
+  const formatLastUpdateTime = (timestamp, rawDateString = null) => {
+    if (!timestamp && !rawDateString) return 'Never';
+    
+    // If we have a raw date string from the server, parse it directly without timezone conversion
+    if (rawDateString) {
+      // Parse ISO string or database date format and display as-is (server time)
+      const match = rawDateString.match(/(\d{4})-(\d{2})-(\d{2})T?(\d{2}):(\d{2})/);
+      if (match) {
+        const [, year, month, day, hour, minute] = match;
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const hourNum = parseInt(hour, 10);
+        const ampm = hourNum >= 12 ? 'PM' : 'AM';
+        const displayHour = hourNum % 12 || 12;
+        return `${displayHour}:${minute} ${ampm}, ${monthNames[parseInt(month, 10) - 1]} ${parseInt(day, 10)}`;
+      }
+    }
+    
+    // Fallback for live data timestamps (local time is fine for current session)
     const date = new Date(timestamp);
     return date.toLocaleString('en-US', {
       hour: '2-digit',
@@ -3399,7 +3424,14 @@ function SummaryDashboard() {
   };
 
   const handleManualRefresh = () => {
+    // Only allow refresh if viewing live data
+    if (isHistoricalData) {
+      // Switch to live data first
+      setSelectedPeriode(null);
+      setIsHistoricalData(false);
+    }
     fetchAllData(true);
+    loadAvailablePeriods(); // Also refresh available periods
   };
 
   const fetchAllData = async (forceRefresh = false) => {
@@ -3702,17 +3734,142 @@ function SummaryDashboard() {
   useEffect(() => {
     // Initial load
     fetchAllData();
+    
+    // Load available periods for snapshot selector
+    loadAvailablePeriods();
 
     // Set up periodic check for cache expiration
     const intervalId = setInterval(() => {
       const cachedData = getCachedData();
-      if (cachedData && cachedData.isExpired) {
+      if (cachedData && cachedData.isExpired && !isHistoricalData) {
         fetchAllData(true);
       }
     }, 5 * 60 * 1000); // Check every 5 minutes
 
     return () => clearInterval(intervalId);
   }, []);
+
+  // Load available snapshot periods
+  const loadAvailablePeriods = async () => {
+    try {
+      const result = await getAvailableSnapshots();
+      if (result.success) {
+        setAvailablePeriods(result.snapshots || []);
+      }
+    } catch (error) {
+      console.error('Error loading available periods:', error);
+    }
+  };
+
+  // Handle period selection change
+  const handlePeriodChange = async (periode) => {
+    if (periode === 'live') {
+      // Switch to live data
+      setSelectedPeriode(null);
+      setIsHistoricalData(false);
+      setPeriodDropdownOpen(false);
+      fetchAllData(true); // Refresh live data
+    } else {
+      // Load historical snapshot
+      setLoading(true);
+      setPeriodDropdownOpen(false);
+      try {
+        const result = await getSnapshot(periode);
+        if (result.success && result.snapshot) {
+          const snapshot = result.snapshot;
+          
+          // Set raw data from snapshot
+          setOfRawData(applyOFBusinessLogic(snapshot.raw_data.ofData || []));
+          setForecastRawData(snapshot.raw_data.forecastData || []);
+          setLostSalesRawData(snapshot.raw_data.lostSalesData || []);
+          setBbbkRawData(snapshot.raw_data.bbbkData || []);
+          setWipRawData(snapshot.raw_data.wipData || []);
+          setPctRawData(snapshot.raw_data.pctData || []);
+          setOtaRawData(snapshot.raw_data.otaData || []);
+          setMaterialRawData(snapshot.raw_data.materialData || []);
+          setBatchExpiryRawData(snapshot.raw_data.batchExpiryData || []);
+          
+          // Process data for display (same as live data processing)
+          const rawData = snapshot.raw_data;
+          const processedData = {
+            sales: processSalesData(rawData.forecastData || [], rawData.dailySalesData || []),
+            inventory: processInventoryData(rawData.forecastData || []),
+            stockOut: processStockOutData(rawData.forecastData || [], rawData.lostSalesData || []),
+            coverage: processCoverageData(rawData.forecastData || []),
+            coverageFokus: processCoverageFokusData(rawData.forecastData || []),
+            coverageNonFokus: processCoverageNonFokusData(rawData.forecastData || []),
+            whOccupancy: processWHOccupancyData(rawData.wipData || []),
+            orderFulfillment: processOrderFulfillmentData(rawData.ofData || []),
+            materialAvailability: processMaterialAvailabilityData(rawData.materialData || []),
+            inventoryOJ: processInventoryOJData(rawData.forecastData || []),
+            nearExpiry: processNearExpiryData(rawData.batchExpiryData || []),
+            inventoryBB: processInventoryBBData(rawData.bbbkData || []),
+            inventoryBK: processInventoryBKData(rawData.bbbkData || []),
+            inventoryBBBK: processInventoryBBBKData(rawData.bbbkData || []),
+            pct: processPCTData(rawData.pctData || []),
+            ota: processOTAData(rawData.otaData || []),
+            wip: processWIPData(rawData.wipData || [])
+          };
+          
+          setData(processedData);
+          setSelectedPeriode(periode);
+          setIsHistoricalData(true);
+          // Store raw date string to avoid timezone conversion
+          setLastFetchTime(snapshot.created_at);
+        } else {
+          console.error('Snapshot not found for period:', periode);
+          setError({ type: 'general', message: 'Snapshot not found for selected period' });
+        }
+      } catch (error) {
+        console.error('Error loading snapshot:', error);
+        setError({ type: 'general', message: 'Failed to load historical data' });
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  // Save current data as snapshot
+  const handleSaveSnapshot = async () => {
+    if (savingSnapshot || isHistoricalData) return;
+    
+    setSavingSnapshot(true);
+    try {
+      const userInitials = user?.Inisial_Name || user?.inisial_name || 'MANUAL';
+      const result = await saveSnapshot({
+        createdBy: userInitials,
+        notes: `Manual snapshot saved on ${new Date().toLocaleString()}`
+      });
+      
+      if (result.success) {
+        // Reload available periods to show the new snapshot
+        await loadAvailablePeriods();
+        alert(`Snapshot saved successfully for period ${result.periode}`);
+      } else {
+        alert('Failed to save snapshot: ' + (result.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Error saving snapshot:', error);
+      alert('Failed to save snapshot: ' + error.message);
+    } finally {
+      setSavingSnapshot(false);
+    }
+  };
+
+  // Format period for display (YYYYMM -> "Dec 2025")
+  const formatPeriodDisplay = (periode) => {
+    if (!periode) return 'Live Data';
+    const year = periode.substring(0, 4);
+    const month = parseInt(periode.substring(4, 6), 10);
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${monthNames[month - 1]} ${year}`;
+  };
+
+  // Get current period string
+  const getCurrentPeriode = () => {
+    const now = new Date();
+    return `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+  };
 
   // Register dashboard with help system
   useEffect(() => {
@@ -3750,13 +3907,18 @@ function SummaryDashboard() {
           !event.target.closest('.sales-chart-dropdown-menu')) {
         setSalesDropdownOpen(false);
       }
+      if (periodDropdownOpen && 
+          !event.target.closest('.period-selector-trigger') && 
+          !event.target.closest('.period-selector-menu')) {
+        setPeriodDropdownOpen(false);
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [salesDropdownOpen]);
+  }, [salesDropdownOpen, periodDropdownOpen]);
 
   // Helper function to get color based on percentage
   const getPercentageColor = (percentage) => {
@@ -5365,7 +5527,241 @@ function SummaryDashboard() {
   return (
     <div className="dashboard-container">
       <Sidebar />
-      <main className="content-area">
+      <main className="content-area" style={{ position: 'relative' }}>
+        {/* Fixed Period Selector Navbar */}
+        <div className="period-selector-navbar" style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 100,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '8px 16px',
+          background: isHistoricalData ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+          minHeight: '44px'
+        }}>
+          {/* Left: Period Selector */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ position: 'relative' }}>
+                <button
+                  className="period-selector-trigger"
+                  onClick={() => setPeriodDropdownOpen(!periodDropdownOpen)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '6px 12px',
+                    background: 'rgba(255, 255, 255, 0.2)',
+                    border: '1px solid rgba(255, 255, 255, 0.3)',
+                    borderRadius: '6px',
+                    color: 'white',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <span>📅</span>
+                  <span>{isHistoricalData ? formatPeriodDisplay(selectedPeriode) : 'Live Data'}</span>
+                  <span style={{ fontSize: '10px' }}>▼</span>
+                </button>
+                
+                {/* Period Dropdown Menu */}
+                {periodDropdownOpen && (
+                  <div className="period-selector-menu" style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    marginTop: '4px',
+                    minWidth: '200px',
+                    background: 'white',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+                    zIndex: 1000,
+                    overflow: 'hidden'
+                  }}>
+                    {/* Live Data Option */}
+                    <div
+                      onClick={() => handlePeriodChange('live')}
+                      style={{
+                        padding: '12px 16px',
+                        cursor: 'pointer',
+                        borderBottom: '1px solid #e5e7eb',
+                        background: !isHistoricalData ? '#f0f9ff' : 'white',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        transition: 'background 0.2s'
+                      }}
+                      onMouseEnter={(e) => e.target.style.background = '#f0f9ff'}
+                      onMouseLeave={(e) => e.target.style.background = !isHistoricalData ? '#f0f9ff' : 'white'}
+                    >
+                      <span style={{ color: '#10b981' }}>🔴</span>
+                      <span style={{ fontWeight: !isHistoricalData ? '600' : '400', color: '#1f2937' }}>Live Data</span>
+                      {!isHistoricalData && <span style={{ marginLeft: 'auto', color: '#10b981' }}>✓</span>}
+                    </div>
+                    
+                    {/* Historical Periods */}
+                    {availablePeriods.length > 0 && (
+                      <div style={{ 
+                        padding: '8px 16px', 
+                        background: '#f9fafb', 
+                        fontSize: '11px', 
+                        fontWeight: '600', 
+                        color: '#6b7280',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
+                      }}>
+                        Historical Data
+                      </div>
+                    )}
+                    <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                      {availablePeriods.map((period) => (
+                        <div
+                          key={period.periode}
+                          onClick={() => handlePeriodChange(period.periode)}
+                          style={{
+                            padding: '10px 16px',
+                            cursor: 'pointer',
+                            background: selectedPeriode === period.periode ? '#fef3c7' : 'white',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            transition: 'background 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.target.style.background = selectedPeriode === period.periode ? '#fef3c7' : '#f9fafb'}
+                          onMouseLeave={(e) => e.target.style.background = selectedPeriode === period.periode ? '#fef3c7' : 'white'}
+                        >
+                          <span style={{ 
+                            fontWeight: selectedPeriode === period.periode ? '600' : '400', 
+                            color: '#1f2937',
+                            fontSize: '14px'
+                          }}>
+                            {formatPeriodDisplay(period.periode)}
+                          </span>
+                          <span style={{ 
+                            fontSize: '11px', 
+                            color: period.has_month_end ? '#10b981' : '#9ca3af',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}>
+                            {period.has_month_end && <span title="Month-end snapshot">📌</span>}
+                            {period.snapshot_count > 1 && <span>({period.snapshot_count})</span>}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    
+                    {availablePeriods.length === 0 && (
+                      <div style={{ 
+                        padding: '16px', 
+                        textAlign: 'center', 
+                        color: '#9ca3af',
+                        fontSize: '13px'
+                      }}>
+                        No historical data available yet.
+                        <br />
+                        <span style={{ fontSize: '11px' }}>Save a snapshot to view historical data.</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              
+              {/* Historical Data Indicator */}
+              {isHistoricalData && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '4px 10px',
+                  background: 'rgba(255, 255, 255, 0.25)',
+                  borderRadius: '20px',
+                  fontSize: '11px',
+                  fontWeight: '600',
+                  color: 'white'
+                }}>
+                  <span>📚</span>
+                  <span>Historical</span>
+                </div>
+              )}
+            </div>
+            
+            {/* Right: Actions */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {/* Save Snapshot Button */}
+              {!isHistoricalData && (
+                <button
+                  onClick={handleSaveSnapshot}
+                  disabled={savingSnapshot}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '6px 12px',
+                    background: savingSnapshot ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.2)',
+                    border: '1px solid rgba(255, 255, 255, 0.3)',
+                    borderRadius: '6px',
+                    color: 'white',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    cursor: savingSnapshot ? 'not-allowed' : 'pointer',
+                    opacity: savingSnapshot ? 0.6 : 1,
+                    transition: 'all 0.2s'
+                  }}
+                  title="Save current data as a snapshot for future reference"
+                >
+                  {savingSnapshot ? (
+                    <>
+                      <span className="saving-spinner" style={{
+                        display: 'inline-block',
+                        width: '10px',
+                        height: '10px',
+                        border: '2px solid rgba(255,255,255,0.3)',
+                        borderTopColor: 'white',
+                        borderRadius: '50%',
+                        animation: 'spin 1s linear infinite'
+                      }} />
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>💾</span>
+                      <span>Save</span>
+                    </>
+                  )}
+                </button>
+              )}
+              
+              {/* Return to Live Button (when viewing historical) */}
+              {isHistoricalData && (
+                <button
+                  onClick={() => handlePeriodChange('live')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '6px 12px',
+                    background: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    color: '#f59e0b',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <span>🔴</span>
+                  <span>Go Live</span>
+                </button>
+              )}
+            </div>
+          </div>
+        
+        {/* Main Dashboard Content */}
         <div className="summary-dashboard">
           {/* Grid Layout */}
           <div className="summary-grid">
@@ -5403,7 +5799,7 @@ function SummaryDashboard() {
                       color: 'white',
                       letterSpacing: '0.5px'
                     }}>
-                      Data Updated: {formatLastUpdateTime(lastFetchTime)}
+                      Data Updated: {formatLastUpdateTime(typeof lastFetchTime === 'string' ? null : lastFetchTime, typeof lastFetchTime === 'string' ? lastFetchTime : null)}
                     </span>
                   </div>
                   <button

@@ -90,3 +90,82 @@ export function apiUrlWithRefresh(path, skipCache = false) {
   const separator = baseUrl.includes('?') ? '&' : '?';
   return `${baseUrl}${separator}refresh=true`;
 }
+
+// =============================================
+// Snapshot API Functions
+// =============================================
+
+/**
+ * Save a dashboard snapshot
+ * @param {Object} options - Options for saving
+ * @param {string} options.notes - Optional notes for the snapshot
+ * @param {string} options.createdBy - Who created the snapshot
+ * @param {boolean} options.isMonthEnd - Whether this is a month-end snapshot
+ * @returns {Promise<Object>} - The save result
+ */
+export async function saveSnapshot(options = {}) {
+  const response = await fetch(apiUrl('/api/snapshots'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(options)
+  });
+  return response.json();
+}
+
+/**
+ * Get a snapshot for a specific period
+ * @param {string} periode - Period in YYYYMM format
+ * @param {string} date - Optional specific date (YYYY-MM-DD)
+ * @returns {Promise<Object>} - The snapshot data
+ */
+export async function getSnapshot(periode, date = null) {
+  let url = apiUrl(`/api/snapshots/${periode}`);
+  if (date) {
+    url += `?date=${date}`;
+  }
+  const response = await fetch(url);
+  return response.json();
+}
+
+/**
+ * Get list of all available snapshots
+ * @returns {Promise<Object>} - List of available periods with snapshots
+ */
+export async function getAvailableSnapshots() {
+  const response = await fetch(apiUrl('/api/snapshots/available'));
+  return response.json();
+}
+
+/**
+ * Get snapshot history for a specific period
+ * @param {string} periode - Period in YYYYMM format
+ * @returns {Promise<Object>} - List of snapshots for the period
+ */
+export async function getSnapshotHistory(periode) {
+  const response = await fetch(apiUrl(`/api/snapshots/history/${periode}`));
+  return response.json();
+}
+
+/**
+ * Delete a snapshot
+ * @param {number} id - Snapshot ID
+ * @returns {Promise<Object>} - Delete result
+ */
+export async function deleteSnapshot(id) {
+  const response = await fetch(apiUrl(`/api/snapshots/${id}`), {
+    method: 'DELETE'
+  });
+  return response.json();
+}
+
+/**
+ * Get scheduler status
+ * @returns {Promise<Object>} - Scheduler status
+ */
+export async function getSchedulerStatus() {
+  const response = await fetch(apiUrl('/api/scheduler/status'));
+  return response.json();
+}
+

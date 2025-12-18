@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const SqlController = require('../controllers/SqlController');
+const SnapshotController = require('../controllers/SnapshotController');
 const { verifyToken } = require('../middleware/auth');
 
 // Authentication endpoint to verify and decode JWT token
@@ -12,6 +13,13 @@ router.get('/auth/verify', verifyToken, (req, res) => {
     tokenData: req.tokenData
   });
 });
+
+// Routing Dashboard Snapshots
+router.post('/snapshots', SnapshotController.saveSnapshot);                    // Save new snapshot
+router.get('/snapshots/available', SnapshotController.getAvailableSnapshots);  // List all available periods
+router.get('/snapshots/history/:periode', SnapshotController.getSnapshotHistory); // Get all snapshots for a periode
+router.get('/snapshots/:periode', SnapshotController.getSnapshot);              // Get snapshot by periode
+router.delete('/snapshots/:id', SnapshotController.deleteSnapshot);            // Delete snapshot
 
 // Routing WIP 
 router.get('/wip', SqlController.getWip);
