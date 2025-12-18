@@ -2952,6 +2952,7 @@ const StockOutDetailsModal = ({ isOpen, onClose, stockOutData }) => {
                           Produksi: {product.Produksi || 0} | 
                           WIP: {product.WIP || 0} | 
                           Quarantine: {product.StockKarantinaNotRekapBPHP || 0}
+                          {product.StockLock ? ` | Locked: ${product.StockLock}` : ''}
                         </span>
                       </div>
                     </div>
@@ -2978,6 +2979,7 @@ const StockOutDetailsModal = ({ isOpen, onClose, stockOutData }) => {
                           Produksi: {product.Produksi || 0} | 
                           WIP: {product.WIP || 0} | 
                           Quarantine: {product.StockKarantinaNotRekapBPHP || 0}
+                          {product.StockLock ? ` | Locked: ${product.StockLock}` : ''}
                         </span>
                       </div>
                     </div>
