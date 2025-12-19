@@ -3289,9 +3289,30 @@ function SummaryDashboard() {
   // Period/Snapshot management
   const [selectedPeriode, setSelectedPeriode] = useState(null); // null = live data
   const [availablePeriods, setAvailablePeriods] = useState([]);
+  const [autoSaves, setAutoSaves] = useState([]); // All auto-save dates for calendar
+  const [manualSaves, setManualSaves] = useState([]); // All manual saves
   const [isHistoricalData, setIsHistoricalData] = useState(false);
   const [savingSnapshot, setSavingSnapshot] = useState(false);
   const [periodDropdownOpen, setPeriodDropdownOpen] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState(null); // Currently expanded month in dropdown
+  const [activeTab, setActiveTab] = useState('calendar'); // 'calendar' or 'manual'
+  
+  // Notification modal state
+  const [notificationModal, setNotificationModal] = useState({
+    isOpen: false,
+    type: 'success', // 'success', 'error', 'info'
+    title: '',
+    message: ''
+  });
+
+  // Helper function to show notification
+  const showNotification = (type, title, message) => {
+    setNotificationModal({ isOpen: true, type, title, message });
+  };
+
+  const closeNotification = () => {
+    setNotificationModal(prev => ({ ...prev, isOpen: false }));
+  };
   
   // Help system integration
   const { helpMode, activeTopic, setCurrentDashboard, selectTopic } = useHelp();
@@ -3754,27 +3775,31 @@ function SummaryDashboard() {
     try {
       const result = await getAvailableSnapshots();
       if (result.success) {
-        setAvailablePeriods(result.snapshots || []);
+        setAvailablePeriods(result.periods || result.snapshots || []);
+        setAutoSaves(result.autoSaves || []);
+        setManualSaves(result.manualSaves || []);
       }
     } catch (error) {
       console.error('Error loading available periods:', error);
     }
   };
 
-  // Handle period selection change
-  const handlePeriodChange = async (periode) => {
+  // Handle period selection change - can be called with periode, date, or snapshot id
+  const handlePeriodChange = async (periode, date = null, snapshotId = null) => {
     if (periode === 'live') {
       // Switch to live data
       setSelectedPeriode(null);
       setIsHistoricalData(false);
       setPeriodDropdownOpen(false);
+      setSelectedMonth(null);
       fetchAllData(true); // Refresh live data
     } else {
       // Load historical snapshot
       setLoading(true);
       setPeriodDropdownOpen(false);
+      setSelectedMonth(null);
       try {
-        const result = await getSnapshot(periode);
+        const result = await getSnapshot(periode, date, snapshotId);
         if (result.success && result.snapshot) {
           const snapshot = result.snapshot;
           
@@ -3812,12 +3837,16 @@ function SummaryDashboard() {
           };
           
           setData(processedData);
-          setSelectedPeriode(periode);
+          // For display purposes, show the snapshot date or created_at
+          const displayPeriode = snapshotId 
+            ? `Manual - ${new Date(snapshot.created_at).toLocaleDateString()}` 
+            : (date || periode);
+          setSelectedPeriode(displayPeriode);
           setIsHistoricalData(true);
           // Store raw date string to avoid timezone conversion
           setLastFetchTime(snapshot.created_at);
         } else {
-          console.error('Snapshot not found for period:', periode);
+          console.error('Snapshot not found:', { periode, date, snapshotId });
           setError({ type: 'general', message: 'Snapshot not found for selected period' });
         }
       } catch (error) {
@@ -3838,31 +3867,192 @@ function SummaryDashboard() {
       const userInitials = user?.Inisial_Name || user?.inisial_name || 'MANUAL';
       const result = await saveSnapshot({
         createdBy: userInitials,
+        isManual: true,
         notes: `Manual snapshot saved on ${new Date().toLocaleString()}`
       });
       
       if (result.success) {
         // Reload available periods to show the new snapshot
         await loadAvailablePeriods();
-        alert(`Snapshot saved successfully for period ${result.periode}`);
+        showNotification('success', 'Snapshot Saved', `Your snapshot has been saved successfully for period ${formatPeriodDisplay(result.periode)}.`);
       } else {
-        alert('Failed to save snapshot: ' + (result.error || 'Unknown error'));
+        showNotification('error', 'Save Failed', 'Failed to save snapshot: ' + (result.error || 'Unknown error'));
       }
     } catch (error) {
       console.error('Error saving snapshot:', error);
-      alert('Failed to save snapshot: ' + error.message);
+      showNotification('error', 'Save Failed', 'Failed to save snapshot: ' + error.message);
     } finally {
       setSavingSnapshot(false);
+    }
+  };
+
+  // State for export
+  const [exporting, setExporting] = useState(false);
+
+  // Export current data to Excel
+  const handleExportExcel = async () => {
+    if (exporting) return;
+    
+    setExporting(true);
+    try {
+      // Dynamically import xlsx library
+      const XLSX = await import('xlsx');
+      
+      const wb = XLSX.utils.book_new();
+      const exportDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+      const exportTime = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+      
+      // Sheet 1: Summary Overview
+      const summaryData = [
+        ['Summary Dashboard Export'],
+        [`Export Date: ${exportDate} ${exportTime}`],
+        [isHistoricalData ? `Historical Data: ${selectedPeriode}` : 'Live Data'],
+        [],
+        ['KPI Summary'],
+        ['Metric', 'Value', 'Status'],
+        ['Sales Achievement', data?.sales?.achievementPercentage ? `${data.sales.achievementPercentage.toFixed(1)}%` : 'N/A', ''],
+        ['Coverage (All Products)', data?.coverage?.percentage ? `${data.coverage.percentage.toFixed(1)}%` : 'N/A', ''],
+        ['Coverage (Fokus)', data?.coverageFokus?.percentage ? `${data.coverageFokus.percentage.toFixed(1)}%` : 'N/A', ''],
+        ['OTA (On Time Achievement)', data?.ota?.percentage ? `${data.ota.percentage.toFixed(1)}%` : 'N/A', ''],
+        ['Order Fulfillment', data?.orderFulfillment?.fulfillmentRate ? `${data.orderFulfillment.fulfillmentRate.toFixed(1)}%` : 'N/A', ''],
+        ['Material Availability', data?.materialAvailability?.availabilityRate ? `${data.materialAvailability.availabilityRate.toFixed(1)}%` : 'N/A', ''],
+      ];
+      const summaryWS = XLSX.utils.aoa_to_sheet(summaryData);
+      summaryWS['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 15 }];
+      XLSX.utils.book_append_sheet(wb, summaryWS, 'Summary');
+
+      // Sheet 2: Forecast Data
+      if (forecastRawData && forecastRawData.length > 0) {
+        const forecastWS = XLSX.utils.json_to_sheet(forecastRawData);
+        XLSX.utils.book_append_sheet(wb, forecastWS, 'Forecast Data');
+      }
+
+      // Sheet 3: OF (Order Fulfillment) Data
+      if (ofRawData && ofRawData.length > 0) {
+        const ofWS = XLSX.utils.json_to_sheet(ofRawData);
+        XLSX.utils.book_append_sheet(wb, ofWS, 'Order Fulfillment');
+      }
+
+      // Sheet 4: WIP Data
+      if (wipRawData && wipRawData.length > 0) {
+        const wipWS = XLSX.utils.json_to_sheet(wipRawData);
+        XLSX.utils.book_append_sheet(wb, wipWS, 'WIP Data');
+      }
+
+      // Sheet 5: PCT (Process Cycle Time) Data
+      if (pctRawData && pctRawData.length > 0) {
+        const pctWS = XLSX.utils.json_to_sheet(pctRawData);
+        XLSX.utils.book_append_sheet(wb, pctWS, 'Process Cycle Time');
+      }
+
+      // Sheet 6: OTA Data
+      if (otaRawData && otaRawData.length > 0) {
+        const otaWS = XLSX.utils.json_to_sheet(otaRawData);
+        XLSX.utils.book_append_sheet(wb, otaWS, 'OTA Data');
+      }
+
+      // Sheet 7: Material Data
+      if (materialRawData && materialRawData.length > 0) {
+        const materialWS = XLSX.utils.json_to_sheet(materialRawData);
+        XLSX.utils.book_append_sheet(wb, materialWS, 'Material Data');
+      }
+
+      // Sheet 8: BBBK Data
+      if (bbbkRawData && bbbkRawData.length > 0) {
+        const bbbkWS = XLSX.utils.json_to_sheet(bbbkRawData);
+        XLSX.utils.book_append_sheet(wb, bbbkWS, 'BBBK Data');
+      }
+
+      // Sheet 9: Lost Sales Data
+      if (lostSalesRawData && lostSalesRawData.length > 0) {
+        const lostSalesWS = XLSX.utils.json_to_sheet(lostSalesRawData);
+        XLSX.utils.book_append_sheet(wb, lostSalesWS, 'Lost Sales');
+      }
+
+      // Sheet 10: Batch Expiry Data
+      if (batchExpiryRawData && batchExpiryRawData.length > 0) {
+        const expiryWS = XLSX.utils.json_to_sheet(batchExpiryRawData);
+        XLSX.utils.book_append_sheet(wb, expiryWS, 'Batch Expiry');
+      }
+
+      // Generate filename
+      const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
+      const filename = `SummaryDashboard_${isHistoricalData ? selectedPeriode : 'Live'}_${dateStr}.xlsx`;
+      
+      // Save the file
+      XLSX.writeFile(wb, filename);
+      
+      showNotification('success', 'Export Complete', `Data has been exported to ${filename}`);
+      
+    } catch (error) {
+      console.error('Error exporting to Excel:', error);
+      showNotification('error', 'Export Failed', 'Failed to export to Excel. Please try again.');
+    } finally {
+      setExporting(false);
     }
   };
 
   // Format period for display (YYYYMM -> "Dec 2025")
   const formatPeriodDisplay = (periode) => {
     if (!periode) return 'Live Data';
+    // Handle manual save display format
+    if (periode.startsWith('Manual')) return periode;
     const year = periode.substring(0, 4);
     const month = parseInt(periode.substring(4, 6), 10);
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     return `${monthNames[month - 1]} ${year}`;
+  };
+
+  // Helper function to generate calendar days for a month
+  const generateCalendarDays = (year, month) => {
+    const firstDay = new Date(year, month, 1).getDay(); // 0 = Sunday
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const days = [];
+    
+    // Add empty slots for days before the 1st
+    for (let i = 0; i < firstDay; i++) {
+      days.push(null);
+    }
+    
+    // Add all days of the month
+    for (let day = 1; day <= daysInMonth; day++) {
+      days.push(day);
+    }
+    
+    return days;
+  };
+
+  // Get dates with auto-saves for a specific periode
+  const getDatesWithDataForPeriode = (periode) => {
+    if (!autoSaves) return new Set();
+    return new Set(
+      autoSaves
+        .filter(s => s.periode === periode)
+        .map(s => {
+          const date = new Date(s.snapshot_date);
+          return date.getDate();
+        })
+    );
+  };
+
+  // Get auto-save date string (YYYY-MM-DD) for a specific day in a periode
+  const getAutoSaveDateString = (periode, day) => {
+    const year = parseInt(periode.substring(0, 4));
+    const month = parseInt(periode.substring(4, 6)) - 1;
+    const date = new Date(year, month, day);
+    return date.toISOString().split('T')[0];
+  };
+
+  // Format date for manual saves display
+  const formatManualSaveDate = (dateStr) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-GB', { 
+      day: '2-digit', 
+      month: 'short', 
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
 
   // Get current period string
@@ -5574,7 +5764,7 @@ function SummaryDashboard() {
                     top: '100%',
                     left: 0,
                     marginTop: '4px',
-                    minWidth: '200px',
+                    minWidth: '320px',
                     background: 'white',
                     borderRadius: '8px',
                     boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
@@ -5594,76 +5784,253 @@ function SummaryDashboard() {
                         gap: '8px',
                         transition: 'background 0.2s'
                       }}
-                      onMouseEnter={(e) => e.target.style.background = '#f0f9ff'}
-                      onMouseLeave={(e) => e.target.style.background = !isHistoricalData ? '#f0f9ff' : 'white'}
+                      onMouseEnter={(e) => e.currentTarget.style.background = '#f0f9ff'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = !isHistoricalData ? '#f0f9ff' : 'white'}
                     >
                       <span style={{ color: '#10b981' }}>🔴</span>
                       <span style={{ fontWeight: !isHistoricalData ? '600' : '400', color: '#1f2937' }}>Live Data</span>
                       {!isHistoricalData && <span style={{ marginLeft: 'auto', color: '#10b981' }}>✓</span>}
                     </div>
                     
-                    {/* Historical Periods */}
-                    {availablePeriods.length > 0 && (
-                      <div style={{ 
-                        padding: '8px 16px', 
-                        background: '#f9fafb', 
-                        fontSize: '11px', 
-                        fontWeight: '600', 
-                        color: '#6b7280',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px'
-                      }}>
-                        Historical Data
-                      </div>
-                    )}
-                    <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
-                      {availablePeriods.map((period) => (
-                        <div
-                          key={period.periode}
-                          onClick={() => handlePeriodChange(period.periode)}
-                          style={{
-                            padding: '10px 16px',
-                            cursor: 'pointer',
-                            background: selectedPeriode === period.periode ? '#fef3c7' : 'white',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            transition: 'background 0.2s'
-                          }}
-                          onMouseEnter={(e) => e.target.style.background = selectedPeriode === period.periode ? '#fef3c7' : '#f9fafb'}
-                          onMouseLeave={(e) => e.target.style.background = selectedPeriode === period.periode ? '#fef3c7' : 'white'}
-                        >
-                          <span style={{ 
-                            fontWeight: selectedPeriode === period.periode ? '600' : '400', 
-                            color: '#1f2937',
-                            fontSize: '14px'
-                          }}>
-                            {formatPeriodDisplay(period.periode)}
-                          </span>
-                          <span style={{ 
-                            fontSize: '11px', 
-                            color: period.has_month_end ? '#10b981' : '#9ca3af',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px'
-                          }}>
-                            {period.has_month_end && <span title="Month-end snapshot">📌</span>}
-                            {period.snapshot_count > 1 && <span>({period.snapshot_count})</span>}
-                          </span>
-                        </div>
-                      ))}
+                    {/* Tabs for Calendar vs Manual */}
+                    <div style={{ 
+                      display: 'flex', 
+                      borderBottom: '1px solid #e5e7eb',
+                      background: '#f9fafb'
+                    }}>
+                      <button
+                        onClick={() => setActiveTab('calendar')}
+                        style={{
+                          flex: 1,
+                          padding: '10px 16px',
+                          border: 'none',
+                          background: activeTab === 'calendar' ? 'white' : 'transparent',
+                          borderBottom: activeTab === 'calendar' ? '2px solid #667eea' : '2px solid transparent',
+                          color: activeTab === 'calendar' ? '#667eea' : '#6b7280',
+                          fontWeight: activeTab === 'calendar' ? '600' : '400',
+                          fontSize: '12px',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        📅 Calendar
+                      </button>
+                      <button
+                        onClick={() => setActiveTab('manual')}
+                        style={{
+                          flex: 1,
+                          padding: '10px 16px',
+                          border: 'none',
+                          background: activeTab === 'manual' ? 'white' : 'transparent',
+                          borderBottom: activeTab === 'manual' ? '2px solid #667eea' : '2px solid transparent',
+                          color: activeTab === 'manual' ? '#667eea' : '#6b7280',
+                          fontWeight: activeTab === 'manual' ? '600' : '400',
+                          fontSize: '12px',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        💾 Manual Saves {manualSaves.length > 0 && `(${manualSaves.length})`}
+                      </button>
                     </div>
                     
-                    {availablePeriods.length === 0 && (
-                      <div style={{ 
-                        padding: '16px', 
-                        textAlign: 'center', 
-                        color: '#9ca3af',
-                        fontSize: '13px'
-                      }}>
-                        No historical data available yet.
-                        <br />
-                        <span style={{ fontSize: '11px' }}>Save a snapshot to view historical data.</span>
+                    {/* Calendar Tab Content */}
+                    {activeTab === 'calendar' && (
+                      <div style={{ maxHeight: '350px', overflowY: 'auto' }}>
+                        {availablePeriods.length > 0 ? (
+                          availablePeriods.map((period) => {
+                            const isExpanded = selectedMonth === period.periode;
+                            const year = parseInt(period.periode.substring(0, 4));
+                            const month = parseInt(period.periode.substring(4, 6)) - 1;
+                            const calendarDays = generateCalendarDays(year, month);
+                            const datesWithData = getDatesWithDataForPeriode(period.periode);
+                            
+                            return (
+                              <div key={period.periode}>
+                                {/* Month Header - Clickable to expand */}
+                                <div
+                                  onClick={() => setSelectedMonth(isExpanded ? null : period.periode)}
+                                  style={{
+                                    padding: '10px 16px',
+                                    cursor: 'pointer',
+                                    background: isExpanded ? '#f0f4ff' : 'white',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    borderBottom: '1px solid #e5e7eb',
+                                    transition: 'background 0.2s'
+                                  }}
+                                  onMouseEnter={(e) => e.currentTarget.style.background = '#f0f4ff'}
+                                  onMouseLeave={(e) => e.currentTarget.style.background = isExpanded ? '#f0f4ff' : 'white'}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{ 
+                                      transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                                      transition: 'transform 0.2s',
+                                      fontSize: '10px'
+                                    }}>▶</span>
+                                    <span style={{ fontWeight: '500', color: '#1f2937', fontSize: '14px' }}>
+                                      {formatPeriodDisplay(period.periode)}
+                                    </span>
+                                  </div>
+                                  <span style={{ 
+                                    fontSize: '11px', 
+                                    color: '#6b7280',
+                                    background: '#e5e7eb',
+                                    padding: '2px 8px',
+                                    borderRadius: '10px'
+                                  }}>
+                                    {period.snapshot_count} {period.snapshot_count === 1 ? 'save' : 'saves'}
+                                  </span>
+                                </div>
+                                
+                                {/* Calendar Grid (when expanded) */}
+                                {isExpanded && (
+                                  <div style={{ padding: '12px', background: '#fafafa' }}>
+                                    {/* Day headers */}
+                                    <div style={{ 
+                                      display: 'grid', 
+                                      gridTemplateColumns: 'repeat(7, 1fr)', 
+                                      gap: '2px',
+                                      marginBottom: '8px'
+                                    }}>
+                                      {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, i) => (
+                                        <div key={i} style={{ 
+                                          textAlign: 'center', 
+                                          fontSize: '10px', 
+                                          color: '#9ca3af',
+                                          fontWeight: '600'
+                                        }}>
+                                          {day}
+                                        </div>
+                                      ))}
+                                    </div>
+                                    
+                                    {/* Calendar days */}
+                                    <div style={{ 
+                                      display: 'grid', 
+                                      gridTemplateColumns: 'repeat(7, 1fr)', 
+                                      gap: '2px'
+                                    }}>
+                                      {calendarDays.map((day, i) => {
+                                        if (day === null) {
+                                          return <div key={i} style={{ padding: '6px' }} />;
+                                        }
+                                        
+                                        const hasData = datesWithData.has(day);
+                                        const dateStr = getAutoSaveDateString(period.periode, day);
+                                        
+                                        return (
+                                          <div
+                                            key={i}
+                                            onClick={() => hasData && handlePeriodChange(period.periode, dateStr)}
+                                            style={{
+                                              padding: '6px',
+                                              textAlign: 'center',
+                                              fontSize: '12px',
+                                              borderRadius: '4px',
+                                              cursor: hasData ? 'pointer' : 'default',
+                                              background: hasData ? '#667eea' : 'transparent',
+                                              color: hasData ? 'white' : '#d1d5db',
+                                              fontWeight: hasData ? '600' : '400',
+                                              transition: 'all 0.2s'
+                                            }}
+                                            onMouseEnter={(e) => {
+                                              if (hasData) {
+                                                e.currentTarget.style.background = '#5a67d8';
+                                                e.currentTarget.style.transform = 'scale(1.1)';
+                                              }
+                                            }}
+                                            onMouseLeave={(e) => {
+                                              if (hasData) {
+                                                e.currentTarget.style.background = '#667eea';
+                                                e.currentTarget.style.transform = 'scale(1)';
+                                              }
+                                            }}
+                                            title={hasData ? `Click to view snapshot for ${day}/${month + 1}/${year}` : 'No data available'}
+                                          >
+                                            {day}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <div style={{ 
+                            padding: '24px 16px', 
+                            textAlign: 'center', 
+                            color: '#9ca3af',
+                            fontSize: '13px'
+                          }}>
+                            No historical data available yet.
+                            <br />
+                            <span style={{ fontSize: '11px' }}>Save a snapshot to view historical data.</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    {/* Manual Saves Tab Content */}
+                    {activeTab === 'manual' && (
+                      <div style={{ maxHeight: '350px', overflowY: 'auto' }}>
+                        {manualSaves.length > 0 ? (
+                          manualSaves.map((save) => (
+                            <div
+                              key={save.id}
+                              onClick={() => handlePeriodChange(save.periode, null, save.id)}
+                              style={{
+                                padding: '12px 16px',
+                                cursor: 'pointer',
+                                background: 'white',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                borderBottom: '1px solid #f3f4f6',
+                                transition: 'background 0.2s'
+                              }}
+                              onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                              onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
+                            >
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                <span style={{ fontSize: '13px', fontWeight: '500', color: '#1f2937' }}>
+                                  {formatManualSaveDate(save.created_at)}
+                                </span>
+                                <span style={{ fontSize: '11px', color: '#6b7280' }}>
+                                  Saved by: {save.created_by || 'Unknown'}
+                                </span>
+                                {save.notes && (
+                                  <span style={{ fontSize: '10px', color: '#9ca3af', fontStyle: 'italic' }}>
+                                    {save.notes.length > 50 ? save.notes.substring(0, 50) + '...' : save.notes}
+                                  </span>
+                                )}
+                              </div>
+                              <span style={{ 
+                                fontSize: '10px', 
+                                color: '#667eea',
+                                background: '#f0f4ff',
+                                padding: '2px 8px',
+                                borderRadius: '4px'
+                              }}>
+                                {formatPeriodDisplay(save.periode)}
+                              </span>
+                            </div>
+                          ))
+                        ) : (
+                          <div style={{ 
+                            padding: '24px 16px', 
+                            textAlign: 'center', 
+                            color: '#9ca3af',
+                            fontSize: '13px'
+                          }}>
+                            No manual saves yet.
+                            <br />
+                            <span style={{ fontSize: '11px' }}>Click "Save" button to create a manual snapshot.</span>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -5691,6 +6058,48 @@ function SummaryDashboard() {
             
             {/* Right: Actions */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {/* Export Excel Button */}
+              <button
+                onClick={handleExportExcel}
+                disabled={exporting}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '6px 12px',
+                  background: exporting ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.2)',
+                  border: '1px solid rgba(255, 255, 255, 0.3)',
+                  borderRadius: '6px',
+                  color: 'white',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  cursor: exporting ? 'not-allowed' : 'pointer',
+                  opacity: exporting ? 0.6 : 1,
+                  transition: 'all 0.2s'
+                }}
+                title="Export all raw data to Excel file"
+              >
+                {exporting ? (
+                  <>
+                    <span className="saving-spinner" style={{
+                      display: 'inline-block',
+                      width: '10px',
+                      height: '10px',
+                      border: '2px solid rgba(255,255,255,0.3)',
+                      borderTopColor: 'white',
+                      borderRadius: '50%',
+                      animation: 'spin 1s linear infinite'
+                    }} />
+                    <span>Exporting...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>📊</span>
+                    <span>Export Excel</span>
+                  </>
+                )}
+              </button>
+
               {/* Save Snapshot Button */}
               {!isHistoricalData && (
                 <button
@@ -6926,6 +7335,119 @@ function SummaryDashboard() {
               inventory: inventoryRef
             }[activeTopic]}
           />
+        )}
+
+        {/* Notification Modal */}
+        {notificationModal.isOpen && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000,
+            animation: 'fadeIn 0.2s ease-out'
+          }}>
+            <div style={{
+              backgroundColor: 'white',
+              borderRadius: '12px',
+              padding: '24px',
+              maxWidth: '400px',
+              width: '90%',
+              boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
+              animation: 'slideIn 0.3s ease-out'
+            }}>
+              {/* Icon */}
+              <div style={{
+                width: '56px',
+                height: '56px',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 16px',
+                backgroundColor: notificationModal.type === 'success' ? '#dcfce7' : 
+                                notificationModal.type === 'error' ? '#fee2e2' : '#dbeafe',
+              }}>
+                <span style={{ fontSize: '28px' }}>
+                  {notificationModal.type === 'success' ? '✓' : 
+                   notificationModal.type === 'error' ? '✕' : 'ℹ'}
+                </span>
+              </div>
+              
+              {/* Title */}
+              <h3 style={{
+                margin: '0 0 8px',
+                fontSize: '18px',
+                fontWeight: '600',
+                textAlign: 'center',
+                color: '#1f2937'
+              }}>
+                {notificationModal.title}
+              </h3>
+              
+              {/* Message */}
+              <p style={{
+                margin: '0 0 24px',
+                fontSize: '14px',
+                textAlign: 'center',
+                color: '#6b7280',
+                lineHeight: '1.5'
+              }}>
+                {notificationModal.message}
+              </p>
+              
+              {/* Button */}
+              <button
+                onClick={closeNotification}
+                style={{
+                  width: '100%',
+                  padding: '12px 24px',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  backgroundColor: notificationModal.type === 'success' ? '#10b981' : 
+                                  notificationModal.type === 'error' ? '#ef4444' : '#3b82f6',
+                  color: 'white',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.opacity = '0.9';
+                  e.currentTarget.style.transform = 'scale(1.02)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.opacity = '1';
+                  e.currentTarget.style.transform = 'scale(1)';
+                }}
+              >
+                OK
+              </button>
+            </div>
+            
+            {/* Animation styles */}
+            <style>{`
+              @keyframes fadeIn {
+                from { opacity: 0; }
+                to { opacity: 1; }
+              }
+              @keyframes slideIn {
+                from { 
+                  opacity: 0;
+                  transform: scale(0.9) translateY(-20px);
+                }
+                to { 
+                  opacity: 1;
+                  transform: scale(1) translateY(0);
+                }
+              }
+            `}</style>
+          </div>
         )}
       </main>
     </div>

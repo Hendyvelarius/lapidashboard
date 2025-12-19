@@ -101,6 +101,7 @@ export function apiUrlWithRefresh(path, skipCache = false) {
  * @param {string} options.notes - Optional notes for the snapshot
  * @param {string} options.createdBy - Who created the snapshot
  * @param {boolean} options.isMonthEnd - Whether this is a month-end snapshot
+ * @param {boolean} options.isManual - Whether this is a manual save (default: true for user-triggered saves)
  * @returns {Promise<Object>} - The save result
  */
 export async function saveSnapshot(options = {}) {
@@ -109,7 +110,10 @@ export async function saveSnapshot(options = {}) {
     headers: {
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify(options)
+    body: JSON.stringify({
+      ...options,
+      isManual: options.isManual !== undefined ? options.isManual : true // Default to manual for user saves
+    })
   });
   return response.json();
 }
@@ -118,12 +122,16 @@ export async function saveSnapshot(options = {}) {
  * Get a snapshot for a specific period
  * @param {string} periode - Period in YYYYMM format
  * @param {string} date - Optional specific date (YYYY-MM-DD)
+ * @param {number} id - Optional snapshot ID (for manual saves)
  * @returns {Promise<Object>} - The snapshot data
  */
-export async function getSnapshot(periode, date = null) {
+export async function getSnapshot(periode, date = null, id = null) {
   let url = apiUrl(`/api/snapshots/${periode}`);
-  if (date) {
-    url += `?date=${date}`;
+  const params = [];
+  if (date) params.push(`date=${date}`);
+  if (id) params.push(`id=${id}`);
+  if (params.length > 0) {
+    url += `?${params.join('&')}`;
   }
   const response = await fetch(url);
   return response.json();

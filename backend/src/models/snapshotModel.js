@@ -3,9 +3,10 @@ const sql = require('mssql');
 
 /**
  * Save or update a dashboard snapshot
- * If a snapshot exists for the same date, it will be overwritten
+ * If a snapshot exists for the same date, it will be overwritten (for auto-saves)
+ * Manual saves always create new entries
  */
-async function saveSnapshot(periode, snapshotDate, rawData, processedData, createdBy = 'SYSTEM', isMonthEnd = false, notes = null) {
+async function saveSnapshot(periode, snapshotDate, rawData, processedData, createdBy = 'SYSTEM', isMonthEnd = false, isManual = false, notes = null) {
   const db = await connect();
   const request = db.request();
   
@@ -15,6 +16,7 @@ async function saveSnapshot(periode, snapshotDate, rawData, processedData, creat
   request.input('processed_data', sql.NVarChar(sql.MAX), JSON.stringify(processedData));
   request.input('created_by', sql.VarChar(100), createdBy);
   request.input('is_month_end', sql.Bit, isMonthEnd ? 1 : 0);
+  request.input('is_manual', sql.Bit, isManual ? 1 : 0);
   request.input('notes', sql.NVarChar(500), notes);
   
   const result = await request.execute('sp_Dashboard_SaveSnapshot');
@@ -51,11 +53,18 @@ async function getSnapshot(periode = null, snapshotDate = null) {
 
 /**
  * Get list of all available periods with snapshots
+ * Returns: { periods: [], autoSaves: [], manualSaves: [] }
  */
 async function getAvailableSnapshots() {
   const db = await connect();
   const result = await db.request().execute('sp_Dashboard_GetAvailableSnapshots');
-  return result.recordset;
+  
+  // The stored procedure returns multiple result sets
+  return {
+    periods: result.recordsets[0] || [],      // Period summaries
+    autoSaves: result.recordsets[1] || [],    // All auto-save dates
+    manualSaves: result.recordsets[2] || []   // All manual saves
+  };
 }
 
 /**
@@ -107,6 +116,7 @@ async function getSnapshotsForPeriode(periode) {
       created_at,
       created_by,
       is_month_end,
+      is_manual,
       notes
     FROM t_dashboard_snapshots 
     WHERE periode = @periode
@@ -116,9 +126,49 @@ async function getSnapshotsForPeriode(periode) {
   return result.recordset;
 }
 
+/**
+ * Get a snapshot by ID (used for manual saves)
+ */
+async function getSnapshotById(id) {
+  const db = await connect();
+  const request = db.request();
+  
+  request.input('id', sql.Int, id);
+  
+  const result = await request.query(`
+    SELECT 
+      id,
+      periode,
+      snapshot_date,
+      raw_data,
+      processed_data,
+      created_at,
+      created_by,
+      is_month_end,
+      is_manual,
+      notes
+    FROM t_dashboard_snapshots 
+    WHERE id = @id
+  `);
+  
+  if (result.recordset.length === 0) {
+    return null;
+  }
+  
+  const snapshot = result.recordset[0];
+  
+  // Parse JSON data
+  return {
+    ...snapshot,
+    raw_data: JSON.parse(snapshot.raw_data),
+    processed_data: JSON.parse(snapshot.processed_data)
+  };
+}
+
 module.exports = {
   saveSnapshot,
   getSnapshot,
+  getSnapshotById,
   getAvailableSnapshots,
   deleteSnapshot,
   snapshotExists,

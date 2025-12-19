@@ -8,7 +8,7 @@ const converterModel = require('../models/converterModel');
  */
 async function saveSnapshot(req, res) {
   try {
-    const { notes, isMonthEnd } = req.body;
+    const { notes, isMonthEnd, isManual } = req.body;
     const createdBy = req.body.createdBy || 'MANUAL';
     
     // Get current date and period
@@ -83,17 +83,19 @@ async function saveSnapshot(req, res) {
       processedData,
       createdBy,
       isMonthEnd || false,
+      isManual || false,
       notes
     );
 
-    console.log(`✅ Snapshot saved successfully: ${result.result}`);
+    console.log(`✅ Snapshot saved successfully: ${result.result} (manual: ${isManual || false})`);
     
     res.json({
       success: true,
       message: result.result === 'updated' ? 'Snapshot updated successfully' : 'Snapshot created successfully',
       result: result,
       periode: periode,
-      date: snapshotDate
+      date: snapshotDate,
+      isManual: isManual || false
     });
 
   } catch (err) {
@@ -107,18 +109,20 @@ async function saveSnapshot(req, res) {
 }
 
 /**
- * Get a snapshot by periode or date
- * GET /api/snapshots/:periode
- * GET /api/snapshots/date/:date
+ * Get a snapshot by periode, date, or ID
+ * GET /api/snapshots/:periode?date=YYYY-MM-DD&id=123
  */
 async function getSnapshot(req, res) {
   try {
     const { periode } = req.params;
-    const { date } = req.query;
+    const { date, id } = req.query;
     
     let snapshot;
     
-    if (date) {
+    if (id) {
+      // Get by specific ID (for manual saves)
+      snapshot = await SnapshotModel.getSnapshotById(parseInt(id));
+    } else if (date) {
       // Get by specific date
       snapshot = await SnapshotModel.getSnapshot(null, date);
     } else if (periode) {
@@ -127,7 +131,7 @@ async function getSnapshot(req, res) {
     } else {
       return res.status(400).json({ 
         success: false, 
-        error: 'Either periode or date parameter is required' 
+        error: 'Either periode, date, or id parameter is required' 
       });
     }
 
@@ -136,7 +140,8 @@ async function getSnapshot(req, res) {
         success: false, 
         error: 'Snapshot not found',
         periode: periode,
-        date: date
+        date: date,
+        id: id
       });
     }
 
@@ -161,7 +166,7 @@ async function getSnapshot(req, res) {
  */
 async function getAvailableSnapshots(req, res) {
   try {
-    const snapshots = await SnapshotModel.getAvailableSnapshots();
+    const result = await SnapshotModel.getAvailableSnapshots();
     
     // Also get current period info
     const now = new Date();
@@ -170,7 +175,11 @@ async function getAvailableSnapshots(req, res) {
     res.json({
       success: true,
       currentPeriode: currentPeriode,
-      snapshots: snapshots
+      periods: result.periods,         // Period summaries for dropdown
+      autoSaves: result.autoSaves,     // All auto-save dates (for calendar view)
+      manualSaves: result.manualSaves, // All manual saves
+      // Legacy field for backward compatibility
+      snapshots: result.periods
     });
 
   } catch (err) {

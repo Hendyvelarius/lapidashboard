@@ -1505,12 +1505,13 @@ const QualityDashboard = () => {
       fullDate = `${periodLabel} ${new Date().getFullYear()}`;
       targetDate = { year: new Date().getFullYear(), month: index + 1 };
     } else {
-      // Daily view - get the day (last 30 days)
+      // Daily view - get the day of current month (index 0 = day 1, etc.)
       const today = new Date();
-      const date = new Date(today);
-      date.setDate(date.getDate() - (29 - index));
+      const currentYear = today.getFullYear();
+      const currentMonth = today.getMonth();
+      const day = index + 1; // Chart index 0 = day 1
+      const date = new Date(currentYear, currentMonth, day);
       
-      const day = date.getDate();
       const dayWithSuffix = day + getDaySuffix(day);
       const monthName = date.toLocaleString('en-US', { month: 'long' });
       const dayOfWeek = date.toLocaleString('en-US', { weekday: 'long' });
@@ -2411,6 +2412,7 @@ const QualityDashboard = () => {
       },
       y: {
         beginAtZero: true,
+        suggestedMax: 20, // Default max of 20, will extend if data exceeds
         ticks: {
           font: {
             size: 10
