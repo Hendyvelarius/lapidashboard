@@ -343,6 +343,14 @@ const InventoryOJDetailsModal = ({ isOpen, onClose, forecastData }) => {
 // Inventory OJ Return Details Modal Component
 const InventoryOJReturnDetailsModal = ({ isOpen, onClose, forecastData }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [viewMode, setViewMode] = useState('YTD'); // 'YTD' or 'MTD'
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 50;
+  
+  // Reset page when view mode or search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [viewMode, searchTerm]);
   
   if (!isOpen || !forecastData) return null;
 
@@ -352,10 +360,29 @@ const InventoryOJReturnDetailsModal = ({ isOpen, onClose, forecastData }) => {
   const currentMonth = currentDate.getMonth() + 1;
   const currentPeriod = currentYear * 100 + currentMonth;
   
-  // Filter data for current month and items with returns
-  const currentMonthData = forecastData.filter(item => 
-    parseInt(item.Periode) === currentPeriod && (item.retur || 0) > 0
+  // Filter data for YTD (current year) with returns
+  const ytdData = forecastData.filter(item => {
+    const periode = parseInt(item.Periode);
+    const itemYear = Math.floor(periode / 100);
+    return itemYear === currentYear && (item.Retur || 0) > 0;
+  });
+  
+  // Filter data for MTD (current month) with returns
+  const mtdData = forecastData.filter(item => 
+    parseInt(item.Periode) === currentPeriod && (item.Retur || 0) > 0
   );
+  
+  // Select data based on view mode
+  const activeData = viewMode === 'YTD' ? ytdData : mtdData;
+  
+  // Calculate total values
+  const ytdTotalValue = ytdData.reduce((sum, item) => 
+    sum + ((item.Retur || 0) * (item.HNA || 0)), 0
+  );
+  const mtdTotalValue = mtdData.reduce((sum, item) => 
+    sum + ((item.Retur || 0) * (item.HNA || 0)), 0
+  );
+  const activeTotalValue = viewMode === 'YTD' ? ytdTotalValue : mtdTotalValue;
   
   // Filter based on search term
   const filterItems = (items) => {
@@ -370,12 +397,38 @@ const InventoryOJReturnDetailsModal = ({ isOpen, onClose, forecastData }) => {
     });
   };
 
-  const returnItems = filterItems(currentMonthData)
+  // Sort by Periode (descending) first, then by Total Value (descending)
+  const returnItems = filterItems(activeData)
     .sort((a, b) => {
-      const aValue = (a.retur || 0) * (a.HNA || 0);
-      const bValue = (b.retur || 0) * (b.HNA || 0);
-      return bValue - aValue; // Descending order (highest value first)
+      // First sort by Periode (descending - latest first)
+      const periodeA = parseInt(a.Periode) || 0;
+      const periodeB = parseInt(b.Periode) || 0;
+      if (periodeB !== periodeA) {
+        return periodeB - periodeA;
+      }
+      // Then sort by Total Value (descending - highest first)
+      const aValue = (a.Retur || 0) * (a.HNA || 0);
+      const bValue = (b.Retur || 0) * (b.HNA || 0);
+      return bValue - aValue;
     });
+
+  // Pagination calculations
+  const totalPages = Math.ceil(returnItems.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedItems = returnItems.slice(startIndex, endIndex);
+
+  // Get month name for display
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const currentMonthName = monthNames[currentMonth - 1];
+  
+  // Format periode for display (e.g., 202512 -> "Dec 2025")
+  const formatPeriode = (periode) => {
+    const p = parseInt(periode);
+    const year = Math.floor(p / 100);
+    const month = p % 100;
+    return `${monthNames[month - 1]} ${year}`;
+  };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -384,10 +437,81 @@ const InventoryOJReturnDetailsModal = ({ isOpen, onClose, forecastData }) => {
         width: '90vw' 
       }}>
         <div className="modal-header">
-          <h2>Detail Return Obat Jadi - {currentMonth}/{currentYear}</h2>
+          <h2>Detail Return Obat Jadi - {viewMode === 'YTD' ? `YTD ${currentYear}` : `${currentMonthName} ${currentYear}`}</h2>
           <button className="modal-close" onClick={onClose}>&times;</button>
         </div>
         <div className="modal-body">
+          {/* Toggle Buttons */}
+          <div style={{ 
+            display: 'flex', 
+            gap: '8px', 
+            marginBottom: '20px',
+            justifyContent: 'flex-start'
+          }}>
+            <button
+              onClick={() => setViewMode('YTD')}
+              style={{
+                padding: '8px 16px',
+                borderRadius: '6px',
+                border: 'none',
+                cursor: 'pointer',
+                fontWeight: '500',
+                fontSize: '14px',
+                backgroundColor: viewMode === 'YTD' ? '#8b5cf6' : '#e5e7eb',
+                color: viewMode === 'YTD' ? 'white' : '#374151',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              YTD
+            </button>
+            <button
+              onClick={() => setViewMode('MTD')}
+              style={{
+                padding: '8px 16px',
+                borderRadius: '6px',
+                border: 'none',
+                cursor: 'pointer',
+                fontWeight: '500',
+                fontSize: '14px',
+                backgroundColor: viewMode === 'MTD' ? '#8b5cf6' : '#e5e7eb',
+                color: viewMode === 'MTD' ? 'white' : '#374151',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              MTD
+            </button>
+          </div>
+          
+          {/* Total Value Display */}
+          <div style={{
+            backgroundColor: '#f3e8ff',
+            borderRadius: '12px',
+            padding: '16px 20px',
+            marginBottom: '20px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between'
+          }}>
+            <div>
+              <div style={{ fontSize: '14px', color: '#6b7280', marginBottom: '4px' }}>
+                Total Return Value ({viewMode})
+              </div>
+              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#8b5cf6' }}>
+                Rp {activeTotalValue.toLocaleString('id-ID')}
+              </div>
+            </div>
+            <div style={{
+              backgroundColor: '#8b5cf6',
+              color: 'white',
+              borderRadius: '20px',
+              padding: '6px 12px',
+              fontSize: '13px',
+              fontWeight: '500'
+            }}>
+              {activeData.length} items
+            </div>
+          </div>
+          
           {/* Search Bar */}
           <div className="search-container" style={{ marginBottom: '20px' }}>
             <input
@@ -411,8 +535,8 @@ const InventoryOJReturnDetailsModal = ({ isOpen, onClose, forecastData }) => {
           {searchTerm.trim() && (
             <div style={{ marginBottom: '15px', fontSize: '14px', color: '#6b7280' }}>
               Found {returnItems.length} results for "{searchTerm}"
-              {returnItems.length !== currentMonthData.length && 
-                ` (filtered from ${currentMonthData.length} total)`}
+              {returnItems.length !== activeData.length && 
+                ` (filtered from ${activeData.length} total)`}
             </div>
           )}
           
@@ -421,18 +545,24 @@ const InventoryOJReturnDetailsModal = ({ isOpen, onClose, forecastData }) => {
             <div className="of-details-section">
               <h3 className="of-section-title pending">
                 🔄 Return Items ({returnItems.length})
+                {totalPages > 1 && (
+                  <span style={{ fontWeight: 'normal', fontSize: '13px', marginLeft: '10px', color: '#6b7280' }}>
+                    Showing {startIndex + 1}-{Math.min(endIndex, returnItems.length)} of {returnItems.length}
+                  </span>
+                )}
               </h3>
               <div className="of-batch-list">
-                {returnItems.length > 0 ? (
-                  returnItems.map((item, index) => (
-                    <div key={index} className="of-batch-item pending">
+                {paginatedItems.length > 0 ? (
+                  paginatedItems.map((item, index) => (
+                    <div key={`${item.Product_Code}-${item.Periode}-${index}`} className="of-batch-item pending">
                       <div className="batch-code">Code: {item.Product_Code || 'N/A'}</div>
                       <div className="product-info">
                         <span className="product-name">{item.Product_NM || 'N/A'}</span>
                         <span className="product-id">
+                          {viewMode === 'YTD' && `Period: ${formatPeriode(item.Periode)} | `}
                           Unit Price: {formatNumber(item.HNA || 0)} | 
-                          Returned: {item.retur || 0} | 
-                          Total Value: {formatNumber((item.retur || 0) * (item.HNA || 0))}
+                          Returned: {item.Retur || 0} | 
+                          Total Value: {formatNumber((item.Retur || 0) * (item.HNA || 0))}
                         </span>
                       </div>
                     </div>
@@ -441,6 +571,89 @@ const InventoryOJReturnDetailsModal = ({ isOpen, onClose, forecastData }) => {
                   <div className="no-data">Tidak ada item return pada periode ini</div>
                 )}
               </div>
+              
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  gap: '8px',
+                  marginTop: '20px',
+                  paddingTop: '15px',
+                  borderTop: '1px solid #e5e7eb'
+                }}>
+                  <button
+                    onClick={() => setCurrentPage(1)}
+                    disabled={currentPage === 1}
+                    style={{
+                      padding: '6px 10px',
+                      borderRadius: '6px',
+                      border: '1px solid #d1d5db',
+                      backgroundColor: currentPage === 1 ? '#f3f4f6' : 'white',
+                      color: currentPage === 1 ? '#9ca3af' : '#374151',
+                      cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                      fontSize: '13px'
+                    }}
+                  >
+                    ««
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    disabled={currentPage === 1}
+                    style={{
+                      padding: '6px 10px',
+                      borderRadius: '6px',
+                      border: '1px solid #d1d5db',
+                      backgroundColor: currentPage === 1 ? '#f3f4f6' : 'white',
+                      color: currentPage === 1 ? '#9ca3af' : '#374151',
+                      cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                      fontSize: '13px'
+                    }}
+                  >
+                    «
+                  </button>
+                  
+                  <span style={{ 
+                    padding: '6px 12px', 
+                    fontSize: '14px',
+                    color: '#374151'
+                  }}>
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                    disabled={currentPage === totalPages}
+                    style={{
+                      padding: '6px 10px',
+                      borderRadius: '6px',
+                      border: '1px solid #d1d5db',
+                      backgroundColor: currentPage === totalPages ? '#f3f4f6' : 'white',
+                      color: currentPage === totalPages ? '#9ca3af' : '#374151',
+                      cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                      fontSize: '13px'
+                    }}
+                  >
+                    »
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage(totalPages)}
+                    disabled={currentPage === totalPages}
+                    style={{
+                      padding: '6px 10px',
+                      borderRadius: '6px',
+                      border: '1px solid #d1d5db',
+                      backgroundColor: currentPage === totalPages ? '#f3f4f6' : 'white',
+                      color: currentPage === totalPages ? '#9ca3af' : '#374151',
+                      cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                      fontSize: '13px'
+                    }}
+                  >
+                    »»
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -4873,15 +5086,22 @@ function SummaryDashboard() {
     const currentMonth = currentDate.getMonth() + 1; // getMonth() returns 0-11
     const currentPeriod = currentYear * 100 + currentMonth;
     
-    // Filter data for current month only for return calculation
+    // Filter data for current month (needed for total inventory value calculation)
     const currentMonthData = stockData.filter(item => 
       parseInt(item.Periode) === currentPeriod
     );
     
-    // Calculate return value for current month
+    // Filter data for current year (YTD) for return calculation
+    const ytdData = stockData.filter(item => {
+      const periode = parseInt(item.Periode);
+      const itemYear = Math.floor(periode / 100);
+      return itemYear === currentYear;
+    });
+    
+    // Calculate return value for YTD
     let totalReturnValue = 0;
-    currentMonthData.forEach(item => {
-      const returnQty = item.retur || 0;
+    ytdData.forEach(item => {
+      const returnQty = item.Retur || 0;
       const unitPrice = item.HNA || 0;
       totalReturnValue += returnQty * unitPrice;
     });
