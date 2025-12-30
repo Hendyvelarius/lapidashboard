@@ -988,8 +988,8 @@ const QualityDashboard = () => {
       
       // Filter ofActualData for this month and year
       ofActualData.forEach(item => {
-        const releaseDate = new Date(item.Process_Date);
-        if (isNaN(releaseDate.getTime())) return;
+        const releaseDate = parseSQLDateTime(item.Process_Date);
+        if (!releaseDate) return;
         
         if (releaseDate.getFullYear() === currentYear && releaseDate.getMonth() + 1 === month) {
           const productId = item.DNc_ProductID;
@@ -1051,8 +1051,8 @@ const QualityDashboard = () => {
       
       // Count unique batches released on this specific day
       ofActualData.forEach(item => {
-        const releaseDate = new Date(item.Process_Date);
-        if (isNaN(releaseDate.getTime())) return;
+        const releaseDate = parseSQLDateTime(item.Process_Date);
+        if (!releaseDate) return;
         
         releaseDate.setHours(0, 0, 0, 0);
         
@@ -1121,7 +1121,8 @@ const QualityDashboard = () => {
       
       // Find batches completed on this day
       const batchesOnThisDay = stageData.filter(item => {
-        const completionDate = new Date(item.Stage_Completion_Date);
+        const completionDate = parseSQLDateTime(item.Stage_Completion_Date);
+        if (!completionDate) return false;
         return completionDate.getDate() === day &&
                completionDate.getMonth() === currentMonth &&
                completionDate.getFullYear() === currentYear;
@@ -1135,7 +1136,7 @@ const QualityDashboard = () => {
           productId: b.Product_ID,
           batchNo: b.Batch_No,
           productName: b.Product_Name,
-          completionDate: new Date(b.Stage_Completion_Date),
+          completionDate: parseSQLDateTime(b.Stage_Completion_Date),
           durationDays: b.Stage_Duration_Days
         }))
       });
@@ -1199,7 +1200,8 @@ const QualityDashboard = () => {
       if (!targetBatchMap.has(batchKey)) return;
 
       if (processDate && batchNo) {
-        const date = new Date(processDate);
+        const date = parseSQLDateTime(processDate);
+        if (!date) return;
         const day = date.getDate();
         
         // Only include if it's in the current month
@@ -1533,8 +1535,8 @@ const QualityDashboard = () => {
     const batchesByProduct = {}; // { productId: Set of batch keys }
 
     ofActualData.forEach(item => {
-      const releaseDate = new Date(item.Process_Date);
-      if (isNaN(releaseDate.getTime())) return;
+      const releaseDate = parseSQLDateTime(item.Process_Date);
+      if (!releaseDate) return;
       
       let matchesPeriod = false;
       
@@ -1672,7 +1674,8 @@ const QualityDashboard = () => {
 
       // Parse date
       if (processDate) {
-        const date = new Date(processDate);
+        const date = parseSQLDateTime(processDate);
+        if (!date) return;
         
         // Only include current month
         if (date.getMonth() === currentMonth && date.getFullYear() === currentYear && quantity > 0) {
@@ -1833,7 +1836,8 @@ const QualityDashboard = () => {
     const completedBatches = leadTimeData.filter(item => {
       if (item.Stage_Name !== currentStage) return false;
       
-      const completionDate = new Date(item.Stage_Completion_Date);
+      const completionDate = parseSQLDateTime(item.Stage_Completion_Date);
+      if (!completionDate) return false;
       completionDate.setHours(0, 0, 0, 0);
       
       return completionDate.getTime() === clickedDate.getTime();
