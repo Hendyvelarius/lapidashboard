@@ -4236,13 +4236,22 @@ function SummaryDashboard() {
   };
 
   // Get dates with auto-saves for a specific periode
+  // Parses snapshot_date directly without timezone conversion
   const getDatesWithDataForPeriode = (periode) => {
     if (!autoSaves) return new Set();
     return new Set(
       autoSaves
         .filter(s => s.periode === periode)
         .map(s => {
-          const date = new Date(s.snapshot_date);
+          // Parse date string directly to avoid timezone issues
+          // snapshot_date format is typically YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS
+          const dateStr = s.snapshot_date;
+          const match = dateStr.match(/\d{4}-(\d{2})-(\d{2})/);
+          if (match) {
+            return parseInt(match[2], 10); // Return day of month
+          }
+          // Fallback
+          const date = new Date(dateStr);
           return date.getDate();
         })
     );
@@ -4257,7 +4266,20 @@ function SummaryDashboard() {
   };
 
   // Format date for manual saves display
+  // Parses the database timestamp and displays it as-is (server time) without timezone conversion
   const formatManualSaveDate = (dateStr) => {
+    // Parse the ISO string directly to avoid timezone conversion
+    // Database stores in server time, we want to display that time as-is
+    const match = dateStr.match(/(\d{4})-(\d{2})-(\d{2})T?(\d{2}):(\d{2})/);
+    if (match) {
+      const [, year, month, day, hour, minute] = match;
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const hourNum = parseInt(hour, 10);
+      const ampm = hourNum >= 12 ? 'PM' : 'AM';
+      const displayHour = hourNum % 12 || 12;
+      return `${parseInt(day, 10)} ${monthNames[parseInt(month, 10) - 1]} ${year}, ${displayHour}:${minute} ${ampm}`;
+    }
+    // Fallback for unexpected format
     const date = new Date(dateStr);
     return date.toLocaleDateString('en-GB', { 
       day: '2-digit', 

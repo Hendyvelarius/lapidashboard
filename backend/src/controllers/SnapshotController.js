@@ -342,8 +342,9 @@ async function createMonthEndSnapshot() {
       rawData,
       processedData,
       'SYSTEM_MONTHEND',
-      true, // isMonthEnd = true
-      `Automatic month-end snapshot for ${periode}`
+      true,  // isMonthEnd = true
+      false, // isManual = false (auto-save by scheduler)
+      `Automatic daily snapshot for ${periode}`
     );
 
     console.log(`✅ Month-end snapshot created successfully: ${result.result}`);
