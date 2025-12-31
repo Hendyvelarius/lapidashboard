@@ -218,6 +218,7 @@ export const PAGE_ACCESS = {
     allowedJobLevels: [],
     specificCombinations: [
       { department: 'DS', jobLevel: 'DIR' },
+      { department: 'MS', jobLevel: 'MGR' },
     ],
   },
 
