@@ -3601,13 +3601,68 @@ function SummaryDashboard() {
   const CACHE_KEY = 'SummaryDashboardData';
   const CACHE_DURATION = 60 * 60 * 1000; // 1 hour in milliseconds
 
+  const clearOldCacheEntries = () => {
+    // Clear the main cache key
+    try {
+      localStorage.removeItem(CACHE_KEY);
+    } catch (e) {
+      console.warn('Could not remove cache key:', e);
+    }
+    
+    // Clear any other potentially stale dashboard-related cache entries
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.includes('Dashboard') || key.includes('dashboard'))) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(key => {
+      try {
+        localStorage.removeItem(key);
+      } catch (e) {
+        console.warn(`Could not remove ${key}:`, e);
+      }
+    });
+  };
+
   const saveDataToCache = (data, rawData) => {
     const cacheData = {
       data,
       rawData,
       timestamp: Date.now()
     };
-    localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
+    
+    try {
+      // Clear old cache first to free up space
+      localStorage.removeItem(CACHE_KEY);
+      localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
+    } catch (error) {
+      if (error.name === 'QuotaExceededError' || error.message?.includes('quota')) {
+        console.warn('localStorage quota exceeded, clearing old entries and retrying...');
+        clearOldCacheEntries();
+        
+        try {
+          localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
+        } catch (retryError) {
+          // If still failing, try saving without rawData (smaller payload)
+          console.warn('Still exceeding quota, saving minimal cache...');
+          try {
+            const minimalCache = {
+              data,
+              timestamp: Date.now(),
+              isMinimal: true
+            };
+            localStorage.setItem(CACHE_KEY, JSON.stringify(minimalCache));
+          } catch (finalError) {
+            // Give up on caching, but don't crash - data will still work without cache
+            console.error('Unable to cache data, continuing without cache:', finalError);
+          }
+        }
+      } else {
+        console.error('Error saving to cache:', error);
+      }
+    }
   };
 
   const getCachedData = () => {
@@ -3625,6 +3680,12 @@ function SummaryDashboard() {
       };
     } catch (error) {
       console.error('Error reading cache:', error);
+      // Clear corrupted cache
+      try {
+        localStorage.removeItem(CACHE_KEY);
+      } catch (e) {
+        // Ignore
+      }
       return null;
     }
   };
@@ -3675,15 +3736,18 @@ function SummaryDashboard() {
         const cachedData = getCachedData();
         if (cachedData && !cachedData.isExpired) {
           setData(cachedData.data);
-          setOfRawData(applyOFBusinessLogic(cachedData.rawData.ofData || []));
-          setForecastRawData(cachedData.rawData.forecastData || []);
-          setLostSalesRawData(cachedData.rawData.lostSalesData || []);
-          setBbbkRawData(cachedData.rawData.bbbkData || []);
-          setWipRawData(cachedData.rawData.wipData || []);
-          setPctRawData(cachedData.rawData.pctData || []);
-          setOtaRawData(cachedData.rawData.otaData || []);
-          setMaterialRawData(cachedData.rawData.materialData || []);
-          setBatchExpiryRawData(cachedData.rawData.batchExpiryData || []);
+          // Handle minimal cache (when rawData wasn't saved due to quota limits)
+          if (cachedData.rawData && !cachedData.isMinimal) {
+            setOfRawData(applyOFBusinessLogic(cachedData.rawData.ofData || []));
+            setForecastRawData(cachedData.rawData.forecastData || []);
+            setLostSalesRawData(cachedData.rawData.lostSalesData || []);
+            setBbbkRawData(cachedData.rawData.bbbkData || []);
+            setWipRawData(cachedData.rawData.wipData || []);
+            setPctRawData(cachedData.rawData.pctData || []);
+            setOtaRawData(cachedData.rawData.otaData || []);
+            setMaterialRawData(cachedData.rawData.materialData || []);
+            setBatchExpiryRawData(cachedData.rawData.batchExpiryData || []);
+          }
           setLastFetchTime(cachedData.timestamp);
           setLoading(false);
           return;
