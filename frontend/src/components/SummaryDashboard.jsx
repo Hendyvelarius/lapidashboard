@@ -4332,11 +4332,12 @@ function SummaryDashboard() {
   };
 
   // Get auto-save date string (YYYY-MM-DD) for a specific day in a periode
+  // Fixed: Use local date formatting to avoid timezone conversion issues
   const getAutoSaveDateString = (periode, day) => {
-    const year = parseInt(periode.substring(0, 4));
-    const month = parseInt(periode.substring(4, 6)) - 1;
-    const date = new Date(year, month, day);
-    return date.toISOString().split('T')[0];
+    const year = periode.substring(0, 4);
+    const month = periode.substring(4, 6);
+    const dayStr = String(day).padStart(2, '0');
+    return `${year}-${month}-${dayStr}`;
   };
 
   // Format date for manual saves display
