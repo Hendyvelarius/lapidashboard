@@ -148,13 +148,13 @@ const MetricBox = ({ label, value, color = '#4f8cff' }) => (
 );
 
 // Inventory OJ Details Modal Component
-const InventoryOJDetailsModal = ({ isOpen, onClose, forecastData }) => {
+const InventoryOJDetailsModal = ({ isOpen, onClose, forecastData, referenceDate = null }) => {
   const [searchTerm, setSearchTerm] = useState('');
   
   if (!isOpen || !forecastData) return null;
 
-  // Calculate current period dynamically based on actual date
-  const currentDate = new Date();
+  // Calculate current period dynamically - use referenceDate for historical data
+  const currentDate = referenceDate ? new Date(referenceDate) : new Date();
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth() + 1;
   
@@ -341,7 +341,7 @@ const InventoryOJDetailsModal = ({ isOpen, onClose, forecastData }) => {
 };
 
 // Inventory OJ Return Details Modal Component
-const InventoryOJReturnDetailsModal = ({ isOpen, onClose, forecastData }) => {
+const InventoryOJReturnDetailsModal = ({ isOpen, onClose, forecastData, referenceDate = null }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState('YTD'); // 'YTD' or 'MTD'
   const [currentPage, setCurrentPage] = useState(1);
@@ -354,8 +354,8 @@ const InventoryOJReturnDetailsModal = ({ isOpen, onClose, forecastData }) => {
   
   if (!isOpen || !forecastData) return null;
 
-  // Calculate current period dynamically based on actual date
-  const currentDate = new Date();
+  // Calculate current period dynamically - use referenceDate for historical data
+  const currentDate = referenceDate ? new Date(referenceDate) : new Date();
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth() + 1;
   const currentPeriod = currentYear * 100 + currentMonth;
@@ -866,13 +866,13 @@ const NearExpiryDetailsModal = ({ isOpen, onClose, batchExpiryData }) => {
 };
 
 // Inventory OJ Slow Moving & Dead Stock Details Modal Component
-const InventoryOJSlowDeadStockDetailsModal = ({ isOpen, onClose, forecastData }) => {
+const InventoryOJSlowDeadStockDetailsModal = ({ isOpen, onClose, forecastData, referenceDate = null }) => {
   const [searchTerm, setSearchTerm] = useState('');
   
   if (!isOpen || !forecastData) return null;
 
-  // Calculate current period dynamically based on actual date
-  const currentDate = new Date();
+  // Calculate current period dynamically - use referenceDate for historical data
+  const currentDate = referenceDate ? new Date(referenceDate) : new Date();
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth() + 1;
   
@@ -1129,13 +1129,13 @@ const InventoryOJSlowDeadStockDetailsModal = ({ isOpen, onClose, forecastData })
 };
 
 // Sales Target Details Modal Component
-const SalesTargetDetailsModal = ({ isOpen, onClose, forecastData, modalTitle, productGroupFilter }) => {
+const SalesTargetDetailsModal = ({ isOpen, onClose, forecastData, modalTitle, productGroupFilter, referenceDate = null }) => {
   const [searchTerm, setSearchTerm] = useState('');
   
   if (!isOpen || !forecastData) return null;
 
-  // Get current period for filtering
-  const currentDate = new Date();
+  // Get current period for filtering - use referenceDate for historical data
+  const currentDate = referenceDate ? new Date(referenceDate) : new Date();
   const currentPeriod = currentDate.getFullYear() * 100 + (currentDate.getMonth() + 1);
   
   // Filter forecast data by current period and product group if specified
@@ -1294,13 +1294,13 @@ const SalesTargetDetailsModal = ({ isOpen, onClose, forecastData, modalTitle, pr
 };
 
 // Coverage Details Modal Component
-const CoverageDetailsModal = ({ isOpen, onClose, forecastData, productGroupFilter = null, modalTitle = "Detail Coverage Stock FG" }) => {
+const CoverageDetailsModal = ({ isOpen, onClose, forecastData, productGroupFilter = null, modalTitle = "Detail Coverage Stock FG", referenceDate = null }) => {
   const [searchTerm, setSearchTerm] = useState('');
   
   if (!isOpen || !forecastData) return null;
 
-  // Get current period for filtering
-  const currentDate = new Date();
+  // Get current period for filtering - use referenceDate for historical data
+  const currentDate = referenceDate ? new Date(referenceDate) : new Date();
   const currentPeriod = `${currentDate.getFullYear()}${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
   
   // Filter forecast data by current period and optionally by product group
@@ -1848,12 +1848,13 @@ const WIPBatchesModal = ({ isOpen, onClose, wipData }) => {
 };
 
 // Inventory Bahan Baku Details Modal Component
-const InventoryBahanBakuDetailsModal = ({ isOpen, onClose, bbData }) => {
+const InventoryBahanBakuDetailsModal = ({ isOpen, onClose, bbData, referenceDate = null }) => {
   const [searchTerm, setSearchTerm] = useState('');
   
   if (!isOpen || !bbData) return null;
 
-  const currentDate = new Date();
+  // Use referenceDate for historical data
+  const currentDate = referenceDate ? new Date(referenceDate) : new Date();
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth() + 1;
   
@@ -2013,12 +2014,13 @@ const InventoryBahanBakuDetailsModal = ({ isOpen, onClose, bbData }) => {
 };
 
 // Inventory Bahan Kemas Details Modal Component
-const InventoryBahanKemasDetailsModal = ({ isOpen, onClose, bkData }) => {
+const InventoryBahanKemasDetailsModal = ({ isOpen, onClose, bkData, referenceDate = null }) => {
   const [searchTerm, setSearchTerm] = useState('');
   
   if (!isOpen || !bkData) return null;
 
-  const currentDate = new Date();
+  // Use referenceDate for historical data
+  const currentDate = referenceDate ? new Date(referenceDate) : new Date();
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth() + 1;
   
@@ -2172,12 +2174,13 @@ const InventoryBahanKemasDetailsModal = ({ isOpen, onClose, bkData }) => {
 };
 
 // Inventory BB-BK Details Modal Component
-const InventoryBBBKDetailsModal = ({ isOpen, onClose, bbbkData }) => {
+const InventoryBBBKDetailsModal = ({ isOpen, onClose, bbbkData, referenceDate = null }) => {
   const [searchTerm, setSearchTerm] = useState('');
   
   if (!isOpen || !bbbkData) return null;
 
-  const currentDate = new Date();
+  // Use referenceDate for historical data
+  const currentDate = referenceDate ? new Date(referenceDate) : new Date();
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth() + 1;
   const threeMonthsAgo = new Date(currentYear, currentMonth - 4, 1);
@@ -3074,13 +3077,13 @@ const LostSalesDetailsModal = ({ isOpen, onClose, lostSalesData, forecastData })
 };
 
 // Stock Out Details Modal Component
-const StockOutDetailsModal = ({ isOpen, onClose, stockOutData }) => {
+const StockOutDetailsModal = ({ isOpen, onClose, stockOutData, referenceDate = null }) => {
   const [searchTerm, setSearchTerm] = useState('');
   
   if (!isOpen || !stockOutData) return null;
 
-  // Get current period for filtering
-  const currentDate = new Date();
+  // Get current period for filtering - use referenceDate for historical data
+  const currentDate = referenceDate ? new Date(referenceDate) : new Date();
   const currentPeriod = `${currentDate.getFullYear()}${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
   
   // Filter forecast data by current period and stock out products (Release = 0)
@@ -3505,6 +3508,7 @@ function SummaryDashboard() {
   const [autoSaves, setAutoSaves] = useState([]); // All auto-save dates for calendar
   const [manualSaves, setManualSaves] = useState([]); // All manual saves
   const [isHistoricalData, setIsHistoricalData] = useState(false);
+  const [historicalReferenceDate, setHistoricalReferenceDate] = useState(null); // Reference date for historical data processing
   const [savingSnapshot, setSavingSnapshot] = useState(false);
   const [periodDropdownOpen, setPeriodDropdownOpen] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(null); // Currently expanded month in dropdown
@@ -4067,6 +4071,7 @@ function SummaryDashboard() {
       // Switch to live data
       setSelectedPeriode(null);
       setIsHistoricalData(false);
+      setHistoricalReferenceDate(null); // Clear historical reference date
       setPeriodDropdownOpen(false);
       setSelectedMonth(null);
       fetchAllData(true); // Refresh live data
@@ -4091,29 +4096,34 @@ function SummaryDashboard() {
           setMaterialRawData(snapshot.raw_data.materialData || []);
           setBatchExpiryRawData(snapshot.raw_data.batchExpiryData || []);
           
-          // Process data for display (same as live data processing)
+          // Process data for display using snapshot date as reference
+          // This ensures historical data is processed relative to when it was captured
           const rawData = snapshot.raw_data;
+          const snapshotDate = snapshot.snapshot_date || snapshot.created_at;
+          
           const processedData = {
-            sales: processSalesData(rawData.forecastData || [], rawData.dailySalesData || []),
-            inventory: processInventoryData(rawData.forecastData || []),
-            stockOut: processStockOutData(rawData.forecastData || [], rawData.lostSalesData || []),
-            coverage: processCoverageData(rawData.forecastData || []),
-            coverageFokus: processCoverageFokusData(rawData.forecastData || []),
-            coverageNonFokus: processCoverageNonFokusData(rawData.forecastData || []),
+            sales: processSalesData(rawData.forecastData || [], rawData.dailySalesData || [], snapshotDate),
+            inventory: processInventoryData(rawData.forecastData || [], snapshotDate),
+            stockOut: processStockOutData(rawData.forecastData || [], rawData.lostSalesData || [], snapshotDate),
+            coverage: processCoverageData(rawData.forecastData || [], snapshotDate),
+            coverageFokus: processCoverageFokusData(rawData.forecastData || [], snapshotDate),
+            coverageNonFokus: processCoverageNonFokusData(rawData.forecastData || [], snapshotDate),
             whOccupancy: processWHOccupancyData(rawData.wipData || []),
             orderFulfillment: processOrderFulfillmentData(rawData.ofData || []),
             materialAvailability: processMaterialAvailabilityData(rawData.materialData || []),
-            inventoryOJ: processInventoryOJData(rawData.forecastData || []),
+            inventoryOJ: processInventoryOJData(rawData.forecastData || [], snapshotDate),
             nearExpiry: processNearExpiryData(rawData.batchExpiryData || []),
-            inventoryBB: processInventoryBBData(rawData.bbbkData || []),
-            inventoryBK: processInventoryBKData(rawData.bbbkData || []),
-            inventoryBBBK: processInventoryBBBKData(rawData.bbbkData || []),
+            inventoryBB: processInventoryBBData(rawData.bbbkData || [], snapshotDate),
+            inventoryBK: processInventoryBKData(rawData.bbbkData || [], snapshotDate),
+            inventoryBBBK: processInventoryBBBKData(rawData.bbbkData || [], snapshotDate),
             pct: processPCTData(rawData.pctData || []),
             ota: processOTAData(rawData.otaData || []),
             wip: processWIPData(rawData.wipData || [])
           };
           
           setData(processedData);
+          // Store the reference date for modal components
+          setHistoricalReferenceDate(snapshotDate);
           // For display purposes, show the snapshot date or created_at
           const displayPeriode = snapshotId 
             ? `Manual - ${new Date(snapshot.created_at).toLocaleDateString()}` 
@@ -4465,8 +4475,9 @@ function SummaryDashboard() {
     return weeks;
   };
 
-  const processSalesData = (stockData, dailySalesData) => {
-    const today = new Date();
+  const processSalesData = (stockData, dailySalesData, referenceDate = null) => {
+    // Use referenceDate for historical data, otherwise use current date
+    const today = referenceDate ? new Date(referenceDate) : new Date();
     const currentMonth = today.getMonth() + 1;
     const currentYear = today.getFullYear();
     const todayDateString = today.toISOString().split('T')[0];
@@ -4671,7 +4682,7 @@ function SummaryDashboard() {
     };
   };
 
-  const processInventoryData = (stockData) => {
+  const processInventoryData = (stockData, referenceDate = null) => {
     // Mock inventory calculations
     const totalProducts = stockData.length;
     const slowMoving = Math.floor(totalProducts * 0.15);
@@ -4685,9 +4696,9 @@ function SummaryDashboard() {
     };
   };
 
-  const processStockOutData = (forecastData, lostSalesData) => {
-    // Get current period (YYYYMM format)
-    const currentDate = new Date();
+  const processStockOutData = (forecastData, lostSalesData, referenceDate = null) => {
+    // Get current period (YYYYMM format) - use referenceDate for historical data
+    const currentDate = referenceDate ? new Date(referenceDate) : new Date();
     const currentPeriod = `${currentDate.getFullYear()}${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
     
     // Filter forecast data by current period
@@ -4728,7 +4739,7 @@ function SummaryDashboard() {
     };
   };
 
-  const processCoverageData = (stockData) => {
+  const processCoverageData = (stockData, referenceDate = null) => {
     if (!stockData || stockData.length === 0) {
       return {
         percentage: 0,
@@ -4737,8 +4748,8 @@ function SummaryDashboard() {
       };
     }
 
-    // Get current period (YYYYMM format)
-    const currentDate = new Date();
+    // Get current period (YYYYMM format) - use referenceDate for historical data
+    const currentDate = referenceDate ? new Date(referenceDate) : new Date();
     const currentPeriod = `${currentDate.getFullYear()}${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
     
     // Filter data by current period
@@ -4789,7 +4800,7 @@ function SummaryDashboard() {
     };
   };
 
-  const processCoverageFokusData = (stockData) => {
+  const processCoverageFokusData = (stockData, referenceDate = null) => {
     if (!stockData || stockData.length === 0) {
       return {
         percentage: 0,
@@ -4798,8 +4809,8 @@ function SummaryDashboard() {
       };
     }
 
-    // Get current period (YYYYMM format)
-    const currentDate = new Date();
+    // Get current period (YYYYMM format) - use referenceDate for historical data
+    const currentDate = referenceDate ? new Date(referenceDate) : new Date();
     const currentPeriod = `${currentDate.getFullYear()}${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
     
     // Filter data by current period and Focus products only
@@ -4851,7 +4862,7 @@ function SummaryDashboard() {
     };
   };
 
-  const processCoverageNonFokusData = (stockData) => {
+  const processCoverageNonFokusData = (stockData, referenceDate = null) => {
     if (!stockData || stockData.length === 0) {
       return {
         percentage: 0,
@@ -4860,8 +4871,8 @@ function SummaryDashboard() {
       };
     }
 
-    // Get current period (YYYYMM format)
-    const currentDate = new Date();
+    // Get current period (YYYYMM format) - use referenceDate for historical data
+    const currentDate = referenceDate ? new Date(referenceDate) : new Date();
     const currentPeriod = `${currentDate.getFullYear()}${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
     
     // Filter data by current period and Non Focus products only
@@ -5157,7 +5168,7 @@ function SummaryDashboard() {
     };
   };
 
-  const processInventoryOJData = (stockData) => {
+  const processInventoryOJData = (stockData, referenceDate = null) => {
     if (!stockData || stockData.length === 0) {
       return {
         slowMoving: 0,
@@ -5166,8 +5177,8 @@ function SummaryDashboard() {
       };
     }
 
-    // Calculate current period dynamically based on actual date
-    const currentDate = new Date();
+    // Calculate current period dynamically - use referenceDate for historical data
+    const currentDate = referenceDate ? new Date(referenceDate) : new Date();
     const currentYear = currentDate.getFullYear();
     const currentMonth = currentDate.getMonth() + 1; // getMonth() returns 0-11
     const currentPeriod = currentYear * 100 + currentMonth;
@@ -5356,7 +5367,7 @@ function SummaryDashboard() {
     };
   };
 
-  const processInventoryBBData = (bbbkData) => {
+  const processInventoryBBData = (bbbkData, referenceDate = null) => {
     // Filter only BB items
     const bbData = bbbkData.filter(item => item.item_type === 'BB');
     
@@ -5368,7 +5379,8 @@ function SummaryDashboard() {
       };
     }
 
-    const currentDate = new Date();
+    // Use referenceDate for historical data
+    const currentDate = referenceDate ? new Date(referenceDate) : new Date();
     const currentYear = currentDate.getFullYear();
     const currentMonth = currentDate.getMonth() + 1;
     
@@ -5440,7 +5452,7 @@ function SummaryDashboard() {
     };
   };
 
-  const processInventoryBKData = (bbbkData) => {
+  const processInventoryBKData = (bbbkData, referenceDate = null) => {
     // Filter only BK items
     const bkData = bbbkData.filter(item => item.item_type === 'BK');
     
@@ -5452,7 +5464,8 @@ function SummaryDashboard() {
       };
     }
 
-    const currentDate = new Date();
+    // Use referenceDate for historical data
+    const currentDate = referenceDate ? new Date(referenceDate) : new Date();
     const currentYear = currentDate.getFullYear();
     const currentMonth = currentDate.getMonth() + 1;
     
@@ -5524,7 +5537,7 @@ function SummaryDashboard() {
     };
   };
 
-  const processInventoryBBBKData = (bbbkData) => {
+  const processInventoryBBBKData = (bbbkData, referenceDate = null) => {
     if (!bbbkData || bbbkData.length === 0) {
       return {
         slowMoving: 0,
@@ -5534,7 +5547,8 @@ function SummaryDashboard() {
     }
 
     const totalItems = bbbkData.length;
-    const currentDate = new Date();
+    // Use referenceDate for historical data
+    const currentDate = referenceDate ? new Date(referenceDate) : new Date();
     const currentYear = currentDate.getFullYear();
     const currentMonth = currentDate.getMonth() + 1; // getMonth() returns 0-11
     const threeMonthsAgo = new Date(currentYear, currentMonth - 4, 1); // 3 months ago
@@ -7470,6 +7484,7 @@ function SummaryDashboard() {
           isOpen={stockOutModalOpen}
           onClose={() => setStockOutModalOpen(false)}
           stockOutData={forecastRawData}
+          referenceDate={historicalReferenceDate}
         />
         
         {/* Lost Sales Details Modal */}
@@ -7485,6 +7500,7 @@ function SummaryDashboard() {
           isOpen={inventoryOJModalOpen}
           onClose={() => setInventoryOJModalOpen(false)}
           forecastData={forecastRawData}
+          referenceDate={historicalReferenceDate}
         />
         
         {/* Inventory OJ Return Details Modal */}
@@ -7492,6 +7508,7 @@ function SummaryDashboard() {
           isOpen={inventoryOJReturnModalOpen}
           onClose={() => setInventoryOJReturnModalOpen(false)}
           forecastData={forecastRawData}
+          referenceDate={historicalReferenceDate}
         />
 
         {/* Near Expiry Details Modal */}
@@ -7506,6 +7523,7 @@ function SummaryDashboard() {
           isOpen={inventoryOJSlowDeadStockModalOpen}
           onClose={() => setInventoryOJSlowDeadStockModalOpen(false)}
           forecastData={forecastRawData}
+          referenceDate={historicalReferenceDate}
         />
         
         {/* Coverage Details Modal */}
@@ -7513,6 +7531,7 @@ function SummaryDashboard() {
           isOpen={coverageModalOpen}
           onClose={() => setCoverageModalOpen(false)}
           forecastData={forecastRawData}
+          referenceDate={historicalReferenceDate}
         />
         
         {/* Coverage Fokus Details Modal */}
@@ -7522,6 +7541,7 @@ function SummaryDashboard() {
           forecastData={forecastRawData}
           productGroupFilter="1. PRODUK FOKUS"
           modalTitle="Detail Coverage Stock FG - Produk Fokus"
+          referenceDate={historicalReferenceDate}
         />
         
         {/* Coverage Non-Fokus Details Modal */}
@@ -7531,6 +7551,7 @@ function SummaryDashboard() {
           forecastData={forecastRawData}
           productGroupFilter="2. PRODUK NON FOKUS"
           modalTitle="Detail Coverage Stock FG - Produk Non Fokus"
+          referenceDate={historicalReferenceDate}
         />
         
         {/* WIP Details Modal */}
@@ -7554,6 +7575,7 @@ function SummaryDashboard() {
           forecastData={forecastRawData}
           modalTitle={salesTargetModalConfig.title}
           productGroupFilter={salesTargetModalConfig.productGroupFilter}
+          referenceDate={historicalReferenceDate}
         />
         
         {/* Inventory Bahan Baku Details Modal */}
@@ -7561,6 +7583,7 @@ function SummaryDashboard() {
           isOpen={inventoryBBModalOpen}
           onClose={() => setInventoryBBModalOpen(false)}
           bbData={bbbkRawData.filter(item => item.item_type === 'BB')}
+          referenceDate={historicalReferenceDate}
         />
         
         {/* Inventory Bahan Kemas Details Modal */}
@@ -7568,6 +7591,7 @@ function SummaryDashboard() {
           isOpen={inventoryBKModalOpen}
           onClose={() => setInventoryBKModalOpen(false)}
           bkData={bbbkRawData.filter(item => item.item_type === 'BK')}
+          referenceDate={historicalReferenceDate}
         />
         
         {/* Inventory BB-BK Details Modal */}
@@ -7575,6 +7599,7 @@ function SummaryDashboard() {
           isOpen={inventoryBBBKModalOpen}
           onClose={() => setInventoryBBBKModalOpen(false)}
           bbbkData={bbbkRawData}
+          referenceDate={historicalReferenceDate}
         />
         
         {/* PCT Details Modal */}
