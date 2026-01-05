@@ -596,7 +596,7 @@ async function getWIPData() {
  where
   --a.Batch_No='FP025' and
  b.DNc_BatchNo is null and
- CONVERT(nvarchar(6), a.Batch_Date, 112) between  CONVERT(nvarchar(6), dateadd(month,-12,GETDATE()), 112) and CONVERT(nvarchar(6), GETDATE(), 112)
+ REPLACE(LEFT(a.Batch_Date, 7), '/', '') between CONVERT(nvarchar(6), dateadd(month,-12,GETDATE()), 112) and CONVERT(nvarchar(6), GETDATE(), 112)
 and (prod.Product_Name  not like '%Granulat%') 
 and not (a.Batch_No ='CY3A01' or a.Batch_No ='BI063' or a.Batch_No ='PI3L01')
 and xy.Product_ID is null
@@ -920,12 +920,11 @@ async function getHolidays() {
   const db = await connect();
   const query = `
     SELECT 
-      day_date,
-      day_name,
-      day_description
+      Day_Date,
+      process_date
     FROM m_holiday 
     WHERE isActive = 1
-    ORDER BY day_date DESC
+    ORDER BY Day_Date DESC
   `;
   const result = await db.request().query(query);
   return result.recordset;
