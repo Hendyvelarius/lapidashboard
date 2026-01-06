@@ -389,4 +389,17 @@ async function getHolidays(req, res) {
   }
 }
 
-module.exports = { getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getPCTSummary, getOrderFulfillment, getStockReport, getofsummary, getPCTBreakdown, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays };
+// Controller for /pctRawData - Raw t_alur_proses data for PCT batches
+async function getPCTRawData(req, res) {
+  try {
+    const period = req.query.period || 'MTD';
+    const cacheKey = `pctRawData_${period}`;
+    const data = await getCachedData(cacheKey, () => SqlModel.getPCTRawData(period), CACHE_TTL.LONG, shouldSkipCache(req));
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching PCT Raw Data:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+module.exports = { getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getPCTSummary, getOrderFulfillment, getStockReport, getofsummary, getPCTBreakdown, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays };

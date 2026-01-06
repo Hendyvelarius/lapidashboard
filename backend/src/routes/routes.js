@@ -42,6 +42,7 @@ router.get('/pctYearly', SqlController.getProductCycleTimeYearly);
 router.get('/pctAverage', SqlController.getProductCycleTimeAverage);
 router.get('/pctSummary', SqlController.getPCTSummary);
 router.get('/pctBreakdown', SqlController.getPCTBreakdown);
+router.get('/pctRawData', SqlController.getPCTRawData);
 
 // Routing Lead Time
 router.get('/leadTime', SqlController.getLeadTime);

@@ -930,4 +930,60 @@ async function getHolidays() {
   return result.recordset;
 }
 
-module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTSummary, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays};
+// Get raw t_alur_proses data for PCT-eligible batches (batches that completed Tempel Label Realese)
+async function getPCTRawData(period = 'MTD') {
+  const db = await connect();
+  
+  // Determine the date filter based on period
+  let dateFilter;
+  if (period === 'YTD') {
+    dateFilter = `AND YEAR(EndDate) = YEAR(GETDATE())`;
+  } else {
+    dateFilter = `AND YEAR(EndDate) = YEAR(GETDATE())
+        AND MONTH(EndDate) = MONTH(GETDATE())`;
+  }
+  
+  const query = `
+    WITH FilteredAlur AS (
+      SELECT 
+        ap.*,
+        mp.Product_Name,
+        ISNULL(mtg.tahapan_group, 'Other') AS tahapan_group
+      FROM t_alur_proses ap
+      JOIN m_Product mp ON ap.Product_ID = mp.Product_ID
+      LEFT JOIN m_tahapan_group mtg ON ap.kode_tahapan = mtg.kode_tahapan
+      WHERE 
+        ap.Batch_Date LIKE '[1-2][0-9][0-9][0-9]/[0-1][0-9]/[0-3][0-9]'
+        AND LEN(ap.Batch_Date) = 10
+        AND ISDATE(ap.Batch_Date) = 1
+        AND mp.Product_Name NOT LIKE '%granulat%'
+    ),
+    -- Get only batches that have completed "Tempel Label Realese" with EndDate based on period
+    CompletedBatches AS (
+      SELECT DISTINCT Batch_No
+      FROM FilteredAlur
+      WHERE LOWER(nama_tahapan) LIKE '%tempel%label%realese%'
+        AND EndDate IS NOT NULL
+        ${dateFilter}
+    )
+    -- Return all raw alur_proses entries for the completed batches
+    SELECT 
+      fa.Product_ID,
+      fa.Product_Name,
+      fa.Batch_No,
+      fa.Batch_Date,
+      fa.kode_tahapan,
+      fa.nama_tahapan,
+      fa.tahapan_group,
+      fa.StartDate,
+      fa.EndDate,
+      fa.urutan
+    FROM FilteredAlur fa
+    INNER JOIN CompletedBatches cb ON fa.Batch_No = cb.Batch_No
+    ORDER BY fa.Batch_No, fa.urutan
+  `;
+  const result = await db.request().query(query);
+  return result.recordset;
+}
+
+module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTSummary, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays};

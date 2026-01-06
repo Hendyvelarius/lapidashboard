@@ -816,7 +816,10 @@ const ProductionDashboard = () => {
   const [isExpanded, setIsExpanded] = useState(false); // Single expansion state for both PN1 and PN2
   const [speedometerAnimated, setSpeedometerAnimated] = useState({}); // Track animation state for speedometers
   const [lastRefreshTime, setLastRefreshTime] = useState(null); // Track last data refresh time
+  const [excelTypeModalOpen, setExcelTypeModalOpen] = useState(false); // Excel type selection modal
   const [exportModalOpen, setExportModalOpen] = useState(false); // WIP Excel export modal
+  const [pctExportModalOpen, setPctExportModalOpen] = useState(false); // PCT Excel export modal
+  const [pctExportLoading, setPctExportLoading] = useState(false); // PCT export loading state
   const [exportSettings, setExportSettings] = useState({
     line: 'both', // 'PN1', 'PN2', or 'both'
     stage: 'All' // 'Timbang', 'Proses', 'Kemas Primer', 'Kemas Sekunder', 'QC', 'Mikro', 'QA', or 'All'
@@ -1897,6 +1900,141 @@ const ProductionDashboard = () => {
     
     // Close modal
     setExportModalOpen(false);
+  };
+
+  // Handle PCT Excel Export
+  const handleExportPCT = async () => {
+    setPctExportLoading(true);
+    
+    try {
+      // Fetch raw t_alur_proses data for PCT batches
+      const rawDataResponse = await fetch(apiUrl(`/api/pctRawData?period=${pctPeriod}`));
+      if (!rawDataResponse.ok) {
+        throw new Error('Failed to fetch raw PCT data');
+      }
+      const rawDataResult = await rawDataResponse.json();
+      const rawAlurData = rawDataResult.data || [];
+      
+      // Create workbook
+      const wb = XLSX.utils.book_new();
+      const today = new Date();
+      const dateStr = today.toLocaleDateString('en-GB').replace(/\//g, '-');
+      
+      // ============ Sheet 1: Fully Processed Data (Stage Averages) ============
+      const stages = ['Timbang', 'Proses', 'QC', 'Mikro', 'QA'];
+      const processedData = stages.map(stage => ({
+        'Stage': stage,
+        'Average Days': pctData[stage] || 0,
+        'Description': stage === 'Timbang' ? 'Weighing raw materials' :
+                       stage === 'Proses' ? 'Production process (Mixing, Filling, Granulation, Coating)' :
+                       stage === 'QC' ? 'Quality Control testing' :
+                       stage === 'Mikro' ? 'Microbiology testing' :
+                       'Quality Assurance review'
+      }));
+      
+      // Add total row
+      const totalAvg = stages.reduce((sum, stage) => sum + (pctData[stage] || 0), 0);
+      processedData.push({
+        'Stage': 'TOTAL',
+        'Average Days': totalAvg,
+        'Description': 'Total average production cycle time'
+      });
+      
+      // Add summary info at top
+      const summaryData = [
+        { 'Stage': `Period: ${pctPeriod}`, 'Average Days': '', 'Description': '' },
+        { 'Stage': `Total Batches: ${pctRawData.length}`, 'Average Days': '', 'Description': '' },
+        { 'Stage': `Average Total Days: ${avgTotalDays}`, 'Average Days': '', 'Description': '' },
+        { 'Stage': '', 'Average Days': '', 'Description': '' },
+        ...processedData
+      ];
+      
+      const ws1 = XLSX.utils.json_to_sheet(summaryData);
+      ws1['!cols'] = [{ wch: 30 }, { wch: 15 }, { wch: 50 }];
+      XLSX.utils.book_append_sheet(wb, ws1, "Summary - Stage Averages");
+      
+      // ============ Sheet 2: Half Processed Data (Batch-Level Stage Durations) ============
+      const batchLevelData = pctRawData.map(batch => ({
+        'Batch No': batch.Batch_No,
+        'Product ID': batch.Product_ID,
+        'Product Name': batch.Product_Name,
+        'Batch Date': batch.Batch_Date,
+        'Total Days': batch.Total_Days || 0,
+        'Timbang Days': batch.Timbang_Days || 0,
+        'Proses Days': batch.Proses_Days || 0,
+        'QC Days': batch.QC_Days || 0,
+        'Mikro Days': batch.Mikro_Days || 0,
+        'QA Days': batch.QA_Days || 0,
+      }));
+      
+      const ws2 = XLSX.utils.json_to_sheet(batchLevelData);
+      ws2['!cols'] = [
+        { wch: 12 }, // Batch No
+        { wch: 12 }, // Product ID
+        { wch: 35 }, // Product Name
+        { wch: 12 }, // Batch Date
+        { wch: 12 }, // Total Days
+        { wch: 14 }, // Timbang Days
+        { wch: 12 }, // Proses Days
+        { wch: 10 }, // QC Days
+        { wch: 12 }, // Mikro Days
+        { wch: 10 }, // QA Days
+      ];
+      
+      // Add AutoFilter
+      if (batchLevelData.length > 0) {
+        ws2['!autofilter'] = { ref: `A1:J${batchLevelData.length + 1}` };
+      }
+      
+      XLSX.utils.book_append_sheet(wb, ws2, "Batch Stage Durations");
+      
+      // ============ Sheet 3: Raw Data (t_alur_proses entries) ============
+      const rawExcelData = rawAlurData.map(entry => ({
+        'Batch No': entry.Batch_No,
+        'Product ID': entry.Product_ID,
+        'Product Name': entry.Product_Name,
+        'Batch Date': entry.Batch_Date,
+        'Kode Tahapan': entry.kode_tahapan,
+        'Nama Tahapan': entry.nama_tahapan,
+        'Tahapan Group': entry.tahapan_group,
+        'Start Date': entry.StartDate ? new Date(entry.StartDate).toLocaleString('en-GB') : '',
+        'End Date': entry.EndDate ? new Date(entry.EndDate).toLocaleString('en-GB') : '',
+        'Urutan': entry.urutan,
+      }));
+      
+      const ws3 = XLSX.utils.json_to_sheet(rawExcelData);
+      ws3['!cols'] = [
+        { wch: 12 }, // Batch No
+        { wch: 12 }, // Product ID
+        { wch: 35 }, // Product Name
+        { wch: 12 }, // Batch Date
+        { wch: 15 }, // Kode Tahapan
+        { wch: 30 }, // Nama Tahapan
+        { wch: 15 }, // Tahapan Group
+        { wch: 20 }, // Start Date
+        { wch: 20 }, // End Date
+        { wch: 8 },  // Urutan
+      ];
+      
+      // Add AutoFilter
+      if (rawExcelData.length > 0) {
+        ws3['!autofilter'] = { ref: `A1:J${rawExcelData.length + 1}` };
+      }
+      
+      XLSX.utils.book_append_sheet(wb, ws3, "Raw Data - t_alur_proses");
+      
+      // Generate filename and download
+      const filename = `PCT Data ${pctPeriod} ${dateStr}.xlsx`;
+      XLSX.writeFile(wb, filename);
+      
+      // Close modal
+      setPctExportModalOpen(false);
+    } catch (err) {
+      console.error('Error exporting PCT data:', err);
+      alert('Failed to export PCT data. Please try again.');
+    } finally {
+      setPctExportLoading(false);
+    }
   };
 
   // Handle PowerPoint Export
@@ -3620,9 +3758,9 @@ const ProductionDashboard = () => {
               </button>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-              {/* WIP Excel Button */}
+              {/* Excel Button */}
               <button
-                onClick={() => setExportModalOpen(true)}
+                onClick={() => setExcelTypeModalOpen(true)}
                 style={{
                   padding: '8px 16px',
                   backgroundColor: '#10b981',
@@ -3641,7 +3779,7 @@ const ProductionDashboard = () => {
                 onMouseLeave={(e) => e.target.style.backgroundColor = '#10b981'}
               >
                 <span>📊</span>
-                WIP Excel
+                Excel
               </button>
 
               {/* PowerPoint Button */}
@@ -4913,6 +5051,116 @@ const ProductionDashboard = () => {
         )}
       </Modal>
 
+      {/* Excel Type Selection Modal */}
+      <Modal
+        open={excelTypeModalOpen}
+        onClose={() => setExcelTypeModalOpen(false)}
+        title="Export to Excel"
+      >
+        <div style={{ padding: '8px' }}>
+          <p style={{ marginBottom: '20px', color: '#6b7280', fontSize: '0.9rem' }}>
+            Select the type of data you want to export
+          </p>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {/* WIP Export Option */}
+            <button
+              onClick={() => {
+                setExcelTypeModalOpen(false);
+                setExportModalOpen(true);
+              }}
+              style={{
+                padding: '16px 20px',
+                backgroundColor: '#f0fdf4',
+                border: '2px solid #10b981',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                textAlign: 'left',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.backgroundColor = '#dcfce7';
+                e.target.style.borderColor = '#059669';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.backgroundColor = '#f0fdf4';
+                e.target.style.borderColor = '#10b981';
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ fontSize: '1.5rem' }}>🔄</span>
+                <div>
+                  <div style={{ fontWeight: '600', color: '#059669', fontSize: '1rem', marginBottom: '4px' }}>
+                    WIP Data
+                  </div>
+                  <div style={{ color: '#6b7280', fontSize: '0.85rem' }}>
+                    Export current Work-in-Progress batches by line and stage
+                  </div>
+                </div>
+              </div>
+            </button>
+            
+            {/* PCT Export Option */}
+            <button
+              onClick={() => {
+                setExcelTypeModalOpen(false);
+                setPctExportModalOpen(true);
+              }}
+              style={{
+                padding: '16px 20px',
+                backgroundColor: '#eff6ff',
+                border: '2px solid #3b82f6',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                textAlign: 'left',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.backgroundColor = '#dbeafe';
+                e.target.style.borderColor = '#2563eb';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.backgroundColor = '#eff6ff';
+                e.target.style.borderColor = '#3b82f6';
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ fontSize: '1.5rem' }}>⏱️</span>
+                <div>
+                  <div style={{ fontWeight: '600', color: '#2563eb', fontSize: '1rem', marginBottom: '4px' }}>
+                    PCT Data
+                  </div>
+                  <div style={{ color: '#6b7280', fontSize: '0.85rem' }}>
+                    Export Production Cycle Time data (Summary, Batch Details, Raw Data)
+                  </div>
+                </div>
+              </div>
+            </button>
+          </div>
+          
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
+            <button
+              onClick={() => setExcelTypeModalOpen(false)}
+              style={{
+                padding: '10px 24px',
+                backgroundColor: '#f3f4f6',
+                color: '#374151',
+                border: '1px solid #e5e7eb',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '0.9rem',
+                fontWeight: '600',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => e.target.style.backgroundColor = '#e5e7eb'}
+              onMouseLeave={(e) => e.target.style.backgroundColor = '#f3f4f6'}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </Modal>
+
       {/* WIP Excel Export Modal */}
       <Modal
         open={exportModalOpen}
@@ -5054,6 +5302,153 @@ const ProductionDashboard = () => {
             >
               <span>📊</span>
               Export to Excel
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* PCT Excel Export Modal */}
+      <Modal
+        open={pctExportModalOpen}
+        onClose={() => setPctExportModalOpen(false)}
+        title="Export PCT Data to Excel"
+      >
+        <div style={{ padding: '8px' }}>
+          <p style={{ marginBottom: '16px', color: '#6b7280', fontSize: '0.9rem' }}>
+            Export Production Cycle Time data for <strong>{pctPeriod}</strong> period
+          </p>
+          
+          {/* Data Information */}
+          <div style={{ 
+            backgroundColor: '#f0f9ff', 
+            border: '1px solid #bae6fd', 
+            borderRadius: '8px', 
+            padding: '16px',
+            marginBottom: '20px'
+          }}>
+            <div style={{ fontWeight: '600', color: '#0369a1', marginBottom: '12px', fontSize: '0.9rem' }}>
+              📋 Excel will contain 3 sheets:
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.85rem' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                <span style={{ color: '#0ea5e9', fontWeight: '600' }}>1.</span>
+                <div>
+                  <strong>Summary - Stage Averages</strong>
+                  <div style={{ color: '#64748b', fontSize: '0.8rem' }}>Average days per stage (Timbang, Proses, QC, Mikro, QA)</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                <span style={{ color: '#0ea5e9', fontWeight: '600' }}>2.</span>
+                <div>
+                  <strong>Batch Stage Durations</strong>
+                  <div style={{ color: '#64748b', fontSize: '0.8rem' }}>Individual batch data with duration per stage</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                <span style={{ color: '#0ea5e9', fontWeight: '600' }}>3.</span>
+                <div>
+                  <strong>Raw Data - t_alur_proses</strong>
+                  <div style={{ color: '#64748b', fontSize: '0.8rem' }}>Complete raw process flow data for all PCT batches</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          {/* Stats Preview */}
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: 'repeat(3, 1fr)', 
+            gap: '12px',
+            marginBottom: '24px'
+          }}>
+            <div style={{ 
+              backgroundColor: '#f3f4f6', 
+              padding: '12px', 
+              borderRadius: '8px',
+              textAlign: 'center'
+            }}>
+              <div style={{ color: '#6b7280', fontSize: '0.75rem', marginBottom: '4px' }}>Period</div>
+              <div style={{ fontWeight: '700', color: '#1f2937', fontSize: '1rem' }}>{pctPeriod}</div>
+            </div>
+            <div style={{ 
+              backgroundColor: '#f3f4f6', 
+              padding: '12px', 
+              borderRadius: '8px',
+              textAlign: 'center'
+            }}>
+              <div style={{ color: '#6b7280', fontSize: '0.75rem', marginBottom: '4px' }}>Total Batches</div>
+              <div style={{ fontWeight: '700', color: '#1f2937', fontSize: '1rem' }}>{pctRawData.length}</div>
+            </div>
+            <div style={{ 
+              backgroundColor: '#f3f4f6', 
+              padding: '12px', 
+              borderRadius: '8px',
+              textAlign: 'center'
+            }}>
+              <div style={{ color: '#6b7280', fontSize: '0.75rem', marginBottom: '4px' }}>Avg. Total Days</div>
+              <div style={{ fontWeight: '700', color: '#1f2937', fontSize: '1rem' }}>{avgTotalDays}</div>
+            </div>
+          </div>
+          
+          {/* Export Button */}
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+            <button
+              onClick={() => setPctExportModalOpen(false)}
+              style={{
+                padding: '10px 24px',
+                backgroundColor: '#f3f4f6',
+                color: '#374151',
+                border: '1px solid #e5e7eb',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '0.9rem',
+                fontWeight: '600',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => e.target.style.backgroundColor = '#e5e7eb'}
+              onMouseLeave={(e) => e.target.style.backgroundColor = '#f3f4f6'}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleExportPCT}
+              disabled={pctExportLoading}
+              style={{
+                padding: '10px 24px',
+                backgroundColor: pctExportLoading ? '#93c5fd' : '#3b82f6',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: pctExportLoading ? 'not-allowed' : 'pointer',
+                fontSize: '0.9rem',
+                fontWeight: '600',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => !pctExportLoading && (e.target.style.backgroundColor = '#2563eb')}
+              onMouseLeave={(e) => !pctExportLoading && (e.target.style.backgroundColor = '#3b82f6')}
+            >
+              {pctExportLoading ? (
+                <>
+                  <span style={{ 
+                    display: 'inline-block', 
+                    width: '16px', 
+                    height: '16px', 
+                    border: '2px solid white', 
+                    borderTopColor: 'transparent', 
+                    borderRadius: '50%', 
+                    animation: 'spin 1s linear infinite' 
+                  }}></span>
+                  Exporting...
+                </>
+              ) : (
+                <>
+                  <span>📊</span>
+                  Export to Excel
+                </>
+              )}
             </button>
           </div>
         </div>
