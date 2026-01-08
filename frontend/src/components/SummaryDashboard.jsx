@@ -4585,41 +4585,56 @@ function SummaryDashboard() {
       dailyWeekLabels.push(dayLabel);
     }
     
-    // Calculate yearly sales and forecast data for chart
-    const yearlyData = {};
-    const yearlyForecastData = {};
+    // Calculate last 12 months sales and forecast data for chart
+    // This shows rolling 12 months instead of YTD
+    const last12MonthsData = {};
+    const last12MonthsForecastData = {};
     
-    // Process forecast data for yearly chart
+    // Generate the last 12 month periods (including current month)
+    const last12Periods = [];
+    for (let i = 11; i >= 0; i--) {
+      const targetDate = new Date(currentYear, currentMonth - 1 - i, 1);
+      const targetYear = targetDate.getFullYear();
+      const targetMonth = targetDate.getMonth() + 1;
+      const periodKey = targetYear * 100 + targetMonth;
+      last12Periods.push({
+        period: periodKey,
+        year: targetYear,
+        month: targetMonth,
+        label: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][targetMonth - 1] + ' ' + String(targetYear).slice(-2)
+      });
+    }
+    
+    // Process forecast data for last 12 months chart
     stockData.forEach(item => {
       const periode = parseInt(item.Periode);
-      const year = Math.floor(periode / 100);
-      const month = periode % 100;
       
-      // Only include current year data (2025)
-      if (year === currentYear) {
+      // Check if this period is within our last 12 months
+      const periodInfo = last12Periods.find(p => p.period === periode);
+      if (periodInfo) {
         const salesValue = (item.Sales || 0) * (item.HNA || 0);
         const forecastValue = (item.Forecast || 0) * (item.HNA || 0);
         
-        if (!yearlyData[month]) {
-          yearlyData[month] = 0;
+        if (!last12MonthsData[periode]) {
+          last12MonthsData[periode] = 0;
         }
-        if (!yearlyForecastData[month]) {
-          yearlyForecastData[month] = 0;
+        if (!last12MonthsForecastData[periode]) {
+          last12MonthsForecastData[periode] = 0;
         }
         
-        yearlyData[month] += salesValue;
-        yearlyForecastData[month] += forecastValue;
+        last12MonthsData[periode] += salesValue;
+        last12MonthsForecastData[periode] += forecastValue;
       }
     });
     
-    // Convert to arrays for chart (January to current month)
-    const monthlyLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    // Convert to arrays for chart (last 12 months in order)
+    const monthlyLabels = last12Periods.map(p => p.label);
     const yearlySalesData = [];
     const yearlyForecastArray = [];
     
-    for (let month = 1; month <= currentMonth; month++) {
-      yearlySalesData.push(yearlyData[month] || 0);
-      yearlyForecastArray.push(yearlyForecastData[month] || 0);
+    for (const periodInfo of last12Periods) {
+      yearlySalesData.push(last12MonthsData[periodInfo.period] || 0);
+      yearlyForecastArray.push(last12MonthsForecastData[periodInfo.period] || 0);
     }
     
     // Calculate Fokus and Non Fokus achievement percentages based on sales value vs forecast value
@@ -4679,7 +4694,7 @@ function SummaryDashboard() {
       monthlyForecast: monthlyForecast,
       yearlySalesData: yearlySalesData,
       yearlyForecastData: yearlyForecastArray,
-      yearlyLabels: monthlyLabels.slice(0, currentMonth)
+      yearlyLabels: monthlyLabels
     };
   };
 
@@ -5635,11 +5650,17 @@ function SummaryDashboard() {
 
     // New format from getPCTSummary: product-level with PCTAverage already calculated
     // This is grouped from the same data source as Production Dashboard PCT
-    const pctAverageValues = dataArray
-      .map(product => product.PCTAverage)
-      .filter(val => val !== null && val !== undefined && !isNaN(val));
+    // Use weighted average based on BatchCount to match Production Dashboard calculation
+    const productsWithData = dataArray.filter(product => 
+      product.PCTAverage !== null && 
+      product.PCTAverage !== undefined && 
+      !isNaN(product.PCTAverage) &&
+      product.BatchCount !== null &&
+      product.BatchCount !== undefined &&
+      product.BatchCount > 0
+    );
 
-    if (pctAverageValues.length === 0) {
+    if (productsWithData.length === 0) {
       return {
         average: 0,
         longest: 0,
@@ -5647,11 +5668,16 @@ function SummaryDashboard() {
       };
     }
 
-    // Calculate average PCT from all products' PCTAverage values
-    const totalPCT = pctAverageValues.reduce((sum, val) => sum + val, 0);
-    const averagePCT = pctAverageValues.length > 0 ? totalPCT / pctAverageValues.length : 0;
+    // Calculate weighted average PCT (weighted by BatchCount to match Production Dashboard)
+    // This ensures the average matches the simple average of all batches' Total_Days
+    const totalWeightedPCT = productsWithData.reduce((sum, product) => {
+      return sum + (product.PCTAverage * product.BatchCount);
+    }, 0);
+    const totalBatches = productsWithData.reduce((sum, product) => sum + product.BatchCount, 0);
+    const averagePCT = totalBatches > 0 ? totalWeightedPCT / totalBatches : 0;
     
-    // Find the longest PCT
+    // Find the longest PCT (max of individual product averages)
+    const pctAverageValues = productsWithData.map(product => product.PCTAverage);
     const longestPCT = Math.max(...pctAverageValues);
     
     // Calculate percentage (average against longest)

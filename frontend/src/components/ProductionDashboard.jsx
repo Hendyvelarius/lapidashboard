@@ -2589,7 +2589,7 @@ const ProductionDashboard = () => {
     setOf1ModalOpen(true);
   };
 
-  // Process forecast data to get monthly totals for current year
+  // Process forecast data to get monthly totals for last 12 months
   const processForecastData = (rawForecastData, categories = {}) => {
     if (!rawForecastData || rawForecastData.length === 0) return [];
 
@@ -2597,10 +2597,25 @@ const ProductionDashboard = () => {
     const currentYear = currentDate.getFullYear();
     const currentMonth = currentDate.getMonth() + 1; // 0-indexed, so add 1
 
-    // Initialize monthly data for the year
+    // Generate the last 12 month periods (including current month)
+    const last12Periods = [];
+    for (let i = 11; i >= 0; i--) {
+      const targetDate = new Date(currentYear, currentMonth - 1 - i, 1);
+      const targetYear = targetDate.getFullYear();
+      const targetMonth = targetDate.getMonth() + 1;
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      last12Periods.push({
+        periode: `${targetYear}${targetMonth.toString().padStart(2, '0')}`,
+        year: targetYear,
+        month: targetMonth,
+        monthName: monthNames[targetMonth - 1] + ' ' + String(targetYear).slice(-2)
+      });
+    }
+
+    // Initialize monthly data for the last 12 months
     const monthlyData = [];
-    for (let month = 1; month <= 12; month++) {
-      const periode = `${currentYear}${month.toString().padStart(2, '0')}`; // e.g., "202501"
+    for (const periodInfo of last12Periods) {
+      const periode = periodInfo.periode;
       
       // Filter data for this periode
       const monthData = rawForecastData.filter(item => item.Periode === periode);
@@ -2631,16 +2646,21 @@ const ProductionDashboard = () => {
 
       const totalProduction = productionByCategory.Generik + productionByCategory.OTC + productionByCategory.ETH;
       
+      // Check if this period has data (is in the past or current month)
+      const periodNum = parseInt(periode);
+      const currentPeriodNum = currentYear * 100 + currentMonth;
+      const hasData = periodNum <= currentPeriodNum;
+      
       monthlyData.push({
-        month: month,
-        monthName: new Date(currentYear, month - 1).toLocaleString('en-US', { month: 'short' }),
+        month: periodInfo.month,
+        monthName: periodInfo.monthName,
         periode: periode,
         forecast: Math.round(totalTarget), // This is now "Target" instead of "Forecast"
         production: Math.round(totalProduction),
         productionGenerik: Math.round(productionByCategory.Generik),
         productionOTC: Math.round(productionByCategory.OTC),
         productionETH: Math.round(productionByCategory.ETH),
-        hasData: month <= currentMonth, // Only show data for past/current months
+        hasData: hasData, // Only show data for past/current months
         achievement: totalTarget > 0 ? Math.round((totalProduction / totalTarget) * 100) : 0
       });
     }
@@ -2730,6 +2750,21 @@ const ProductionDashboard = () => {
     const currentYear = currentDate.getFullYear();
     const currentMonth = currentDate.getMonth() + 1; // 0-indexed, so add 1
 
+    // Generate the last 12 month periods (including current month)
+    const last12Periods = [];
+    for (let i = 11; i >= 0; i--) {
+      const targetDate = new Date(currentYear, currentMonth - 1 - i, 1);
+      const targetYear = targetDate.getFullYear();
+      const targetMonth = targetDate.getMonth() + 1;
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      last12Periods.push({
+        periode: `${targetYear}${targetMonth.toString().padStart(2, '0')}`,
+        year: targetYear,
+        month: targetMonth,
+        monthName: monthNames[targetMonth - 1] + ' ' + String(targetYear).slice(-2)
+      });
+    }
+
     // Group data by periode
     const periodeMap = {};
     rawOf1Data.forEach(item => {
@@ -2740,10 +2775,10 @@ const ProductionDashboard = () => {
       periodeMap[periode].push(item);
     });
 
-    // Calculate monthly average fulfillment percentages
+    // Calculate monthly average fulfillment percentages for last 12 months
     const monthlyData = [];
-    for (let month = 1; month <= 12; month++) {
-      const periode = `${currentYear}${month.toString().padStart(2, '0')}`; // e.g., "202501"
+    for (const periodInfo of last12Periods) {
+      const periode = periodInfo.periode;
       const monthData = periodeMap[periode] || [];
       
       // Filter out products with 0 target before calculating fulfillment
@@ -2779,15 +2814,20 @@ const ProductionDashboard = () => {
         ? fulfillmentPercentages.reduce((sum, val) => sum + val, 0) / fulfillmentPercentages.length
         : 0;
 
+      // Check if this period has data (is in the past or current month)
+      const periodNum = parseInt(periode);
+      const currentPeriodNum = currentYear * 100 + currentMonth;
+      const hasData = periodNum <= currentPeriodNum;
+
       monthlyData.push({
-        month: month,
-        monthName: new Date(currentYear, month - 1).toLocaleString('en-US', { month: 'short' }),
+        month: periodInfo.month,
+        monthName: periodInfo.monthName,
         periode: periode,
         fulfillmentPercentage: Math.round(avgFulfillment * 10) / 10, // Round to 1 decimal
         totalProducts: productsWithTarget.length, // Only count products with target > 0
         productsFulfilled: productsFulfilled,
         productsUnfulfilled: productsUnfulfilled,
-        hasData: month <= currentMonth // Only show data for past/current months
+        hasData: hasData // Only show data for past/current months
       });
     }
 

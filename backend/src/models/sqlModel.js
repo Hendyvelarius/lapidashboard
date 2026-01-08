@@ -662,11 +662,11 @@ async function getPCTSummary() {
         fa.Product_ID,
         fa.Product_Name,
         -- Total calendar days from earliest StartDate to Tempel Label Realese EndDate (no holiday exclusions)
-        DATEDIFF(
+        CAST(DATEDIFF(
           DAY,
           MIN(fa.StartDate),
           MAX(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%tempel%label%realese%' THEN fa.EndDate END)
-        ) AS Total_Days
+        ) AS FLOAT) AS Total_Days
       FROM FilteredAlur fa
       INNER JOIN CompletedBatches cb ON fa.Batch_No = cb.Batch_No
       GROUP BY fa.Batch_No, fa.Product_ID, fa.Product_Name
@@ -807,8 +807,21 @@ async function getDailyProduction() {
 async function getOF1Target() {
   const db = await connect();
   
-  // Get current year to filter data
-  const currentYear = new Date().getFullYear();
+  // Calculate the last 12 month periods (including current month)
+  const currentDate = new Date();
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = currentDate.getMonth() + 1; // 0-indexed
+  
+  // Generate list of last 12 periods in YYYYMM format
+  // Include both string ('202512') and numeric (202512) versions for compatibility
+  const periods = [];
+  for (let i = 11; i >= 0; i--) {
+    const targetDate = new Date(currentYear, currentMonth - 1 - i, 1);
+    const targetYear = targetDate.getFullYear();
+    const targetMonth = targetDate.getMonth() + 1;
+    const period = `${targetYear}${targetMonth.toString().padStart(2, '0')}`;
+    periods.push(`'${period}'`);
+  }
   
   const query = `
     SELECT 
@@ -817,7 +830,7 @@ async function getOF1Target() {
       target,
       release
     FROM r_target_of1_dashboard
-    WHERE periode LIKE '${currentYear}%'
+    WHERE CAST(periode AS VARCHAR(6)) IN (${periods.join(', ')})
     ORDER BY periode, product_id
   `;
   
