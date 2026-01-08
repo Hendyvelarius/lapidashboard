@@ -2070,7 +2070,7 @@ const ProductionDashboard = () => {
       x: 0.5, y: 0.3, w: 9, h: 0.5,
       fontSize: 28, bold: true, color: '2C3E50'
     });
-    slide2.addText('Monthly production tracking on yearly basis', {
+    slide2.addText('Monthly production tracking for the last 12 months.', {
       x: 0.5, y: 0.85, w: 9, h: 0.3,
       fontSize: 12, color: '666666'
     });
@@ -3867,7 +3867,7 @@ const ProductionDashboard = () => {
                 {/* Production Output Title */}
                 <div style={{ flex: 1 }}>
                   <h3 style={{ margin: '0 0 4px 0', fontSize: '1.1rem', color: '#2c3e50' }}>Production Output</h3>
-                  <p style={{ margin: '0', fontSize: '0.85rem', color: '#666' }}>Monthly production tracking on yearly basis.</p>
+                  <p style={{ margin: '0', fontSize: '0.85rem', color: '#666' }}>Monthly production tracking for the last 12 months.</p>
                   <small style={{ color: '#666', fontSize: '0.75rem' }}>
                     📊 Click to see individual production for each product.
                   </small>
@@ -3876,7 +3876,7 @@ const ProductionDashboard = () => {
                 {/* OF1 Accomplishment Title */}
                 <div style={{ flex: 1 }}>
                   <h3 style={{ margin: '0 0 4px 0', fontSize: '1.1rem', color: '#2c3e50' }}>OF1 Accomplishment</h3>
-                  <p style={{ margin: '0', fontSize: '0.85rem', color: '#666' }}>Order fulfillment percentage by month (YTD).</p>
+                  <p style={{ margin: '0', fontSize: '0.85rem', color: '#666' }}>Order fulfillment percentage for the last 12 months.</p>
                   <small style={{ color: '#666', fontSize: '0.75rem' }}>
                     📈 Click to see target vs actual releases per product.
                   </small>
