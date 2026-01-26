@@ -824,6 +824,8 @@ const ProductionDashboard = () => {
     line: 'both', // 'PN1', 'PN2', or 'both'
     stage: 'All' // 'Timbang', 'Proses', 'Kemas Primer', 'Kemas Sekunder', 'QC', 'Mikro', 'QA', or 'All'
   });
+  const [unknownModalOpen, setUnknownModalOpen] = useState(false); // Unknown products modal
+  const [unknownBatchesData, setUnknownBatchesData] = useState([]); // Unknown batches list
 
   // Chart refs for PowerPoint export
   const forecastChartRef = useRef(null);
@@ -1378,6 +1380,47 @@ const ProductionDashboard = () => {
   // Toggle expansion (both PN1 and PN2 together)
   const toggleExpansion = () => {
     setIsExpanded(prev => !prev);
+  };
+
+  // Handle Unknown department header click - show list of unregistered products
+  const handleUnknownHeaderClick = () => {
+    // Get all unique batches from Unknown department
+    const batchesWithTempelLabelRelease = new Set();
+    rawWipData.forEach(entry => {
+      if (entry.nama_tahapan === 'Tempel Label Realese' && entry.EndDate) {
+        batchesWithTempelLabelRelease.add(entry.Batch_No);
+      }
+    });
+
+    const unknownEntries = rawWipData.filter(entry => {
+      const entryDept = entry.Group_Dept || 'Unknown';
+      return entryDept === 'Unknown' && !batchesWithTempelLabelRelease.has(entry.Batch_No);
+    });
+
+    // Group by Product_ID to get unique products
+    const productMap = {};
+    unknownEntries.forEach(entry => {
+      const productId = entry.Product_ID;
+      if (!productMap[productId]) {
+        productMap[productId] = {
+          productId: productId,
+          productName: entry.Product_Name || 'Unknown',
+          batches: new Set(),
+          jenisSediaan: entry.Jenis_Sediaan || 'Unknown',
+        };
+      }
+      productMap[productId].batches.add(entry.Batch_No);
+    });
+
+    // Convert to array and sort by product ID
+    const unknownProducts = Object.values(productMap).map(product => ({
+      ...product,
+      batches: Array.from(product.batches),
+      batchCount: product.batches.size,
+    })).sort((a, b) => a.productId.localeCompare(b.productId));
+
+    setUnknownBatchesData(unknownProducts);
+    setUnknownModalOpen(true);
   };
 
   // Manual refresh function
@@ -4100,7 +4143,7 @@ const ProductionDashboard = () => {
                           border: `2px solid ${deptColor}30`,
                           transition: 'all 0.2s ease',
                         }}
-                        onClick={toggleExpansion}
+                        onClick={deptData.dept === 'Unknown' ? handleUnknownHeaderClick : toggleExpansion}
                         onMouseEnter={(e) => {
                           e.currentTarget.style.background = `linear-gradient(135deg, ${deptColor}20, ${deptColor}10)`;
                           e.currentTarget.style.borderColor = `${deptColor}50`;
@@ -4114,11 +4157,11 @@ const ProductionDashboard = () => {
                           <span style={{ 
                             fontSize: '1rem', 
                             transition: 'transform 0.3s ease',
-                            transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                            transform: deptData.dept === 'Unknown' ? 'rotate(0deg)' : (isExpanded ? 'rotate(90deg)' : 'rotate(0deg)'),
                             display: 'inline-block',
                             color: deptColor,
                           }}>
-                            ▶
+                            {deptData.dept === 'Unknown' ? '⚠️' : '▶'}
                           </span>
                           <h2 style={{
                             fontSize: '1.1rem',
@@ -4213,7 +4256,8 @@ const ProductionDashboard = () => {
                       </div>
                     </div>
 
-                    {/* Expandable Detailed View by Product Type */}
+                    {/* Expandable Detailed View by Product Type - Not shown for Unknown */}
+                    {deptData.dept !== 'Unknown' && (
                     <div 
                       style={{
                         maxHeight: isExpanded ? `${deptDetailData.length * 200}px` : '0px',
@@ -4323,6 +4367,7 @@ const ProductionDashboard = () => {
                         </div>
                       )}
                     </div>
+                    )}
                   </div>
                 );
               })}
@@ -4331,6 +4376,144 @@ const ProductionDashboard = () => {
         </section>
       </div>
       </div>
+
+      {/* Unknown Products Modal */}
+      <Modal 
+        open={unknownModalOpen} 
+        onClose={() => setUnknownModalOpen(false)} 
+        title="⚠️ Produk Belum Terdaftar di PN Group"
+      >
+        <div style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+          {/* Warning Banner */}
+          <div style={{ 
+            marginBottom: '20px', 
+            padding: '16px', 
+            background: 'linear-gradient(135deg, #fef3c7, #fde68a)',
+            borderRadius: '8px',
+            borderLeft: '4px solid #f59e0b',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+              <span style={{ fontSize: '24px' }}>⚠️</span>
+              <div>
+                <div style={{ fontSize: '1rem', fontWeight: '600', color: '#92400e', marginBottom: '4px' }}>
+                  Perhatian
+                </div>
+                <div style={{ fontSize: '0.9rem', color: '#92400e' }}>
+                  Produk-produk berikut terdeteksi <strong>belum terdaftar</strong> di tabel <code style={{ backgroundColor: '#fef3c7', padding: '2px 6px', borderRadius: '4px' }}>m_Product_PN_Group</code> untuk periode bulan ini. 
+                  Mohon untuk segera diupdate agar data WIP dapat dikategorikan dengan benar ke departemen PN1 atau PN2.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Summary */}
+          <div style={{ 
+            marginBottom: '16px',
+            padding: '12px 16px',
+            background: '#f8fafc',
+            borderRadius: '8px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}>
+            <div style={{ fontSize: '0.9rem', color: '#6b7280' }}>
+              Total Produk Belum Terdaftar:
+            </div>
+            <div style={{ fontSize: '1.2rem', fontWeight: '700', color: '#6b7280' }}>
+              {unknownBatchesData.length} Produk
+            </div>
+          </div>
+
+          {/* Product List */}
+          {unknownBatchesData.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '32px', color: '#9ca3af' }}>
+              <div style={{ fontSize: '48px', marginBottom: '8px' }}>✅</div>
+              <p>Semua produk sudah terdaftar!</p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {unknownBatchesData.map((product, index) => (
+                <div 
+                  key={product.productId} 
+                  style={{
+                    padding: '16px',
+                    background: 'white',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '8px',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '8px' }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '0.75rem', color: '#9ca3af', textTransform: 'uppercase', marginBottom: '2px' }}>
+                        Product ID
+                      </div>
+                      <div style={{ fontSize: '1.1rem', fontWeight: '700', color: '#2c3e50', fontFamily: 'monospace' }}>
+                        {product.productId}
+                      </div>
+                    </div>
+                    <div style={{ 
+                      backgroundColor: '#fef3c7', 
+                      color: '#92400e', 
+                      padding: '4px 12px', 
+                      borderRadius: '12px',
+                      fontSize: '0.8rem',
+                      fontWeight: '600',
+                    }}>
+                      {product.batchCount} Batch
+                    </div>
+                  </div>
+                  
+                  <div style={{ marginBottom: '12px' }}>
+                    <div style={{ fontSize: '0.75rem', color: '#9ca3af', textTransform: 'uppercase', marginBottom: '2px' }}>
+                      Product Name
+                    </div>
+                    <div style={{ fontSize: '0.95rem', fontWeight: '600', color: '#374151' }}>
+                      {product.productName}
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: '8px' }}>
+                    <div style={{ fontSize: '0.75rem', color: '#9ca3af', textTransform: 'uppercase', marginBottom: '2px' }}>
+                      Jenis Sediaan
+                    </div>
+                    <div style={{ fontSize: '0.85rem', color: '#6b7280' }}>
+                      {product.jenisSediaan}
+                    </div>
+                  </div>
+
+                  <div style={{ 
+                    marginTop: '12px',
+                    paddingTop: '12px',
+                    borderTop: '1px solid #e5e7eb',
+                  }}>
+                    <div style={{ fontSize: '0.75rem', color: '#9ca3af', textTransform: 'uppercase', marginBottom: '6px' }}>
+                      Batch Numbers
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {product.batches.map(batchNo => (
+                        <span 
+                          key={batchNo}
+                          style={{
+                            backgroundColor: '#f3f4f6',
+                            color: '#374151',
+                            padding: '4px 10px',
+                            borderRadius: '6px',
+                            fontSize: '0.8rem',
+                            fontFamily: 'monospace',
+                          }}
+                        >
+                          {batchNo}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </Modal>
 
       {/* Batch Details Modal */}
       <Modal 
