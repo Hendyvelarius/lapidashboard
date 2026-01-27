@@ -462,10 +462,10 @@ async function upsertProductType(req, res) {
     const result = await SqlModel.upsertProductType(productId, jenisSediaan);
     
     // Clear related caches
-    cache.del('productTypeAssignments');
-    cache.del('productsWithoutType');
-    cache.del('wipProductsWithoutType');
-    cache.del('wipData');
+    cache.delete('productTypeAssignments');
+    cache.delete('productsWithoutType');
+    cache.delete('wipProductsWithoutType');
+    cache.delete('wipData');
     
     res.json({ success: true, data: result });
   } catch (err) {
@@ -493,10 +493,10 @@ async function bulkUpsertProductTypes(req, res) {
     const results = await SqlModel.bulkUpsertProductTypes(assignments);
     
     // Clear related caches
-    cache.del('productTypeAssignments');
-    cache.del('productsWithoutType');
-    cache.del('wipProductsWithoutType');
-    cache.del('wipData');
+    cache.delete('productTypeAssignments');
+    cache.delete('productsWithoutType');
+    cache.delete('wipProductsWithoutType');
+    cache.delete('wipData');
     
     res.json({ success: true, data: results });
   } catch (err) {
@@ -517,10 +517,10 @@ async function deleteProductType(req, res) {
     const result = await SqlModel.deleteProductType(productId);
     
     // Clear related caches
-    cache.del('productTypeAssignments');
-    cache.del('productsWithoutType');
-    cache.del('wipProductsWithoutType');
-    cache.del('wipData');
+    cache.delete('productTypeAssignments');
+    cache.delete('productsWithoutType');
+    cache.delete('wipProductsWithoutType');
+    cache.delete('wipData');
     
     res.json({ success: true, data: result });
   } catch (err) {
