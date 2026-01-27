@@ -999,4 +999,149 @@ async function getPCTRawData(period = 'MTD') {
   return result.recordset;
 }
 
-module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTSummary, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays};
+// ============================================
+// Product Type (Jenis Sediaan) CRUD Operations
+// ============================================
+
+// Get all product types (distinct Jenis_Sediaan values)
+async function getProductTypes() {
+  const db = await connect();
+  const query = `
+    SELECT DISTINCT Jenis_Sediaan 
+    FROM m_product_sediaan_produksi 
+    WHERE Jenis_Sediaan IS NOT NULL
+    ORDER BY Jenis_Sediaan
+  `;
+  const result = await db.request().query(query);
+  return result.recordset.map(r => r.Jenis_Sediaan);
+}
+
+// Get all product type assignments
+async function getProductTypeAssignments() {
+  const db = await connect();
+  const query = `
+    SELECT 
+      psp.Product_ID,
+      psp.Jenis_Sediaan,
+      mp.Product_Name
+    FROM m_product_sediaan_produksi psp
+    LEFT JOIN m_Product mp ON psp.Product_ID = mp.Product_ID
+    ORDER BY psp.Product_ID
+  `;
+  const result = await db.request().query(query);
+  return result.recordset;
+}
+
+// Get products without type assignment (for notification)
+async function getProductsWithoutType() {
+  const db = await connect();
+  const query = `
+    SELECT DISTINCT 
+      mp.Product_ID,
+      mp.Product_Name
+    FROM m_Product mp
+    WHERE mp.Product_ID NOT IN (
+      SELECT Product_ID FROM m_product_sediaan_produksi WHERE Product_ID IS NOT NULL
+    )
+    AND mp.Product_Name NOT LIKE '%Granulat%'
+    ORDER BY mp.Product_ID
+  `;
+  const result = await db.request().query(query);
+  return result.recordset;
+}
+
+// Get products in current WIP without type assignment
+// Simplified query for better performance
+async function getWIPProductsWithoutType() {
+  const db = await connect();
+  const query = `
+    -- Get active WIP products (simplified for performance)
+    SELECT DISTINCT 
+      a.Product_ID,
+      prod.Product_Name
+    FROM t_alur_proses a
+    INNER JOIN t_rfid_batch_card rbc 
+      ON rbc.Product_ID = a.Product_ID 
+      AND rbc.Batch_No = a.Batch_No 
+      AND rbc.Batch_Date = a.Batch_Date
+      AND rbc.isActive = 1 
+      AND rbc.Batch_Status = 'Open'
+    INNER JOIN m_product prod 
+      ON a.Product_ID = prod.Product_ID
+    LEFT JOIN m_product_sediaan_produksi psp 
+      ON a.Product_ID = psp.Product_ID
+    WHERE psp.Product_ID IS NULL
+      AND prod.Product_Name NOT LIKE '%Granulat%'
+      AND a.Batch_Date >= CONVERT(varchar(10), DATEADD(month, -12, GETDATE()), 111)
+    ORDER BY a.Product_ID
+  `;
+  const result = await db.request().query(query);
+  return result.recordset;
+}
+
+// Create/Update product type assignment
+async function upsertProductType(productId, jenisSediaan) {
+  const db = await connect();
+  const request = db.request();
+  request.input('productId', sql.VarChar(255), productId);
+  request.input('jenisSediaan', sql.VarChar(255), jenisSediaan);
+  
+  // Check if exists
+  const checkQuery = `SELECT COUNT(*) as count FROM m_product_sediaan_produksi WHERE Product_ID = @productId`;
+  const checkResult = await request.query(checkQuery);
+  
+  if (checkResult.recordset[0].count > 0) {
+    // Update
+    const updateQuery = `UPDATE m_product_sediaan_produksi SET Jenis_Sediaan = @jenisSediaan WHERE Product_ID = @productId`;
+    await request.query(updateQuery);
+    return { action: 'updated', productId, jenisSediaan };
+  } else {
+    // Insert
+    const insertQuery = `INSERT INTO m_product_sediaan_produksi (Product_ID, Jenis_Sediaan) VALUES (@productId, @jenisSediaan)`;
+    await request.query(insertQuery);
+    return { action: 'created', productId, jenisSediaan };
+  }
+}
+
+// Bulk create/update product type assignments
+async function bulkUpsertProductTypes(assignments) {
+  const db = await connect();
+  const results = [];
+  
+  for (const assignment of assignments) {
+    const request = db.request();
+    request.input('productId', sql.VarChar(255), assignment.productId);
+    request.input('jenisSediaan', sql.VarChar(255), assignment.jenisSediaan);
+    
+    // Check if exists
+    const checkQuery = `SELECT COUNT(*) as count FROM m_product_sediaan_produksi WHERE Product_ID = @productId`;
+    const checkResult = await request.query(checkQuery);
+    
+    if (checkResult.recordset[0].count > 0) {
+      // Update
+      const updateQuery = `UPDATE m_product_sediaan_produksi SET Jenis_Sediaan = @jenisSediaan WHERE Product_ID = @productId`;
+      await request.query(updateQuery);
+      results.push({ action: 'updated', productId: assignment.productId, jenisSediaan: assignment.jenisSediaan });
+    } else {
+      // Insert
+      const insertQuery = `INSERT INTO m_product_sediaan_produksi (Product_ID, Jenis_Sediaan) VALUES (@productId, @jenisSediaan)`;
+      await request.query(insertQuery);
+      results.push({ action: 'created', productId: assignment.productId, jenisSediaan: assignment.jenisSediaan });
+    }
+  }
+  
+  return results;
+}
+
+// Delete product type assignment
+async function deleteProductType(productId) {
+  const db = await connect();
+  const request = db.request();
+  request.input('productId', sql.VarChar(255), productId);
+  
+  const query = `DELETE FROM m_product_sediaan_produksi WHERE Product_ID = @productId`;
+  const result = await request.query(query);
+  return { deleted: result.rowsAffected[0] > 0, productId };
+}
+
+module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTSummary, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType};

@@ -11,6 +11,7 @@ import Sidebar from './Sidebar';
 import Modal from './Modal';
 import ContextualHelpModal from './ContextualHelpModal';
 import { useHelp } from '../context/HelpContext';
+import { useAuth } from '../context/AuthContext';
 import { apiUrl, apiUrlWithRefresh } from '../api';
 import './ProductionDashboard.css';
 
@@ -782,6 +783,9 @@ const Speedometer = ({ label, value, maxValue = 50, color = '#4f8cff', animated 
 const ProductionDashboard = () => {
   // Help context
   const { helpMode, activeTopic, selectTopic, setCurrentDashboard } = useHelp();
+  // Auth context for NT department check
+  const { user } = useAuth();
+  const isNTDepartment = user?.emp_DeptID === 'NT';
   
   const [loading, setLoading] = useState(true);
   const [rawWipData, setRawWipData] = useState([]);
@@ -827,12 +831,27 @@ const ProductionDashboard = () => {
   const [unknownModalOpen, setUnknownModalOpen] = useState(false); // Unknown products modal
   const [unknownBatchesData, setUnknownBatchesData] = useState([]); // Unknown batches list
 
+  // Product Type Management state (NT department only)
+  const [productTypeModalOpen, setProductTypeModalOpen] = useState(false);
+  const [productTypes, setProductTypes] = useState([]); // Available product types
+  const [productTypeAssignments, setProductTypeAssignments] = useState([]); // All assignments
+  const [wipProductsWithoutType, setWipProductsWithoutType] = useState([]); // WIP products needing assignment
+  const [productTypeLoading, setProductTypeLoading] = useState(false);
+  const [productTypeSearchTerm, setProductTypeSearchTerm] = useState('');
+  const [productTypeTab, setProductTypeTab] = useState('unassigned'); // 'unassigned' | 'all' | 'add'
+  const [bulkAssignType, setBulkAssignType] = useState('');
+  const [selectedProductsForBulk, setSelectedProductsForBulk] = useState([]);
+  const [editingProduct, setEditingProduct] = useState(null);
+  const [newProductId, setNewProductId] = useState('');
+  const [newProductType, setNewProductType] = useState('');
+
   // Chart refs for PowerPoint export
   const forecastChartRef = useRef(null);
   const pctBarChartRef = useRef(null);
   const pctDonutRef = useRef(null);
   const wipPN1ChartRef = useRef(null);
   const wipPN2ChartRef = useRef(null);
+
 
   // Help system refs
   const outputRef = useRef(null);
@@ -844,6 +863,18 @@ const ProductionDashboard = () => {
     setCurrentDashboard('production');
     return () => setCurrentDashboard(null);
   }, [setCurrentDashboard]);
+
+  // Fetch WIP products without type for notification badge (NT department only)
+  useEffect(() => {
+    if (isNTDepartment) {
+      fetch(apiUrl('/api/wipProductsWithoutType'))
+        .then(res => res.json())
+        .then(data => {
+          if (data.data) setWipProductsWithoutType(data.data);
+        })
+        .catch(err => console.error('Error fetching WIP products without type:', err));
+    }
+  }, [isNTDepartment]);
 
   // Handle help topic selection - scroll to section
   useEffect(() => {
@@ -1421,6 +1452,151 @@ const ProductionDashboard = () => {
 
     setUnknownBatchesData(unknownProducts);
     setUnknownModalOpen(true);
+  };
+
+  // ============================================
+  // Product Type Management Functions (NT Only)
+  // ============================================
+
+  // Fetch product type data for the management modal
+  const fetchProductTypeData = async () => {
+    if (!isNTDepartment) return;
+    
+    setProductTypeLoading(true);
+    try {
+      const [typesRes, assignmentsRes, wipWithoutTypeRes] = await Promise.all([
+        fetch(apiUrl('/api/productTypes')),
+        fetch(apiUrl('/api/productTypeAssignments')),
+        fetch(apiUrl('/api/wipProductsWithoutType'))
+      ]);
+
+      const typesData = await typesRes.json();
+      const assignmentsData = await assignmentsRes.json();
+      const wipWithoutTypeData = await wipWithoutTypeRes.json();
+
+      if (typesData.data) setProductTypes(typesData.data);
+      if (assignmentsData.data) setProductTypeAssignments(assignmentsData.data);
+      if (wipWithoutTypeData.data) setWipProductsWithoutType(wipWithoutTypeData.data);
+    } catch (err) {
+      console.error('Error fetching product type data:', err);
+    } finally {
+      setProductTypeLoading(false);
+    }
+  };
+
+  // Open product type management modal
+  const handleOpenProductTypeModal = () => {
+    setProductTypeModalOpen(true);
+    setProductTypeTab('unassigned');
+    setProductTypeSearchTerm('');
+    setSelectedProductsForBulk([]);
+    setBulkAssignType('');
+    fetchProductTypeData();
+  };
+
+  // Handle single product type update
+  const handleUpdateProductType = async (productId, jenisSediaan) => {
+    try {
+      const response = await fetch(apiUrl('/api/productType'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productId, jenisSediaan })
+      });
+      
+      const result = await response.json();
+      if (result.success) {
+        // Refresh data
+        await fetchProductTypeData();
+        setEditingProduct(null);
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('Error updating product type:', err);
+      return false;
+    }
+  };
+
+  // Handle bulk product type assignment
+  const handleBulkAssign = async () => {
+    if (!bulkAssignType || selectedProductsForBulk.length === 0) return;
+    
+    try {
+      const assignments = selectedProductsForBulk.map(productId => ({
+        productId,
+        jenisSediaan: bulkAssignType
+      }));
+
+      const response = await fetch(apiUrl('/api/productTypes/bulk'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assignments })
+      });
+      
+      const result = await response.json();
+      if (result.success) {
+        // Refresh data
+        await fetchProductTypeData();
+        setSelectedProductsForBulk([]);
+        setBulkAssignType('');
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('Error bulk assigning product types:', err);
+      return false;
+    }
+  };
+
+  // Handle delete product type assignment
+  const handleDeleteProductType = async (productId) => {
+    if (!confirm(`Are you sure you want to remove the type assignment for ${productId}?`)) return;
+    
+    try {
+      const response = await fetch(apiUrl(`/api/productType/${encodeURIComponent(productId)}`), {
+        method: 'DELETE'
+      });
+      
+      const result = await response.json();
+      if (result.success) {
+        await fetchProductTypeData();
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('Error deleting product type:', err);
+      return false;
+    }
+  };
+
+  // Handle adding new product type assignment
+  const handleAddNewProductType = async () => {
+    if (!newProductId || !newProductType) return;
+    
+    const success = await handleUpdateProductType(newProductId, newProductType);
+    if (success) {
+      setNewProductId('');
+      setNewProductType('');
+    }
+  };
+
+  // Toggle product selection for bulk assignment
+  const toggleProductSelection = (productId) => {
+    setSelectedProductsForBulk(prev => 
+      prev.includes(productId) 
+        ? prev.filter(id => id !== productId)
+        : [...prev, productId]
+    );
+  };
+
+  // Select all unassigned products
+  const selectAllUnassigned = () => {
+    setSelectedProductsForBulk(wipProductsWithoutType.map(p => p.Product_ID));
+  };
+
+  // Clear all selections
+  const clearAllSelections = () => {
+    setSelectedProductsForBulk([]);
   };
 
   // Manual refresh function
@@ -3841,6 +4017,53 @@ const ProductionDashboard = () => {
               </button>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              {/* Product Type Management Button - NT Department Only */}
+              {isNTDepartment && (
+                <button
+                  onClick={handleOpenProductTypeModal}
+                  style={{
+                    padding: '8px 16px',
+                    backgroundColor: '#8b5cf6',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '0.85rem',
+                    fontWeight: '500',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    transition: 'all 0.2s ease',
+                    position: 'relative',
+                  }}
+                  onMouseEnter={(e) => e.target.style.backgroundColor = '#7c3aed'}
+                  onMouseLeave={(e) => e.target.style.backgroundColor = '#8b5cf6'}
+                >
+                  <span>📦</span>
+                  Product Type
+                  {/* Notification badge if there are unassigned WIP products */}
+                  {wipProductsWithoutType.length > 0 && (
+                    <span style={{
+                      position: 'absolute',
+                      top: '-6px',
+                      right: '-6px',
+                      backgroundColor: '#ef4444',
+                      color: 'white',
+                      fontSize: '0.7rem',
+                      fontWeight: '700',
+                      borderRadius: '50%',
+                      width: '18px',
+                      height: '18px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}>
+                      {wipProductsWithoutType.length > 9 ? '9+' : wipProductsWithoutType.length}
+                    </span>
+                  )}
+                </button>
+              )}
+              
               {/* Excel Button */}
               <button
                 onClick={() => setExcelTypeModalOpen(true)}
@@ -5676,6 +5899,480 @@ const ProductionDashboard = () => {
           </div>
         </div>
       </Modal>
+
+      {/* Product Type Management Modal - NT Department Only */}
+      {isNTDepartment && (
+        <Modal
+          open={productTypeModalOpen}
+          onClose={() => setProductTypeModalOpen(false)}
+          title="📦 Product Type Management"
+        >
+          <div style={{ width: '800px', maxWidth: '90vw', maxHeight: '80vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            {/* Warning Banner for Unassigned WIP Products */}
+            {wipProductsWithoutType.length > 0 && (
+              <div style={{
+                marginBottom: '16px',
+                padding: '12px 16px',
+                background: 'linear-gradient(135deg, #fef3c7, #fde68a)',
+                borderRadius: '8px',
+                borderLeft: '4px solid #f59e0b',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span style={{ fontSize: '24px' }}>⚠️</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '0.95rem', fontWeight: '600', color: '#92400e', marginBottom: '2px' }}>
+                      {wipProductsWithoutType.length} Produk WIP Belum Memiliki Jenis Sediaan
+                    </div>
+                    <div style={{ fontSize: '0.85rem', color: '#92400e' }}>
+                      Produk-produk ini sedang dalam proses produksi tetapi belum terdaftar di tabel <code style={{ backgroundColor: 'rgba(255,255,255,0.5)', padding: '1px 4px', borderRadius: '3px' }}>m_product_sediaan_produksi</code>. Mohon segera assign jenis sediaan.
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setProductTypeTab('unassigned')}
+                    style={{
+                      padding: '6px 12px',
+                      backgroundColor: '#f59e0b',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '0.8rem',
+                      fontWeight: '600',
+                    }}
+                  >
+                    Assign Sekarang
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Tab Navigation */}
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', borderBottom: '2px solid #e5e7eb', paddingBottom: '8px' }}>
+              <button
+                onClick={() => setProductTypeTab('unassigned')}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: productTypeTab === 'unassigned' ? '#8b5cf6' : '#f3f4f6',
+                  color: productTypeTab === 'unassigned' ? 'white' : '#374151',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '0.85rem',
+                  fontWeight: '600',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                ⚠️ Unassigned WIP
+                {wipProductsWithoutType.length > 0 && (
+                  <span style={{
+                    backgroundColor: productTypeTab === 'unassigned' ? 'rgba(255,255,255,0.3)' : '#ef4444',
+                    color: 'white',
+                    fontSize: '0.7rem',
+                    fontWeight: '700',
+                    borderRadius: '10px',
+                    padding: '2px 6px',
+                  }}>
+                    {wipProductsWithoutType.length}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => setProductTypeTab('all')}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: productTypeTab === 'all' ? '#8b5cf6' : '#f3f4f6',
+                  color: productTypeTab === 'all' ? 'white' : '#374151',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '0.85rem',
+                  fontWeight: '600',
+                }}
+              >
+                📋 All Assignments ({productTypeAssignments.length})
+              </button>
+              <button
+                onClick={() => setProductTypeTab('add')}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: productTypeTab === 'add' ? '#8b5cf6' : '#f3f4f6',
+                  color: productTypeTab === 'add' ? 'white' : '#374151',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '0.85rem',
+                  fontWeight: '600',
+                }}
+              >
+                ➕ Add New
+              </button>
+            </div>
+
+            {/* Loading State */}
+            {productTypeLoading ? (
+              <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>
+                <div style={{ fontSize: '32px', marginBottom: '8px' }}>⏳</div>
+                <p>Loading product type data...</p>
+              </div>
+            ) : (
+              <div style={{ flex: 1, overflowY: 'auto' }}>
+                {/* Unassigned WIP Products Tab */}
+                {productTypeTab === 'unassigned' && (
+                  <div>
+                    {wipProductsWithoutType.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '40px', color: '#10b981' }}>
+                        <div style={{ fontSize: '48px', marginBottom: '8px' }}>✅</div>
+                        <p style={{ fontWeight: '600' }}>Semua produk WIP sudah memiliki jenis sediaan!</p>
+                      </div>
+                    ) : (
+                      <>
+                        {/* Bulk Actions */}
+                        <div style={{
+                          marginBottom: '16px',
+                          padding: '12px',
+                          backgroundColor: '#f8fafc',
+                          borderRadius: '8px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '12px',
+                          flexWrap: 'wrap',
+                        }}>
+                          <span style={{ fontSize: '0.85rem', fontWeight: '600', color: '#374151' }}>Bulk Assign:</span>
+                          <button
+                            onClick={selectAllUnassigned}
+                            style={{
+                              padding: '4px 12px',
+                              backgroundColor: '#e5e7eb',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              fontSize: '0.8rem',
+                            }}
+                          >
+                            Select All
+                          </button>
+                          <button
+                            onClick={clearAllSelections}
+                            style={{
+                              padding: '4px 12px',
+                              backgroundColor: '#e5e7eb',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              fontSize: '0.8rem',
+                            }}
+                          >
+                            Clear
+                          </button>
+                          <select
+                            value={bulkAssignType}
+                            onChange={(e) => setBulkAssignType(e.target.value)}
+                            style={{
+                              padding: '6px 12px',
+                              borderRadius: '6px',
+                              border: '1px solid #d1d5db',
+                              fontSize: '0.85rem',
+                              minWidth: '180px',
+                            }}
+                          >
+                            <option value="">-- Select Type --</option>
+                            {productTypes.map(type => (
+                              <option key={type} value={type}>{type}</option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={handleBulkAssign}
+                            disabled={!bulkAssignType || selectedProductsForBulk.length === 0}
+                            style={{
+                              padding: '6px 16px',
+                              backgroundColor: bulkAssignType && selectedProductsForBulk.length > 0 ? '#10b981' : '#d1d5db',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '6px',
+                              cursor: bulkAssignType && selectedProductsForBulk.length > 0 ? 'pointer' : 'not-allowed',
+                              fontSize: '0.85rem',
+                              fontWeight: '600',
+                            }}
+                          >
+                            Assign ({selectedProductsForBulk.length})
+                          </button>
+                        </div>
+
+                        {/* Product List */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {wipProductsWithoutType.map(product => (
+                            <div
+                              key={product.Product_ID}
+                              style={{
+                                padding: '12px 16px',
+                                backgroundColor: selectedProductsForBulk.includes(product.Product_ID) ? '#f0fdf4' : 'white',
+                                border: `1px solid ${selectedProductsForBulk.includes(product.Product_ID) ? '#10b981' : '#e5e7eb'}`,
+                                borderRadius: '8px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '12px',
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedProductsForBulk.includes(product.Product_ID)}
+                                onChange={() => toggleProductSelection(product.Product_ID)}
+                                style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                              />
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontWeight: '600', color: '#374151', fontFamily: 'monospace' }}>
+                                  {product.Product_ID}
+                                </div>
+                                <div style={{ fontSize: '0.85rem', color: '#6b7280' }}>
+                                  {product.Product_Name}
+                                </div>
+                              </div>
+                              <select
+                                value=""
+                                onChange={(e) => {
+                                  if (e.target.value) {
+                                    handleUpdateProductType(product.Product_ID, e.target.value);
+                                  }
+                                }}
+                                style={{
+                                  padding: '6px 12px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #d1d5db',
+                                  fontSize: '0.8rem',
+                                  backgroundColor: '#f9fafb',
+                                }}
+                              >
+                                <option value="">Quick Assign...</option>
+                                {productTypes.map(type => (
+                                  <option key={type} value={type}>{type}</option>
+                                ))}
+                              </select>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* All Assignments Tab */}
+                {productTypeTab === 'all' && (
+                  <div>
+                    {/* Search */}
+                    <div style={{ marginBottom: '16px' }}>
+                      <input
+                        type="text"
+                        placeholder="Search by Product ID or Name..."
+                        value={productTypeSearchTerm}
+                        onChange={(e) => setProductTypeSearchTerm(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '10px 16px',
+                          borderRadius: '8px',
+                          border: '1px solid #d1d5db',
+                          fontSize: '0.9rem',
+                        }}
+                      />
+                    </div>
+
+                    {/* Assignments Table */}
+                    <div style={{ border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ backgroundColor: '#f8fafc' }}>
+                            <th style={{ padding: '12px', textAlign: 'left', fontSize: '0.85rem', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb' }}>Product ID</th>
+                            <th style={{ padding: '12px', textAlign: 'left', fontSize: '0.85rem', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb' }}>Product Name</th>
+                            <th style={{ padding: '12px', textAlign: 'left', fontSize: '0.85rem', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb' }}>Jenis Sediaan</th>
+                            <th style={{ padding: '12px', textAlign: 'center', fontSize: '0.85rem', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb', width: '120px' }}>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {productTypeAssignments
+                            .filter(a => 
+                              !productTypeSearchTerm || 
+                              a.Product_ID.toLowerCase().includes(productTypeSearchTerm.toLowerCase()) ||
+                              (a.Product_Name && a.Product_Name.toLowerCase().includes(productTypeSearchTerm.toLowerCase()))
+                            )
+                            .slice(0, 100) // Limit display for performance
+                            .map(assignment => (
+                              <tr key={assignment.Product_ID} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                                <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '0.85rem' }}>
+                                  {assignment.Product_ID}
+                                </td>
+                                <td style={{ padding: '10px 12px', fontSize: '0.85rem', color: '#6b7280' }}>
+                                  {assignment.Product_Name || '-'}
+                                </td>
+                                <td style={{ padding: '10px 12px' }}>
+                                  {editingProduct === assignment.Product_ID ? (
+                                    <select
+                                      defaultValue={assignment.Jenis_Sediaan}
+                                      onChange={(e) => {
+                                        handleUpdateProductType(assignment.Product_ID, e.target.value);
+                                      }}
+                                      autoFocus
+                                      onBlur={() => setEditingProduct(null)}
+                                      style={{
+                                        padding: '4px 8px',
+                                        borderRadius: '4px',
+                                        border: '1px solid #8b5cf6',
+                                        fontSize: '0.85rem',
+                                      }}
+                                    >
+                                      {productTypes.map(type => (
+                                        <option key={type} value={type}>{type}</option>
+                                      ))}
+                                    </select>
+                                  ) : (
+                                    <span style={{
+                                      backgroundColor: '#f3e8ff',
+                                      color: '#7c3aed',
+                                      padding: '4px 10px',
+                                      borderRadius: '12px',
+                                      fontSize: '0.8rem',
+                                      fontWeight: '500',
+                                    }}>
+                                      {assignment.Jenis_Sediaan}
+                                    </span>
+                                  )}
+                                </td>
+                                <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                                  <button
+                                    onClick={() => setEditingProduct(assignment.Product_ID)}
+                                    style={{
+                                      padding: '4px 8px',
+                                      backgroundColor: '#e5e7eb',
+                                      border: 'none',
+                                      borderRadius: '4px',
+                                      cursor: 'pointer',
+                                      marginRight: '4px',
+                                      fontSize: '0.8rem',
+                                    }}
+                                  >
+                                    ✏️
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteProductType(assignment.Product_ID)}
+                                    style={{
+                                      padding: '4px 8px',
+                                      backgroundColor: '#fee2e2',
+                                      color: '#dc2626',
+                                      border: 'none',
+                                      borderRadius: '4px',
+                                      cursor: 'pointer',
+                                      fontSize: '0.8rem',
+                                    }}
+                                  >
+                                    🗑️
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                      {productTypeAssignments.filter(a => 
+                        !productTypeSearchTerm || 
+                        a.Product_ID.toLowerCase().includes(productTypeSearchTerm.toLowerCase()) ||
+                        (a.Product_Name && a.Product_Name.toLowerCase().includes(productTypeSearchTerm.toLowerCase()))
+                      ).length > 100 && (
+                        <div style={{ padding: '12px', textAlign: 'center', color: '#6b7280', fontSize: '0.85rem', backgroundColor: '#f8fafc' }}>
+                          Showing first 100 results. Use search to find specific products.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Add New Tab */}
+                {productTypeTab === 'add' && (
+                  <div style={{ padding: '20px' }}>
+                    <h4 style={{ marginBottom: '16px', color: '#374151' }}>Add New Product Type Assignment</h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxWidth: '400px' }}>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.85rem', fontWeight: '600', color: '#374151' }}>
+                          Product ID
+                        </label>
+                        <input
+                          type="text"
+                          value={newProductId}
+                          onChange={(e) => setNewProductId(e.target.value)}
+                          placeholder="Enter Product ID"
+                          style={{
+                            width: '100%',
+                            padding: '10px 12px',
+                            borderRadius: '6px',
+                            border: '1px solid #d1d5db',
+                            fontSize: '0.9rem',
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.85rem', fontWeight: '600', color: '#374151' }}>
+                          Jenis Sediaan
+                        </label>
+                        <select
+                          value={newProductType}
+                          onChange={(e) => setNewProductType(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '10px 12px',
+                            borderRadius: '6px',
+                            border: '1px solid #d1d5db',
+                            fontSize: '0.9rem',
+                          }}
+                        >
+                          <option value="">-- Select Type --</option>
+                          {productTypes.map(type => (
+                            <option key={type} value={type}>{type}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <button
+                        onClick={handleAddNewProductType}
+                        disabled={!newProductId || !newProductType}
+                        style={{
+                          padding: '10px 20px',
+                          backgroundColor: newProductId && newProductType ? '#10b981' : '#d1d5db',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: newProductId && newProductType ? 'pointer' : 'not-allowed',
+                          fontSize: '0.9rem',
+                          fontWeight: '600',
+                        }}
+                      >
+                        Add Assignment
+                      </button>
+                    </div>
+
+                    <div style={{ marginTop: '24px', padding: '16px', backgroundColor: '#f8fafc', borderRadius: '8px' }}>
+                      <h5 style={{ marginBottom: '8px', color: '#374151' }}>Available Product Types:</h5>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                        {productTypes.map(type => (
+                          <span
+                            key={type}
+                            style={{
+                              backgroundColor: '#f3e8ff',
+                              color: '#7c3aed',
+                              padding: '6px 12px',
+                              borderRadius: '16px',
+                              fontSize: '0.85rem',
+                              fontWeight: '500',
+                            }}
+                          >
+                            {type}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
 
       {/* Contextual Help Modal */}
       {helpMode && activeTopic && (

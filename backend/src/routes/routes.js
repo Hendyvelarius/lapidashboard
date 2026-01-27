@@ -74,6 +74,17 @@ router.get('/batchExpiry', SqlController.getBatchExpiry);
 // Routing Holidays for working days calculation
 router.get('/holidays', SqlController.getHolidays);
 
+// ============================================
+// Product Type (Jenis Sediaan) Management Routes
+// ============================================
+router.get('/productTypes', SqlController.getProductTypes);                        // Get distinct product types
+router.get('/productTypeAssignments', SqlController.getProductTypeAssignments);    // Get all assignments
+router.get('/productsWithoutType', SqlController.getProductsWithoutType);          // Get products without type
+router.get('/wipProductsWithoutType', SqlController.getWIPProductsWithoutType);    // Get WIP products without type
+router.post('/productType', SqlController.upsertProductType);                      // Create/Update single
+router.post('/productTypes/bulk', SqlController.bulkUpsertProductTypes);           // Bulk create/update
+router.delete('/productType/:productId', SqlController.deleteProductType);         // Delete
+
 // Cache management endpoints
 const { cache } = require('../utils/cache');
 

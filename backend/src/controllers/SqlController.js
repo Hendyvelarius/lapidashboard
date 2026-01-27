@@ -402,4 +402,131 @@ async function getPCTRawData(req, res) {
   }
 }
 
-module.exports = { getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getPCTSummary, getOrderFulfillment, getStockReport, getofsummary, getPCTBreakdown, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays };
+// ============================================
+// Product Type (Jenis Sediaan) CRUD Controllers
+// ============================================
+
+// GET /api/productTypes - Get all distinct product types
+async function getProductTypes(req, res) {
+  try {
+    const data = await getCachedData('productTypes', () => SqlModel.getProductTypes(), CACHE_TTL.LONG, shouldSkipCache(req));
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching Product Types:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+// GET /api/productTypeAssignments - Get all product type assignments
+async function getProductTypeAssignments(req, res) {
+  try {
+    const data = await getCachedData('productTypeAssignments', () => SqlModel.getProductTypeAssignments(), CACHE_TTL.MEDIUM, shouldSkipCache(req));
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching Product Type Assignments:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+// GET /api/productsWithoutType - Get products without type assignment
+async function getProductsWithoutType(req, res) {
+  try {
+    const data = await getCachedData('productsWithoutType', () => SqlModel.getProductsWithoutType(), CACHE_TTL.SHORT, shouldSkipCache(req));
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching Products Without Type:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+// GET /api/wipProductsWithoutType - Get WIP products without type assignment
+async function getWIPProductsWithoutType(req, res) {
+  try {
+    const data = await getCachedData('wipProductsWithoutType', () => SqlModel.getWIPProductsWithoutType(), CACHE_TTL.SHORT, shouldSkipCache(req));
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching WIP Products Without Type:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+// POST /api/productType - Create or update product type assignment
+async function upsertProductType(req, res) {
+  try {
+    const { productId, jenisSediaan } = req.body;
+    
+    if (!productId || !jenisSediaan) {
+      return res.status(400).json({ success: false, error: 'productId and jenisSediaan are required' });
+    }
+    
+    const result = await SqlModel.upsertProductType(productId, jenisSediaan);
+    
+    // Clear related caches
+    cache.del('productTypeAssignments');
+    cache.del('productsWithoutType');
+    cache.del('wipProductsWithoutType');
+    cache.del('wipData');
+    
+    res.json({ success: true, data: result });
+  } catch (err) {
+    console.error('Error in upserting Product Type:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+// POST /api/productTypes/bulk - Bulk create or update product type assignments
+async function bulkUpsertProductTypes(req, res) {
+  try {
+    const { assignments } = req.body;
+    
+    if (!assignments || !Array.isArray(assignments) || assignments.length === 0) {
+      return res.status(400).json({ success: false, error: 'assignments array is required' });
+    }
+    
+    // Validate each assignment
+    for (const assignment of assignments) {
+      if (!assignment.productId || !assignment.jenisSediaan) {
+        return res.status(400).json({ success: false, error: 'Each assignment must have productId and jenisSediaan' });
+      }
+    }
+    
+    const results = await SqlModel.bulkUpsertProductTypes(assignments);
+    
+    // Clear related caches
+    cache.del('productTypeAssignments');
+    cache.del('productsWithoutType');
+    cache.del('wipProductsWithoutType');
+    cache.del('wipData');
+    
+    res.json({ success: true, data: results });
+  } catch (err) {
+    console.error('Error in bulk upserting Product Types:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+// DELETE /api/productType/:productId - Delete product type assignment
+async function deleteProductType(req, res) {
+  try {
+    const { productId } = req.params;
+    
+    if (!productId) {
+      return res.status(400).json({ success: false, error: 'productId is required' });
+    }
+    
+    const result = await SqlModel.deleteProductType(productId);
+    
+    // Clear related caches
+    cache.del('productTypeAssignments');
+    cache.del('productsWithoutType');
+    cache.del('wipProductsWithoutType');
+    cache.del('wipData');
+    
+    res.json({ success: true, data: result });
+  } catch (err) {
+    console.error('Error in deleting Product Type:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+module.exports = { getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getPCTSummary, getOrderFulfillment, getStockReport, getofsummary, getPCTBreakdown, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType };
