@@ -585,11 +585,15 @@ async function getWIPData() {
  join m_product prod on a.Product_ID = prod.Product_ID
  left join m_product_pn_group gp on gp.Group_ProductID = a.Product_ID and replace(Group_Periode,' ','') = CONVERT(varchar(6), getdate(),112)
  left join m_product_sediaan_produksi sediaan on sediaan.Product_ID=a.Product_ID
+ -- Check if any Timbang process has started (StartDate is not null) - fixed to show batches as soon as any Timbang process starts
  left join (
-			select distinct Batch_No, Batch_Date, Product_ID, EndDate from t_alur_proses where ltrim(rtrim(nama_tahapan)) like 'Timbang BB'
-            and EndDate is not null
-            ) d on d.Batch_Date=a.Batch_Date and d.Batch_No=a.Batch_No and d.Product_ID=a.Product_ID
-        left join (
+			select distinct Batch_No, Batch_Date, Product_ID from t_alur_proses ap
+            inner join m_tahapan_group mtg on ap.kode_tahapan = mtg.kode_tahapan
+            where mtg.tahapan_group = 'Timbang'
+            and ap.StartDate is not null
+            ) timbangStarted on timbangStarted.Batch_Date=a.Batch_Date and timbangStarted.Batch_No=a.Batch_No and timbangStarted.Product_ID=a.Product_ID
+ -- Check if Terima Bahan Baku has completed (for production stage entry)
+ left join (
 			select distinct Batch_No, Batch_Date, Product_ID, EndDate from t_alur_proses where ltrim(rtrim(nama_tahapan)) like 'Terima Bahan Baku'
             and EndDate is not null
             ) mulaiProd on mulaiProd.Batch_Date=a.Batch_Date and mulaiProd.Batch_No=a.Batch_No and mulaiProd.Product_ID=a.Product_ID    
@@ -600,7 +604,7 @@ async function getWIPData() {
 and (prod.Product_Name  not like '%Granulat%') 
 and not (a.Batch_No ='CY3A01' or a.Batch_No ='BI063' or a.Batch_No ='PI3L01')
 and xy.Product_ID is null
-and (d.Batch_No is not null or mulaiProd.Batch_No is not null)
+and (timbangStarted.Batch_No is not null or mulaiProd.Batch_No is not null)
 --select * from #tmpData
 
 -- pastikan kolomnya ada dulu
