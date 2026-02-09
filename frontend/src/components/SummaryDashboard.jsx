@@ -4208,9 +4208,12 @@ function SummaryDashboard() {
       summaryWS['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 15 }];
       XLSX.utils.book_append_sheet(wb, summaryWS, 'Summary');
 
-      // Sheet 2: Forecast Data
+      // Sheet 2: Forecast Data (exclude future periods beyond current month)
       if (forecastRawData && forecastRawData.length > 0) {
-        const forecastWS = XLSX.utils.json_to_sheet(forecastRawData);
+        const exportDate = isHistoricalData && selectedPeriode ? new Date(selectedPeriode.substring(0, 4), parseInt(selectedPeriode.substring(4, 6)) - 1) : new Date();
+        const maxPeriod = exportDate.getFullYear() * 100 + (exportDate.getMonth() + 1);
+        const filteredForecastData = forecastRawData.filter(item => parseInt(item.Periode) <= maxPeriod);
+        const forecastWS = XLSX.utils.json_to_sheet(filteredForecastData);
         XLSX.utils.book_append_sheet(wb, forecastWS, 'Forecast Data');
       }
 
