@@ -1,4 +1,4 @@
-const { connect } = require('../../config/sqlserver');
+const { connectSnapshot } = require('../../config/sqlserverSnapshot');
 const sql = require('mssql');
 
 /**
@@ -7,7 +7,7 @@ const sql = require('mssql');
  * Manual saves always create new entries
  */
 async function saveSnapshot(periode, snapshotDate, rawData, processedData, createdBy = 'SYSTEM', isMonthEnd = false, isManual = false, notes = null) {
-  const db = await connect();
+  const db = await connectSnapshot();
   const request = db.request();
   
   request.input('periode', sql.VarChar(6), periode);
@@ -29,7 +29,7 @@ async function saveSnapshot(periode, snapshotDate, rawData, processedData, creat
  * @param {Date} snapshotDate - specific date (optional)
  */
 async function getSnapshot(periode = null, snapshotDate = null) {
-  const db = await connect();
+  const db = await connectSnapshot();
   const request = db.request();
   
   request.input('periode', sql.VarChar(6), periode);
@@ -56,7 +56,7 @@ async function getSnapshot(periode = null, snapshotDate = null) {
  * Returns: { periods: [], autoSaves: [], manualSaves: [] }
  */
 async function getAvailableSnapshots() {
-  const db = await connect();
+  const db = await connectSnapshot();
   const result = await db.request().execute('sp_Dashboard_GetAvailableSnapshots');
   
   // The stored procedure returns multiple result sets
@@ -71,7 +71,7 @@ async function getAvailableSnapshots() {
  * Delete a snapshot by ID or date
  */
 async function deleteSnapshot(id = null, snapshotDate = null) {
-  const db = await connect();
+  const db = await connectSnapshot();
   const request = db.request();
   
   request.input('id', sql.Int, id);
@@ -85,7 +85,7 @@ async function deleteSnapshot(id = null, snapshotDate = null) {
  * Check if a snapshot exists for a specific date
  */
 async function snapshotExists(snapshotDate) {
-  const db = await connect();
+  const db = await connectSnapshot();
   const request = db.request();
   
   request.input('snapshot_date', sql.Date, snapshotDate);
@@ -103,7 +103,7 @@ async function snapshotExists(snapshotDate) {
  * Get all snapshots for a specific periode (for history view)
  */
 async function getSnapshotsForPeriode(periode) {
-  const db = await connect();
+  const db = await connectSnapshot();
   const request = db.request();
   
   request.input('periode', sql.VarChar(6), periode);
@@ -130,7 +130,7 @@ async function getSnapshotsForPeriode(periode) {
  * Get a snapshot by ID (used for manual saves)
  */
 async function getSnapshotById(id) {
-  const db = await connect();
+  const db = await connectSnapshot();
   const request = db.request();
   
   request.input('id', sql.Int, id);
