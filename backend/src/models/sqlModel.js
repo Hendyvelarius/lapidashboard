@@ -1148,4 +1148,208 @@ async function deleteProductType(productId) {
   return { deleted: result.rowsAffected[0] > 0, productId };
 }
 
-module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTSummary, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType};
+// ============================================
+// QC (Quality Control) Dashboard Functions
+// ============================================
+
+/**
+ * Get all items currently in QC (tempellabelDate is NULL)
+ * Joins with m_item_manufacturing to get item names
+ */
+async function getQCInProcess() {
+  const db = await connect();
+  const result = await db.request().query(`
+    SELECT 
+      d.DNc_No,
+      d.DNc_Date,
+      d.DNc_ItemID,
+      m.Item_Name,
+      m.Item_Group,
+      d.DNc_SuppName,
+      d.DNc_PrcName,
+      d.DNC_BatchNo,
+      d.DNc_ReleaseQTY,
+      d.DNc_RejectQTY,
+      d.DNc_UnitID,
+      d.DNc_InspectionDate,
+      d.DNc_Inspektor,
+      d.DNc_SampleDate,
+      d.DNc_SampleBy,
+      d.DNc_ReleaseRemark,
+      d.DNc_RejectRemark,
+      DATEDIFF(day, d.DNc_Date, GETDATE()) as DaysInQC
+    FROM t_dnc_manufacturing d
+    LEFT JOIN m_item_manufacturing m ON d.DNc_ItemID = m.Item_ID
+    WHERE d.DNC_tempellabelDate IS NULL
+    ORDER BY d.DNc_Date ASC
+  `);
+  return result.recordset;
+}
+
+/**
+ * Get items that entered/completed QC in a specific period (YYYYMM)
+ * Joins with m_item_manufacturing to get item names
+ */
+async function getQCByPeriod(period) {
+  const db = await connect();
+  const request = db.request();
+  request.input('period', sql.NVarChar(6), period);
+  const result = await request.query(`
+    SELECT 
+      d.DNc_No,
+      d.DNc_Date,
+      d.DNc_ItemID,
+      m.Item_Name,
+      m.Item_Group,
+      d.DNc_SuppName,
+      d.DNc_PrcName,
+      d.DNC_BatchNo,
+      d.DNc_ReleaseQTY,
+      d.DNc_RejectQTY,
+      d.DNc_UnitID,
+      d.DNc_InspectionDate,
+      d.DNc_Inspektor,
+      d.DNC_tempellabelDate,
+      d.DNc_SampleDate,
+      d.DNc_SampleBy,
+      d.DNc_ReleaseRemark,
+      d.DNc_RejectRemark,
+      d.alasan_Reject,
+      DATEDIFF(day, d.DNc_Date, d.DNC_tempellabelDate) as TurnaroundDays
+    FROM t_dnc_manufacturing d
+    LEFT JOIN m_item_manufacturing m ON d.DNc_ItemID = m.Item_ID
+    WHERE CONVERT(nvarchar(6), d.DNc_Date, 112) = @period
+    ORDER BY d.DNc_Date DESC
+  `);
+  return result.recordset;
+}
+
+/**
+ * Get QC summary statistics for dashboard cards and charts.
+ * Returns monthly volume, aging, supplier breakdown, and turnaround in one call.
+ */
+async function getQCSummary() {
+  const db = await connect();
+
+  // 1. Aging buckets for items still in QC
+  const agingResult = await db.request().query(`
+    SELECT 
+      CASE 
+        WHEN DATEDIFF(day, DNc_Date, GETDATE()) <= 3 THEN '0-3 days'
+        WHEN DATEDIFF(day, DNc_Date, GETDATE()) <= 7 THEN '4-7 days'
+        WHEN DATEDIFF(day, DNc_Date, GETDATE()) <= 14 THEN '8-14 days'
+        WHEN DATEDIFF(day, DNc_Date, GETDATE()) <= 30 THEN '15-30 days'
+        ELSE '30+ days'
+      END as aging_bucket,
+      COUNT(*) as count
+    FROM t_dnc_manufacturing
+    WHERE DNC_tempellabelDate IS NULL
+    GROUP BY 
+      CASE 
+        WHEN DATEDIFF(day, DNc_Date, GETDATE()) <= 3 THEN '0-3 days'
+        WHEN DATEDIFF(day, DNc_Date, GETDATE()) <= 7 THEN '4-7 days'
+        WHEN DATEDIFF(day, DNc_Date, GETDATE()) <= 14 THEN '8-14 days'
+        WHEN DATEDIFF(day, DNc_Date, GETDATE()) <= 30 THEN '15-30 days'
+        ELSE '30+ days'
+      END
+  `);
+
+  // 2. Monthly volume (last 6 months)
+  const monthlyResult = await db.request().query(`
+    SELECT 
+      CONVERT(nvarchar(6), DNc_Date, 112) as period,
+      COUNT(*) as total,
+      SUM(CASE WHEN DNC_tempellabelDate IS NULL THEN 1 ELSE 0 END) as still_in_qc,
+      SUM(CASE WHEN DNC_tempellabelDate IS NOT NULL THEN 1 ELSE 0 END) as completed,
+      SUM(DNc_ReleaseQTY) as total_released,
+      SUM(DNc_RejectQTY) as total_rejected,
+      SUM(CASE WHEN DNc_RejectQTY > 0 THEN 1 ELSE 0 END) as has_reject,
+      ROUND(SUM(DNc_RejectQTY) * 100.0 / NULLIF(SUM(DNc_ReleaseQTY + DNc_RejectQTY), 0), 2) as reject_pct
+    FROM t_dnc_manufacturing
+    WHERE DNc_Date >= DATEADD(month, -6, GETDATE())
+    GROUP BY CONVERT(nvarchar(6), DNc_Date, 112)
+    ORDER BY period ASC
+  `);
+
+  // 3. Turnaround stats for current month
+  const currentPeriod = new Date().toISOString().slice(0, 7).replace('-', '');
+  const turnaroundReq = db.request();
+  turnaroundReq.input('currentPeriod', sql.NVarChar(6), currentPeriod);
+  const turnaroundResult = await turnaroundReq.query(`
+    SELECT 
+      AVG(DATEDIFF(day, DNc_Date, DNC_tempellabelDate)) as avg_days,
+      MIN(DATEDIFF(day, DNc_Date, DNC_tempellabelDate)) as min_days,
+      MAX(DATEDIFF(day, DNc_Date, DNC_tempellabelDate)) as max_days
+    FROM t_dnc_manufacturing
+    WHERE DNC_tempellabelDate IS NOT NULL
+      AND CONVERT(nvarchar(6), DNC_tempellabelDate, 112) = @currentPeriod
+  `);
+
+  // 4. Top suppliers with pending QC
+  const supplierResult = await db.request().query(`
+    SELECT TOP 10 
+      DNc_SuppName as supplier,
+      COUNT(*) as in_qc
+    FROM t_dnc_manufacturing
+    WHERE DNC_tempellabelDate IS NULL AND DNc_SuppName != ''
+    GROUP BY DNc_SuppName
+    ORDER BY in_qc DESC
+  `);
+
+  // 5. Pending by item group
+  const groupResult = await db.request().query(`
+    SELECT 
+      m.Item_Group as item_group,
+      COUNT(*) as count
+    FROM t_dnc_manufacturing d
+    JOIN m_item_manufacturing m ON d.DNc_ItemID = m.Item_ID
+    WHERE d.DNC_tempellabelDate IS NULL
+    GROUP BY m.Item_Group
+    ORDER BY count DESC
+  `);
+
+  // 6. Daily intake & completions for current month
+  const dailyReq = db.request();
+  dailyReq.input('curPeriod', sql.NVarChar(6), currentPeriod);
+  const dailyIntakeResult = await dailyReq.query(`
+    SELECT 
+      CONVERT(date, DNc_Date) as entry_date,
+      COUNT(*) as cnt
+    FROM t_dnc_manufacturing
+    WHERE CONVERT(nvarchar(6), DNc_Date, 112) = @curPeriod
+    GROUP BY CONVERT(date, DNc_Date)
+    ORDER BY entry_date
+  `);
+
+  const dailyCompReq = db.request();
+  dailyCompReq.input('curPeriod2', sql.NVarChar(6), currentPeriod);
+  const dailyCompResult = await dailyCompReq.query(`
+    SELECT 
+      CONVERT(date, DNC_tempellabelDate) as completion_date,
+      COUNT(*) as cnt
+    FROM t_dnc_manufacturing
+    WHERE DNC_tempellabelDate IS NOT NULL
+      AND CONVERT(nvarchar(6), DNC_tempellabelDate, 112) = @curPeriod2
+    GROUP BY CONVERT(date, DNC_tempellabelDate)
+    ORDER BY completion_date
+  `);
+
+  // 7. Total currently in QC
+  const totalInQC = await db.request().query(`
+    SELECT COUNT(*) as total FROM t_dnc_manufacturing WHERE DNC_tempellabelDate IS NULL
+  `);
+
+  return {
+    totalInQC: totalInQC.recordset[0].total,
+    aging: agingResult.recordset,
+    monthly: monthlyResult.recordset,
+    turnaround: turnaroundResult.recordset[0],
+    topSuppliers: supplierResult.recordset,
+    itemGroups: groupResult.recordset,
+    dailyIntake: dailyIntakeResult.recordset,
+    dailyCompletions: dailyCompResult.recordset,
+    currentPeriod
+  };
+}
+
+module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTSummary, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getQCInProcess, getQCByPeriod, getQCSummary};

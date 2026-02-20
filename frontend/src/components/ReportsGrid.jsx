@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router";
-import { FaChartLine, FaClipboardList, FaCog, FaBoxOpen, FaRegFileAlt, FaRegImage, FaRegPlayCircle, FaRegFolderOpen, FaFlask, FaIndustry } from "react-icons/fa";
+import { FaChartLine, FaClipboardList, FaCog, FaBoxOpen, FaRegFileAlt, FaRegImage, FaRegPlayCircle, FaFlask, FaIndustry } from "react-icons/fa";
 import "../App.css";
 import Modal from "./Modal";
 
@@ -42,9 +42,9 @@ const cards = [
     desc: "Dashboard produksi pabrik untuk QC, Lab Mikro, dan QA.",
   },
   {
-    icon: <FaRegFolderOpen size={36} color="#e57373" />,
-    title: "In Construction",
-    desc: "Work in progress, coming soon.",
+    icon: <FaClipboardList size={36} color="#e57373" />,
+    title: "Quality Control",
+    desc: "Dashboard QC: monitoring material masuk, proses inspeksi, dan release.",
   },
 ];
 
@@ -73,6 +73,8 @@ export default function ReportsGrid() {
       navigate("/line-pn2");
     } else if (card.title === "Quality") {
       navigate("/quality");
+    } else if (card.title === "Quality Control") {
+      navigate("/quality-control");
     }
     // Add more navigation cases for other cards here later
   };

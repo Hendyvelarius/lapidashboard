@@ -75,6 +75,13 @@ router.get('/batchExpiry', SqlController.getBatchExpiry);
 router.get('/holidays', SqlController.getHolidays);
 
 // ============================================
+// QC (Quality Control) Dashboard Routes
+// ============================================
+router.get('/qcSummary', SqlController.getQCSummary);
+router.get('/qcInProcess', SqlController.getQCInProcess);
+router.get('/qcByPeriod', SqlController.getQCByPeriod);
+
+// ============================================
 // Product Type (Jenis Sediaan) Management Routes
 // ============================================
 router.get('/productTypes', SqlController.getProductTypes);                        // Get distinct product types

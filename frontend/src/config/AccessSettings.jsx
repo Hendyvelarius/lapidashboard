@@ -192,6 +192,15 @@ export const PAGE_ACCESS = {
     ],
   },
 
+  // QC (Quality Control) Dashboard
+  'quality-control': {
+    requireAuth: true,
+    allowedDepartments: ['NT', 'QC', 'PL'],
+    allowedUserIds: [],
+    allowedJobLevels: [],
+    specificCombinations: [],
+  },
+
   // WIP Report Page
   'wip': {
     requireAuth: true,

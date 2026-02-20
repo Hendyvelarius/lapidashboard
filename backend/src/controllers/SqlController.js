@@ -529,4 +529,46 @@ async function deleteProductType(req, res) {
   }
 }
 
-module.exports = { getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getPCTSummary, getOrderFulfillment, getStockReport, getofsummary, getPCTBreakdown, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType };
+// ============================================
+// QC (Quality Control) Dashboard Controllers
+// ============================================
+
+// GET /api/qcSummary - Get QC dashboard summary (KPIs, aging, monthly trend, suppliers, daily flow)
+async function getQCSummary(req, res) {
+  try {
+    const data = await getCachedData('qcSummary', () => SqlModel.getQCSummary(), CACHE_TTL.MEDIUM, shouldSkipCache(req));
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching QC Summary:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+// GET /api/qcInProcess - Get all items currently in QC
+async function getQCInProcess(req, res) {
+  try {
+    const data = await getCachedData('qcInProcess', () => SqlModel.getQCInProcess(), CACHE_TTL.MEDIUM, shouldSkipCache(req));
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching QC In Process:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+// GET /api/qcByPeriod?period=YYYYMM - Get QC items for a specific period
+async function getQCByPeriod(req, res) {
+  try {
+    const period = req.query.period;
+    if (!period || !/^\d{6}$/.test(period)) {
+      return res.status(400).json({ success: false, error: 'period query parameter is required in YYYYMM format' });
+    }
+    const cacheKey = `qcByPeriod_${period}`;
+    const data = await getCachedData(cacheKey, () => SqlModel.getQCByPeriod(period), CACHE_TTL.MEDIUM, shouldSkipCache(req));
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching QC By Period:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+module.exports = { getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getPCTSummary, getOrderFulfillment, getStockReport, getofsummary, getPCTBreakdown, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getQCSummary, getQCInProcess, getQCByPeriod };
