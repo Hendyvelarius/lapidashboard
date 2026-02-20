@@ -140,12 +140,12 @@
 
 .qc-kpi-card {
   background: rgba(255, 255, 255, 0.95);
-  border-radius: 16px;
-  padding: 1.25rem;
+  border-radius: 14px;
+  padding: 0.875rem 1rem;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.75rem;
   cursor: pointer;
   transition: all 0.2s ease;
   border: 1px solid transparent;
@@ -175,9 +175,9 @@
 }
 
 .qc-kpi-icon {
-  width: 52px;
-  height: 52px;
-  border-radius: 14px;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -205,25 +205,20 @@
 }
 
 .qc-kpi-label {
-  font-size: 0.75rem;
+  font-size: 0.65rem;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: #94a3b8;
   font-weight: 600;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.15rem;
+  white-space: nowrap;
 }
 
 .qc-kpi-value {
-  font-size: 1.75rem;
+  font-size: 1.4rem;
   font-weight: 800;
   color: #1e293b;
   line-height: 1;
-}
-
-.qc-kpi-sub {
-  font-size: 0.75rem;
-  color: #94a3b8;
-  margin-top: 0.25rem;
 }
 
 /* ============================================
@@ -305,6 +300,46 @@
 
 .qc-tab:hover:not(.active) {
   color: #64748b;
+}
+
+/* BB / BK sub-filter tabs for table */
+.qc-table-type-tabs {
+  display: flex;
+  gap: 0.375rem;
+  margin-bottom: 0.75rem;
+}
+
+.qc-table-type-btn {
+  padding: 0.375rem 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+  background: #f8fafc;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.qc-table-type-btn:hover:not(.active) {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.qc-table-type-btn.active {
+  background: #334155;
+  color: #fff;
+  border-color: #334155;
+}
+
+.qc-table-type-btn.bb.active {
+  background: #1e88e5;
+  border-color: #1e88e5;
+}
+
+.qc-table-type-btn.bk.active {
+  background: #e57373;
+  border-color: #e57373;
 }
 
 .qc-table-controls {
@@ -622,6 +657,9 @@
   .qc-charts-row {
     grid-template-columns: 1fr;
   }
+  .qc-aging-dual-container {
+    flex-wrap: wrap;
+  }
 }
 
 @media (max-width: 768px) {
@@ -635,4 +673,219 @@
     flex-direction: column;
     gap: 0.75rem;
   }
+  .qc-daily-flow-controls {
+    flex-wrap: wrap;
+  }
+}
+
+/* ============================================
+   Daily Flow Controls (BB/BK tabs + Auto/Manual)
+   ============================================ */
+
+.qc-daily-flow-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.qc-type-tabs {
+  display: flex;
+  background: #f1f5f9;
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.qc-type-tab {
+  padding: 0.3rem 0.75rem;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.qc-type-tab.active {
+  background: white;
+  color: #e57373;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.qc-type-tab:hover:not(.active) {
+  color: #64748b;
+}
+
+.qc-mode-toggle {
+  display: flex;
+  background: #f1f5f9;
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.qc-mode-btn {
+  padding: 0.3rem 0.6rem;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.qc-mode-btn.active {
+  background: white;
+  color: #475569;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.qc-mode-btn:hover:not(.active) {
+  color: #64748b;
+}
+
+/* ============================================
+   Daily Flow Spin Animation
+   ============================================ */
+
+.qc-daily-flow-viewport {
+  perspective: 1200px;
+  overflow: hidden;
+}
+
+.qc-daily-flow-content {
+  transform-style: preserve-3d;
+  transform-origin: center center;
+}
+
+.qc-daily-flow-content.spin-out {
+  animation: qcSpinOut 0.4s ease-in forwards;
+}
+
+.qc-daily-flow-content.spin-in {
+  animation: qcSpinIn 0.4s ease-out forwards;
+}
+
+@keyframes qcSpinOut {
+  0% {
+    transform: rotateY(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: rotateY(90deg);
+    opacity: 0;
+  }
+}
+
+@keyframes qcSpinIn {
+  0% {
+    transform: rotateY(-90deg);
+    opacity: 0;
+  }
+  100% {
+    transform: rotateY(0deg);
+    opacity: 1;
+  }
+}
+
+/* ============================================
+   Aging Dual Donut Layout (BB / BK)
+   ============================================ */
+
+.qc-aging-dual-container {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.qc-aging-donut-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+}
+
+.qc-aging-donut-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #475569;
+  margin-bottom: 0.25rem;
+  text-align: center;
+}
+
+.qc-aging-donut-label span {
+  font-weight: 500;
+  color: #94a3b8;
+  font-size: 0.75rem;
+}
+
+.qc-aging-donut-chart {
+  position: relative;
+  height: 220px;
+  width: 100%;
+}
+
+.qc-aging-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-top: 1.5rem;
+  min-width: 80px;
+}
+
+.qc-aging-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.qc-aging-legend-color {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.qc-aging-legend-text {
+  font-size: 0.65rem;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+/* ============================================
+   Monthly Filter Buttons (All / BB / BK)
+   ============================================ */
+
+.qc-monthly-filter {
+  display: flex;
+  background: #f1f5f9;
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.qc-filter-btn {
+  padding: 0.3rem 0.75rem;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.qc-filter-btn.active {
+  background: white;
+  color: #e57373;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.qc-filter-btn:hover:not(.active) {
+  color: #64748b;
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Chart as ChartJS, ArcElement, BarElement, CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend } from 'chart.js';
 import { Bar, Line, Doughnut } from 'react-chartjs-2';
 import Sidebar from './Sidebar';
@@ -81,6 +81,7 @@ const QCDashboard = () => {
 
   // UI states
   const [activeTab, setActiveTab] = useState('inprocess');
+  const [tableTypeFilter, setTableTypeFilter] = useState('all'); // 'all' | 'BB' | 'BK'
   const [searchQuery, setSearchQuery] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
   const [currentPage, setCurrentPage] = useState(1);
@@ -88,6 +89,16 @@ const QCDashboard = () => {
   // Modal states
   const [detailModal, setDetailModal] = useState({ open: false, item: null });
   const [drilldownModal, setDrilldownModal] = useState({ open: false, title: '', items: [], type: '' });
+
+  // Daily Flow BB/BK states
+  const [dailyFlowMode, setDailyFlowMode] = useState('auto');
+  const [dailyFlowRender, setDailyFlowRender] = useState('BB');
+  const [dailyFlowSpin, setDailyFlowSpin] = useState('');
+  const dailyFlowRenderRef = useRef('BB');
+  const spinTimerRef = useRef(null);
+
+  // Monthly trend filter
+  const [monthlyFilter, setMonthlyFilter] = useState('all');
 
   const periodOptions = useMemo(() => getPeriodOptions(), []);
 
@@ -168,10 +179,41 @@ const QCDashboard = () => {
     }
   }, [selectedPeriod]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Reset page when tab/search changes
+  // Reset page when tab/search/type filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, searchQuery]);
+  }, [activeTab, searchQuery, tableTypeFilter]);
+
+  // Daily Flow - spin switch logic
+  const triggerDailyFlowSwitch = useCallback((newType) => {
+    if (newType === dailyFlowRenderRef.current && !dailyFlowSpin) return;
+    if (spinTimerRef.current) { clearTimeout(spinTimerRef.current); spinTimerRef.current = null; }
+    setDailyFlowSpin('spin-out');
+    spinTimerRef.current = setTimeout(() => {
+      dailyFlowRenderRef.current = newType;
+      setDailyFlowRender(newType);
+      setDailyFlowSpin('spin-in');
+      spinTimerRef.current = setTimeout(() => {
+        setDailyFlowSpin('');
+        spinTimerRef.current = null;
+      }, 400);
+    }, 400);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-rotate daily flow every 15 seconds
+  useEffect(() => {
+    if (dailyFlowMode !== 'auto') return;
+    const interval = setInterval(() => {
+      const next = dailyFlowRenderRef.current === 'BB' ? 'BK' : 'BB';
+      triggerDailyFlowSwitch(next);
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [dailyFlowMode, triggerDailyFlowSwitch]);
+
+  // Cleanup spin timers
+  useEffect(() => {
+    return () => { if (spinTimerRef.current) clearTimeout(spinTimerRef.current); };
+  }, []);
 
   // ============================================
   // Sorting & Filtering
@@ -224,25 +266,52 @@ const QCDashboard = () => {
 
   // Current display data
   const currentTableData = activeTab === 'inprocess' ? inProcessData : periodData;
-  const filteredData = useMemo(() => applySort(filterData(currentTableData)), [currentTableData, searchQuery, sortConfig]); // eslint-disable-line react-hooks/exhaustive-deps
+  const typeFilteredData = useMemo(() => {
+    if (tableTypeFilter === 'all') return currentTableData;
+    return currentTableData.filter((item) => item.Item_Type === tableTypeFilter);
+  }, [currentTableData, tableTypeFilter]);
+  const filteredData = useMemo(() => applySort(filterData(typeFilteredData)), [typeFilteredData, searchQuery, sortConfig]); // eslint-disable-line react-hooks/exhaustive-deps
   const totalPages = Math.max(1, Math.ceil(filteredData.length / ROWS_PER_PAGE));
   const paginatedData = filteredData.slice((currentPage - 1) * ROWS_PER_PAGE, currentPage * ROWS_PER_PAGE);
+
+  // Per-type counts for tab badges
+  const bbCount = useMemo(() => currentTableData.filter((item) => item.Item_Type === 'BB').length, [currentTableData]);
+  const bkCount = useMemo(() => currentTableData.filter((item) => item.Item_Type === 'BK').length, [currentTableData]);
 
   // ============================================
   // KPI Data
   // ============================================
 
   const kpiData = useMemo(() => {
-    if (!summaryData) return { pending: 0, avgDays: 0, completed: 0, rejectPct: 0 };
-    const currentMonth = summaryData.monthly?.find((m) => m.period === summaryData.currentPeriod);
+    const empty = { bb: { pending: 0, avgDays: 0, completed: 0, rejectPct: 0 }, bk: { pending: 0, avgDays: 0, completed: 0, rejectPct: 0 } };
+    if (!summaryData) return empty;
+    const cp = summaryData.currentPeriod;
+
+    // In-progress count by type (from agingByType)
+    const bbPending = (summaryData.agingByType || []).filter((a) => a.material_type === 'BB').reduce((s, a) => s + a.count, 0);
+    const bkPending = (summaryData.agingByType || []).filter((a) => a.material_type === 'BK').reduce((s, a) => s + a.count, 0);
+
+    // Leadtime by type (from leadtimeMonthly for current period)
+    const bbLead = (summaryData.leadtimeMonthly || []).find((d) => d.material_type === 'BB' && d.period === cp);
+    const bkLead = (summaryData.leadtimeMonthly || []).find((d) => d.material_type === 'BK' && d.period === cp);
+
+    // Monthly by type for current period
+    const bbMonth = (summaryData.monthlyByType || []).find((d) => d.material_type === 'BB' && d.period === cp);
+    const bkMonth = (summaryData.monthlyByType || []).find((d) => d.material_type === 'BK' && d.period === cp);
+
     return {
-      pending: summaryData.totalInQC || 0,
-      avgDays: summaryData.turnaround?.avg_days || 0,
-      completed: currentMonth?.completed || 0,
-      rejectPct: currentMonth?.reject_pct || 0,
-      totalRejected: currentMonth?.total_rejected || 0,
-      totalReleased: currentMonth?.total_released || 0,
-      hasReject: currentMonth?.has_reject || 0
+      bb: {
+        pending: bbPending,
+        avgDays: bbLead ? Math.round(bbLead.avg_turnaround * 10) / 10 : 0,
+        completed: bbMonth?.completed || 0,
+        rejectPct: bbMonth?.reject_pct || 0
+      },
+      bk: {
+        pending: bkPending,
+        avgDays: bkLead ? Math.round(bkLead.avg_turnaround * 10) / 10 : 0,
+        completed: bkMonth?.completed || 0,
+        rejectPct: bkMonth?.reject_pct || 0
+      }
     };
   }, [summaryData]);
 
@@ -254,7 +323,7 @@ const QCDashboard = () => {
     if (!summaryData?.aging) return;
     setDrilldownModal({
       open: true,
-      title: `Items Currently In QC (${kpiData.pending})`,
+      title: `Items Currently In QC (${kpiData.bb.pending + kpiData.bk.pending})`,
       type: 'aging',
       items: summaryData.aging.map((a) => ({ name: a.aging_bucket, count: a.count }))
     });
@@ -346,6 +415,7 @@ const QCDashboard = () => {
   // Chart Configurations
   // ============================================
 
+  // Aging chart data (kept for backward compat)
   const agingChartData = useMemo(() => {
     if (!summaryData?.aging) return null;
     const order = ['0-3 days', '4-7 days', '8-14 days', '15-30 days', '30+ days'];
@@ -355,16 +425,47 @@ const QCDashboard = () => {
       datasets: [{
         data: sorted.map((a) => a.count),
         backgroundColor: [
-          'rgba(34, 197, 94, 0.8)',   // green
-          'rgba(59, 130, 246, 0.8)',   // blue
-          'rgba(245, 158, 11, 0.8)',   // yellow
-          'rgba(249, 115, 22, 0.8)',   // orange
-          'rgba(239, 68, 68, 0.8)',    // red
+          'rgba(34, 197, 94, 0.8)',
+          'rgba(59, 130, 246, 0.8)',
+          'rgba(245, 158, 11, 0.8)',
+          'rgba(249, 115, 22, 0.8)',
+          'rgba(239, 68, 68, 0.8)',
         ],
         borderColor: ['#22c55e', '#3b82f6', '#f59e0b', '#f97316', '#ef4444'],
         borderWidth: 2
       }]
     };
+  }, [summaryData]);
+
+  // Aging by material type (BB and BK separate donuts)
+  const agingByTypeChartData = useMemo(() => {
+    if (!summaryData?.agingByType) return {};
+    const order = ['0-3 days', '4-7 days', '8-14 days', '15-30 days', '30+ days'];
+    const colors = [
+      'rgba(34, 197, 94, 0.8)',
+      'rgba(59, 130, 246, 0.8)',
+      'rgba(245, 158, 11, 0.8)',
+      'rgba(249, 115, 22, 0.8)',
+      'rgba(239, 68, 68, 0.8)',
+    ];
+    const borders = ['#22c55e', '#3b82f6', '#f59e0b', '#f97316', '#ef4444'];
+    const result = {};
+    ['BB', 'BK'].forEach((type) => {
+      const items = summaryData.agingByType.filter((a) => a.material_type === type);
+      const sorted = order.map((b) => items.find((a) => a.aging_bucket === b) || { aging_bucket: b, count: 0 });
+      const total = sorted.reduce((sum, a) => sum + a.count, 0);
+      result[type] = {
+        labels: sorted.map((a) => a.aging_bucket),
+        datasets: [{
+          data: sorted.map((a) => a.count),
+          backgroundColor: colors,
+          borderColor: borders,
+          borderWidth: 2
+        }],
+        total
+      };
+    });
+    return result;
   }, [summaryData]);
 
   const agingChartOptions = {
@@ -385,45 +486,67 @@ const QCDashboard = () => {
     }
   };
 
-  const dailyFlowChartData = useMemo(() => {
-    if (!summaryData?.dailyIntake || !summaryData?.dailyCompletions) return null;
-    // Build a union of all dates
-    const dateMap = {};
-    summaryData.dailyIntake.forEach((d) => {
-      const key = new Date(d.entry_date).toISOString().slice(0, 10);
-      dateMap[key] = { ...(dateMap[key] || {}), intake: d.cnt };
-    });
-    summaryData.dailyCompletions.forEach((d) => {
-      const key = new Date(d.completion_date).toISOString().slice(0, 10);
-      dateMap[key] = { ...(dateMap[key] || {}), completed: d.cnt };
-    });
-    const dates = Object.keys(dateMap).sort();
-    return {
-      labels: dates.map((d) => {
-        const dt = new Date(d);
-        return `${dt.getDate()}/${dt.getMonth() + 1}`;
-      }),
-      datasets: [
-        {
-          label: 'Masuk QC',
-          data: dates.map((d) => dateMap[d].intake || 0),
-          backgroundColor: 'rgba(229, 115, 115, 0.7)',
-          borderColor: '#e57373',
-          borderWidth: 1,
-          borderRadius: 4,
-          order: 1
-        },
-        {
-          label: 'Selesai QC',
-          data: dates.map((d) => dateMap[d].completed || 0),
-          backgroundColor: 'rgba(102, 187, 106, 0.7)',
-          borderColor: '#66bb6a',
-          borderWidth: 1,
-          borderRadius: 4,
-          order: 2
+  const agingByTypeChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    cutout: '55%',
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: (ctx) => `${ctx.label}: ${ctx.raw} items`
         }
-      ]
-    };
+      }
+    }
+  };
+
+  // Daily flow data separated by BB/BK
+  const dailyFlowByType = useMemo(() => {
+    if (!summaryData?.dailyIntakeByType || !summaryData?.dailyCompletionsByType) return {};
+    const result = {};
+    ['BB', 'BK'].forEach((type) => {
+      const dateMap = {};
+      (summaryData.dailyIntakeByType || [])
+        .filter((d) => d.material_type === type)
+        .forEach((d) => {
+          const key = new Date(d.entry_date).toISOString().slice(0, 10);
+          dateMap[key] = { ...(dateMap[key] || {}), intake: d.cnt };
+        });
+      (summaryData.dailyCompletionsByType || [])
+        .filter((d) => d.material_type === type)
+        .forEach((d) => {
+          const key = new Date(d.completion_date).toISOString().slice(0, 10);
+          dateMap[key] = { ...(dateMap[key] || {}), completed: d.cnt };
+        });
+      const dates = Object.keys(dateMap).sort();
+      result[type] = dates.length > 0 ? {
+        labels: dates.map((d) => {
+          const dt = new Date(d);
+          return `${dt.getDate()}/${dt.getMonth() + 1}`;
+        }),
+        datasets: [
+          {
+            label: 'Masuk QC',
+            data: dates.map((d) => dateMap[d].intake || 0),
+            backgroundColor: 'rgba(229, 115, 115, 0.7)',
+            borderColor: '#e57373',
+            borderWidth: 1,
+            borderRadius: 4,
+            order: 1
+          },
+          {
+            label: 'Selesai QC',
+            data: dates.map((d) => dateMap[d].completed || 0),
+            backgroundColor: 'rgba(102, 187, 106, 0.7)',
+            borderColor: '#66bb6a',
+            borderWidth: 1,
+            borderRadius: 4,
+            order: 2
+          }
+        ]
+      } : null;
+    });
+    return result;
   }, [summaryData]);
 
   const dailyFlowOptions = {
@@ -439,45 +562,33 @@ const QCDashboard = () => {
     }
   };
 
-  const monthlyTrendData = useMemo(() => {
-    if (!summaryData?.monthly) return null;
-    const data = summaryData.monthly;
+  // Monthly trend data with BB/BK separation
+  const monthlyTrendByTypeData = useMemo(() => {
+    if (!summaryData?.monthlyByType) return null;
+    const allData = summaryData.monthlyByType;
+    const periods = [...new Set(allData.map((d) => d.period))].sort();
+
+    const getTypeData = (type) => ({
+      total: periods.map((p) => { const item = allData.find((d) => d.period === p && d.material_type === type); return item ? item.total : 0; }),
+      completed: periods.map((p) => { const item = allData.find((d) => d.period === p && d.material_type === type); return item ? item.completed : 0; }),
+      rejectPct: periods.map((p) => { const item = allData.find((d) => d.period === p && d.material_type === type); return item ? (item.reject_pct || 0) : 0; })
+    });
+
+    const bb = getTypeData('BB');
+    const bk = getTypeData('BK');
+
     return {
-      labels: data.map((m) => periodToLabel(m.period)),
+      labels: periods.map((p) => periodToLabel(p)),
       datasets: [
-        {
-          label: 'Total',
-          data: data.map((m) => m.total),
-          borderColor: '#4f8cff',
-          backgroundColor: 'rgba(79, 140, 255, 0.1)',
-          fill: true,
-          tension: 0.3,
-          pointRadius: 4,
-          pointBackgroundColor: '#4f8cff'
-        },
-        {
-          label: 'Completed',
-          data: data.map((m) => m.completed),
-          borderColor: '#22c55e',
-          backgroundColor: 'rgba(34, 197, 94, 0.1)',
-          fill: true,
-          tension: 0.3,
-          pointRadius: 4,
-          pointBackgroundColor: '#22c55e'
-        },
-        {
-          label: 'Reject Rate %',
-          data: data.map((m) => m.reject_pct || 0),
-          borderColor: '#ef4444',
-          borderDash: [5, 5],
-          tension: 0.3,
-          pointRadius: 4,
-          pointBackgroundColor: '#ef4444',
-          yAxisID: 'y1'
-        }
+        { label: 'Total BB', data: bb.total, borderColor: '#4f8cff', backgroundColor: 'rgba(79, 140, 255, 0.15)', fill: true, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#4f8cff', hidden: monthlyFilter === 'BK' },
+        { label: 'Completed BB', data: bb.completed, borderColor: '#22c55e', backgroundColor: 'rgba(34, 197, 94, 0.15)', fill: true, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#22c55e', hidden: monthlyFilter === 'BK' },
+        { label: 'Reject % BB', data: bb.rejectPct, borderColor: '#ef4444', borderDash: [5, 5], tension: 0.3, pointRadius: 4, pointBackgroundColor: '#ef4444', yAxisID: 'y1', hidden: monthlyFilter === 'BK' },
+        { label: 'Total BK', data: bk.total, borderColor: '#7c4dff', backgroundColor: 'rgba(124, 77, 255, 0.15)', fill: true, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#7c4dff', hidden: monthlyFilter === 'BB' },
+        { label: 'Completed BK', data: bk.completed, borderColor: '#00bfa5', backgroundColor: 'rgba(0, 191, 165, 0.15)', fill: true, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#00bfa5', hidden: monthlyFilter === 'BB' },
+        { label: 'Reject % BK', data: bk.rejectPct, borderColor: '#ff6e40', borderDash: [8, 4], tension: 0.3, pointRadius: 4, pointBackgroundColor: '#ff6e40', yAxisID: 'y1', hidden: monthlyFilter === 'BB' }
       ]
     };
-  }, [summaryData]);
+  }, [summaryData, monthlyFilter]);
 
   const monthlyTrendOptions = {
     responsive: true,
@@ -501,6 +612,72 @@ const QCDashboard = () => {
     }
   };
 
+  // Leadtime 13 months by BB/BK (replaces Supplier chart)
+  const leadtimeChartData = useMemo(() => {
+    if (!summaryData?.leadtimeMonthly) return null;
+    const data = summaryData.leadtimeMonthly;
+
+    // Calculate 13-month range ending at selectedPeriod
+    const endYear = parseInt(selectedPeriod.slice(0, 4));
+    const endMonth = parseInt(selectedPeriod.slice(4, 6));
+    const periods = [];
+    for (let i = 12; i >= 0; i--) {
+      const d = new Date(endYear, endMonth - 1 - i, 1);
+      periods.push(`${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}`);
+    }
+
+    const bbData = periods.map((p) => {
+      const item = data.find((d) => d.period === p && d.material_type === 'BB');
+      return item ? Math.round(item.avg_turnaround * 10) / 10 : 0;
+    });
+    const bkData = periods.map((p) => {
+      const item = data.find((d) => d.period === p && d.material_type === 'BK');
+      return item ? Math.round(item.avg_turnaround * 10) / 10 : 0;
+    });
+
+    return {
+      labels: periods.map((p) => periodToLabel(p)),
+      datasets: [
+        {
+          label: 'BB (Bahan Baku)',
+          data: bbData,
+          backgroundColor: 'rgba(79, 140, 255, 0.7)',
+          borderColor: '#4f8cff',
+          borderWidth: 1,
+          borderRadius: 4
+        },
+        {
+          label: 'BK (Bahan Kemas)',
+          data: bkData,
+          backgroundColor: 'rgba(255, 167, 38, 0.7)',
+          borderColor: '#ffa726',
+          borderWidth: 1,
+          borderRadius: 4
+        }
+      ]
+    };
+  }, [summaryData, selectedPeriod]);
+
+  const leadtimeChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'top', labels: { boxWidth: 12, padding: 12, font: { size: 11 } } },
+      tooltip: {
+        mode: 'index',
+        intersect: false,
+        callbacks: {
+          label: (ctx) => `${ctx.dataset.label}: ${ctx.raw} hari`
+        }
+      }
+    },
+    scales: {
+      x: { grid: { display: false }, ticks: { font: { size: 9 }, maxRotation: 45 } },
+      y: { beginAtZero: true, ticks: { font: { size: 10 }, callback: (v) => `${v}d` }, title: { display: true, text: 'Avg Turnaround (hari)', font: { size: 10 } } }
+    }
+  };
+
+  /* Supplier chart data/options kept but hidden from UI */
   const supplierChartData = useMemo(() => {
     if (!summaryData?.topSuppliers) return null;
     const data = summaryData.topSuppliers;
@@ -745,64 +922,119 @@ const QCDashboard = () => {
             </div>
           </div>
 
-          {/* ====== KPI Cards ====== */}
+          {/* ====== KPI Cards (BB/BK split) ====== */}
           <div className="qc-kpi-row">
-            <div className="qc-kpi-card" onClick={handleKPIPendingClick} title="Klik untuk melihat detail aging">
+            <div className="qc-kpi-card" onClick={handleKPIPendingClick}>
               <div className="qc-kpi-icon pending">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
               </div>
               <div className="qc-kpi-info">
-                <div className="qc-kpi-label">Currently In QC</div>
-                <div className="qc-kpi-value">{formatNumber(kpiData.pending)}</div>
-                <div className="qc-kpi-sub">material menunggu release</div>
+                <div className="qc-kpi-label">BB In Progress</div>
+                <div className="qc-kpi-value">{formatNumber(kpiData.bb.pending)}</div>
               </div>
             </div>
 
-            <div className="qc-kpi-card" onClick={handleKPITurnaroundClick} title="Klik untuk melihat detail turnaround">
+            <div className="qc-kpi-card" onClick={handleKPITurnaroundClick}>
               <div className="qc-kpi-icon turnaround">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
               </div>
               <div className="qc-kpi-info">
-                <div className="qc-kpi-label">Avg Turnaround</div>
-                <div className="qc-kpi-value">{kpiData.avgDays} <span style={{ fontSize: '0.9rem', fontWeight: 500 }}>hari</span></div>
-                <div className="qc-kpi-sub">bulan {periodToLabel(summaryData?.currentPeriod)}</div>
+                <div className="qc-kpi-label">Leadtime BB</div>
+                <div className="qc-kpi-value">{kpiData.bb.avgDays} <span style={{ fontSize: '0.8rem', fontWeight: 500 }}>hari</span></div>
               </div>
             </div>
 
-            <div className="qc-kpi-card" onClick={handleKPICompletedClick} title="Klik untuk melihat trend completion">
+            <div className="qc-kpi-card" onClick={handleKPICompletedClick}>
               <div className="qc-kpi-icon completed">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
               </div>
               <div className="qc-kpi-info">
-                <div className="qc-kpi-label">Completed This Month</div>
-                <div className="qc-kpi-value">{formatNumber(kpiData.completed)}</div>
-                <div className="qc-kpi-sub">material sudah release</div>
+                <div className="qc-kpi-label">BB Completed</div>
+                <div className="qc-kpi-value">{formatNumber(kpiData.bb.completed)}</div>
               </div>
             </div>
 
-            <div className="qc-kpi-card" onClick={handleKPIRejectClick} title="Klik untuk melihat trend reject">
+            <div className="qc-kpi-card" onClick={handleKPIRejectClick}>
               <div className="qc-kpi-icon rejected">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
               </div>
               <div className="qc-kpi-info">
-                <div className="qc-kpi-label">Reject Rate</div>
-                <div className="qc-kpi-value">{kpiData.rejectPct}<span style={{ fontSize: '0.9rem', fontWeight: 500 }}>%</span></div>
-                <div className="qc-kpi-sub">{formatNumber(kpiData.totalRejected)} rejected dari {formatNumber(kpiData.hasReject)} batch</div>
+                <div className="qc-kpi-label">Reject Rate BB</div>
+                <div className="qc-kpi-value">{kpiData.bb.rejectPct}<span style={{ fontSize: '0.8rem', fontWeight: 500 }}>%</span></div>
+              </div>
+            </div>
+
+            <div className="qc-kpi-card" onClick={handleKPIPendingClick}>
+              <div className="qc-kpi-icon pending">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              </div>
+              <div className="qc-kpi-info">
+                <div className="qc-kpi-label">BK In Progress</div>
+                <div className="qc-kpi-value">{formatNumber(kpiData.bk.pending)}</div>
+              </div>
+            </div>
+
+            <div className="qc-kpi-card" onClick={handleKPITurnaroundClick}>
+              <div className="qc-kpi-icon turnaround">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+              </div>
+              <div className="qc-kpi-info">
+                <div className="qc-kpi-label">Leadtime BK</div>
+                <div className="qc-kpi-value">{kpiData.bk.avgDays} <span style={{ fontSize: '0.8rem', fontWeight: 500 }}>hari</span></div>
+              </div>
+            </div>
+
+            <div className="qc-kpi-card" onClick={handleKPICompletedClick}>
+              <div className="qc-kpi-icon completed">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              </div>
+              <div className="qc-kpi-info">
+                <div className="qc-kpi-label">BK Completed</div>
+                <div className="qc-kpi-value">{formatNumber(kpiData.bk.completed)}</div>
+              </div>
+            </div>
+
+            <div className="qc-kpi-card" onClick={handleKPIRejectClick}>
+              <div className="qc-kpi-icon rejected">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              </div>
+              <div className="qc-kpi-info">
+                <div className="qc-kpi-label">Reject Rate BK</div>
+                <div className="qc-kpi-value">{kpiData.bk.rejectPct}<span style={{ fontSize: '0.8rem', fontWeight: 500 }}>%</span></div>
               </div>
             </div>
           </div>
 
-          {/* ====== Charts Row 1: Aging Doughnut + Daily Flow ====== */}
+          {/* ====== Charts Row 1: Aging Doughnut (BB/BK) + Daily Flow ====== */}
           <div className="qc-charts-row">
             <div className="qc-chart-card">
               <div className="qc-chart-header">
                 <div>
                   <div className="qc-chart-title">QC Aging Distribution</div>
-                  <div className="qc-chart-subtitle">Berapa lama material menunggu di QC</div>
+                  <div className="qc-chart-subtitle">Berapa lama material diproses di QC</div>
                 </div>
               </div>
-              <div className="qc-chart-container">
-                {agingChartData && <Doughnut data={agingChartData} options={agingChartOptions} />}
+              <div className="qc-aging-dual-container">
+                <div className="qc-aging-donut-wrapper">
+                  <div className="qc-aging-donut-label">BB <span>({agingByTypeChartData.BB?.total || 0})</span></div>
+                  <div className="qc-aging-donut-chart">
+                    {agingByTypeChartData.BB && <Doughnut data={agingByTypeChartData.BB} options={agingByTypeChartOptions} />}
+                  </div>
+                </div>
+                <div className="qc-aging-donut-wrapper">
+                  <div className="qc-aging-donut-label">BK <span>({agingByTypeChartData.BK?.total || 0})</span></div>
+                  <div className="qc-aging-donut-chart">
+                    {agingByTypeChartData.BK && <Doughnut data={agingByTypeChartData.BK} options={agingByTypeChartOptions} />}
+                  </div>
+                </div>
+                <div className="qc-aging-legend">
+                  {['0-3 days', '4-7 days', '8-14 days', '15-30 days', '30+ days'].map((label, i) => (
+                    <div key={label} className="qc-aging-legend-item">
+                      <span className="qc-aging-legend-color" style={{ background: ['#22c55e', '#3b82f6', '#f59e0b', '#f97316', '#ef4444'][i] }} />
+                      <span className="qc-aging-legend-text">{label}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
             <div className="qc-chart-card">
@@ -811,35 +1043,76 @@ const QCDashboard = () => {
                   <div className="qc-chart-title">Daily QC Flow</div>
                   <div className="qc-chart-subtitle">Masuk vs Selesai - {periodToLabel(summaryData?.currentPeriod)}</div>
                 </div>
+                <div className="qc-daily-flow-controls">
+                  <div className="qc-type-tabs">
+                    <button
+                      className={`qc-type-tab ${dailyFlowRender === 'BB' ? 'active' : ''}`}
+                      onClick={() => { setDailyFlowMode('manual'); triggerDailyFlowSwitch('BB'); }}
+                    >BB</button>
+                    <button
+                      className={`qc-type-tab ${dailyFlowRender === 'BK' ? 'active' : ''}`}
+                      onClick={() => { setDailyFlowMode('manual'); triggerDailyFlowSwitch('BK'); }}
+                    >BK</button>
+                  </div>
+                  <div className="qc-mode-toggle">
+                    <button
+                      className={`qc-mode-btn ${dailyFlowMode === 'auto' ? 'active' : ''}`}
+                      onClick={() => setDailyFlowMode('auto')}
+                    >Auto</button>
+                    <button
+                      className={`qc-mode-btn ${dailyFlowMode === 'manual' ? 'active' : ''}`}
+                      onClick={() => setDailyFlowMode('manual')}
+                    >Manual</button>
+                  </div>
+                </div>
               </div>
-              <div className="qc-chart-container">
-                {dailyFlowChartData && <Bar data={dailyFlowChartData} options={dailyFlowOptions} />}
+              <div className="qc-daily-flow-viewport">
+                <div className={`qc-daily-flow-content ${dailyFlowSpin}`}>
+                  <div className="qc-chart-container">
+                    {dailyFlowByType[dailyFlowRender] ? (
+                      <Bar data={dailyFlowByType[dailyFlowRender]} options={dailyFlowOptions} />
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8', fontSize: '0.875rem' }}>
+                        Tidak ada data {dailyFlowRender}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* ====== Charts Row 2: Monthly Trend + Supplier ====== */}
+          {/* ====== Charts Row 2: Monthly Trend + Leadtime 12 Months ====== */}
           <div className="qc-charts-row">
             <div className="qc-chart-card">
               <div className="qc-chart-header">
                 <div>
                   <div className="qc-chart-title">Monthly QC Trend</div>
-                  <div className="qc-chart-subtitle">Volume, completion, dan reject rate 6 bulan terakhir</div>
+                  <div className="qc-chart-subtitle">Volume, completion, dan reject rate 6 bulan terakhir (BB &amp; BK)</div>
+                </div>
+                <div className="qc-monthly-filter">
+                  {['all', 'BB', 'BK'].map((f) => (
+                    <button
+                      key={f}
+                      className={`qc-filter-btn ${monthlyFilter === f ? 'active' : ''}`}
+                      onClick={() => setMonthlyFilter(f)}
+                    >{f === 'all' ? 'All' : f}</button>
+                  ))}
                 </div>
               </div>
               <div className="qc-chart-container">
-                {monthlyTrendData && <Line data={monthlyTrendData} options={monthlyTrendOptions} />}
+                {monthlyTrendByTypeData && <Line data={monthlyTrendByTypeData} options={monthlyTrendOptions} />}
               </div>
             </div>
             <div className="qc-chart-card">
               <div className="qc-chart-header">
                 <div>
-                  <div className="qc-chart-title">Pending QC by Supplier</div>
-                  <div className="qc-chart-subtitle">Top 10 supplier dengan material terbanyak di QC</div>
+                  <div className="qc-chart-title">Leadtime 12 Months</div>
+                  <div className="qc-chart-subtitle">Rata-rata turnaround QC per bulan (BB vs BK)</div>
                 </div>
               </div>
               <div className="qc-chart-container">
-                {supplierChartData && <Bar data={supplierChartData} options={supplierChartOptions} />}
+                {leadtimeChartData && <Bar data={leadtimeChartData} options={leadtimeChartOptions} />}
               </div>
             </div>
           </div>
@@ -847,11 +1120,24 @@ const QCDashboard = () => {
           {/* ====== Tables Section ====== */}
           <div className="qc-tables-section">
             <div className="qc-tabs">
-              <button className={`qc-tab ${activeTab === 'inprocess' ? 'active' : ''}`} onClick={() => setActiveTab('inprocess')}>
+              <button className={`qc-tab ${activeTab === 'inprocess' ? 'active' : ''}`} onClick={() => { setActiveTab('inprocess'); setTableTypeFilter('all'); }}>
                 In Process ({formatNumber(inProcessData.length)})
               </button>
-              <button className={`qc-tab ${activeTab === 'period' ? 'active' : ''}`} onClick={() => setActiveTab('period')}>
+              <button className={`qc-tab ${activeTab === 'period' ? 'active' : ''}`} onClick={() => { setActiveTab('period'); setTableTypeFilter('all'); }}>
                 Period: {periodToLabel(selectedPeriod)} ({formatNumber(periodData.length)})
+              </button>
+            </div>
+
+            {/* BB / BK sub-filter tabs */}
+            <div className="qc-table-type-tabs">
+              <button className={`qc-table-type-btn ${tableTypeFilter === 'all' ? 'active' : ''}`} onClick={() => setTableTypeFilter('all')}>
+                All ({formatNumber(currentTableData.length)})
+              </button>
+              <button className={`qc-table-type-btn bb ${tableTypeFilter === 'BB' ? 'active' : ''}`} onClick={() => setTableTypeFilter('BB')}>
+                BB ({formatNumber(bbCount)})
+              </button>
+              <button className={`qc-table-type-btn bk ${tableTypeFilter === 'BK' ? 'active' : ''}`} onClick={() => setTableTypeFilter('BK')}>
+                BK ({formatNumber(bkCount)})
               </button>
             </div>
 

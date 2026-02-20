@@ -1165,6 +1165,7 @@ async function getQCInProcess() {
       d.DNc_ItemID,
       m.Item_Name,
       m.Item_Group,
+      ISNULL(m.Item_Type, 'Unknown') as Item_Type,
       d.DNc_SuppName,
       d.DNc_PrcName,
       d.DNC_BatchNo,
@@ -1201,6 +1202,7 @@ async function getQCByPeriod(period) {
       d.DNc_ItemID,
       m.Item_Name,
       m.Item_Group,
+      ISNULL(m.Item_Type, 'Unknown') as Item_Type,
       d.DNc_SuppName,
       d.DNc_PrcName,
       d.DNC_BatchNo,
@@ -1339,6 +1341,96 @@ async function getQCSummary() {
     SELECT COUNT(*) as total FROM t_dnc_manufacturing WHERE DNC_tempellabelDate IS NULL
   `);
 
+  // 8. Aging by material type (BB/BK split)
+  const agingByTypeResult = await db.request().query(`
+    SELECT 
+      ISNULL(m.Item_Type, 'Unknown') as material_type,
+      CASE 
+        WHEN DATEDIFF(day, d.DNc_Date, GETDATE()) <= 3 THEN '0-3 days'
+        WHEN DATEDIFF(day, d.DNc_Date, GETDATE()) <= 7 THEN '4-7 days'
+        WHEN DATEDIFF(day, d.DNc_Date, GETDATE()) <= 14 THEN '8-14 days'
+        WHEN DATEDIFF(day, d.DNc_Date, GETDATE()) <= 30 THEN '15-30 days'
+        ELSE '30+ days'
+      END as aging_bucket,
+      COUNT(*) as count
+    FROM t_dnc_manufacturing d
+    LEFT JOIN m_item_manufacturing m ON d.DNc_ItemID = m.Item_ID
+    WHERE d.DNC_tempellabelDate IS NULL
+    GROUP BY 
+      ISNULL(m.Item_Type, 'Unknown'),
+      CASE 
+        WHEN DATEDIFF(day, d.DNc_Date, GETDATE()) <= 3 THEN '0-3 days'
+        WHEN DATEDIFF(day, d.DNc_Date, GETDATE()) <= 7 THEN '4-7 days'
+        WHEN DATEDIFF(day, d.DNc_Date, GETDATE()) <= 14 THEN '8-14 days'
+        WHEN DATEDIFF(day, d.DNc_Date, GETDATE()) <= 30 THEN '15-30 days'
+        ELSE '30+ days'
+      END
+  `);
+
+  // 9. Daily intake by material type
+  const dailyIntakeByTypeReq = db.request();
+  dailyIntakeByTypeReq.input('curPeriodByType1', sql.NVarChar(6), currentPeriod);
+  const dailyIntakeByTypeResult = await dailyIntakeByTypeReq.query(`
+    SELECT 
+      ISNULL(m.Item_Type, 'Unknown') as material_type,
+      CONVERT(date, d.DNc_Date) as entry_date,
+      COUNT(*) as cnt
+    FROM t_dnc_manufacturing d
+    LEFT JOIN m_item_manufacturing m ON d.DNc_ItemID = m.Item_ID
+    WHERE CONVERT(nvarchar(6), d.DNc_Date, 112) = @curPeriodByType1
+    GROUP BY ISNULL(m.Item_Type, 'Unknown'), CONVERT(date, d.DNc_Date)
+    ORDER BY entry_date
+  `);
+
+  // 10. Daily completions by material type
+  const dailyCompByTypeReq = db.request();
+  dailyCompByTypeReq.input('curPeriodByType2', sql.NVarChar(6), currentPeriod);
+  const dailyCompByTypeResult = await dailyCompByTypeReq.query(`
+    SELECT 
+      ISNULL(m.Item_Type, 'Unknown') as material_type,
+      CONVERT(date, d.DNC_tempellabelDate) as completion_date,
+      COUNT(*) as cnt
+    FROM t_dnc_manufacturing d
+    LEFT JOIN m_item_manufacturing m ON d.DNc_ItemID = m.Item_ID
+    WHERE d.DNC_tempellabelDate IS NOT NULL
+      AND CONVERT(nvarchar(6), d.DNC_tempellabelDate, 112) = @curPeriodByType2
+    GROUP BY ISNULL(m.Item_Type, 'Unknown'), CONVERT(date, d.DNC_tempellabelDate)
+    ORDER BY completion_date
+  `);
+
+  // 11. Monthly volume by material type (last 6 months)
+  const monthlyByTypeResult = await db.request().query(`
+    SELECT 
+      ISNULL(m.Item_Type, 'Unknown') as material_type,
+      CONVERT(nvarchar(6), d.DNc_Date, 112) as period,
+      COUNT(*) as total,
+      SUM(CASE WHEN d.DNC_tempellabelDate IS NOT NULL THEN 1 ELSE 0 END) as completed,
+      SUM(d.DNc_ReleaseQTY) as total_released,
+      SUM(d.DNc_RejectQTY) as total_rejected,
+      SUM(CASE WHEN d.DNc_RejectQTY > 0 THEN 1 ELSE 0 END) as has_reject,
+      ROUND(SUM(d.DNc_RejectQTY) * 100.0 / NULLIF(SUM(d.DNc_ReleaseQTY + d.DNc_RejectQTY), 0), 2) as reject_pct
+    FROM t_dnc_manufacturing d
+    LEFT JOIN m_item_manufacturing m ON d.DNc_ItemID = m.Item_ID
+    WHERE d.DNc_Date >= DATEADD(month, -6, GETDATE())
+    GROUP BY ISNULL(m.Item_Type, 'Unknown'), CONVERT(nvarchar(6), d.DNc_Date, 112)
+    ORDER BY material_type, period ASC
+  `);
+
+  // 12. Leadtime by month and material type (last 18 months for frontend filtering)
+  const leadtimeMonthlyResult = await db.request().query(`
+    SELECT 
+      ISNULL(m.Item_Type, 'Unknown') as material_type,
+      CONVERT(nvarchar(6), d.DNC_tempellabelDate, 112) as period,
+      AVG(CAST(DATEDIFF(day, d.DNc_Date, d.DNC_tempellabelDate) AS FLOAT)) as avg_turnaround,
+      COUNT(*) as sample_count
+    FROM t_dnc_manufacturing d
+    LEFT JOIN m_item_manufacturing m ON d.DNc_ItemID = m.Item_ID
+    WHERE d.DNC_tempellabelDate IS NOT NULL
+      AND d.DNC_tempellabelDate >= DATEADD(month, -18, GETDATE())
+    GROUP BY ISNULL(m.Item_Type, 'Unknown'), CONVERT(nvarchar(6), d.DNC_tempellabelDate, 112)
+    ORDER BY period ASC, material_type
+  `);
+
   return {
     totalInQC: totalInQC.recordset[0].total,
     aging: agingResult.recordset,
@@ -1348,7 +1440,12 @@ async function getQCSummary() {
     itemGroups: groupResult.recordset,
     dailyIntake: dailyIntakeResult.recordset,
     dailyCompletions: dailyCompResult.recordset,
-    currentPeriod
+    currentPeriod,
+    agingByType: agingByTypeResult.recordset,
+    dailyIntakeByType: dailyIntakeByTypeResult.recordset,
+    dailyCompletionsByType: dailyCompByTypeResult.recordset,
+    monthlyByType: monthlyByTypeResult.recordset,
+    leadtimeMonthly: leadtimeMonthlyResult.recordset
   };
 }
 
