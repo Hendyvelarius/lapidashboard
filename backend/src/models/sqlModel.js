@@ -1230,28 +1230,33 @@ async function getQCByPeriod(period) {
  * Get QC summary statistics for dashboard cards and charts.
  * Returns monthly volume, aging, supplier breakdown, and turnaround in one call.
  */
-async function getQCSummary() {
+async function getQCSummary(period) {
   const db = await connect();
 
-  // 1. Aging buckets for items still in QC
-  const agingResult = await db.request().query(`
+  // Use provided period or default to current month
+  const targetPeriod = period || new Date().toISOString().slice(0, 7).replace('-', '');
+
+  // 1. Aging buckets for items that entered QC in the selected period
+  const agingReq = db.request();
+  agingReq.input('agingPeriod', sql.NVarChar(6), targetPeriod);
+  const agingResult = await agingReq.query(`
     SELECT 
       CASE 
-        WHEN DATEDIFF(day, DNc_Date, GETDATE()) <= 3 THEN '0-3 days'
-        WHEN DATEDIFF(day, DNc_Date, GETDATE()) <= 7 THEN '4-7 days'
-        WHEN DATEDIFF(day, DNc_Date, GETDATE()) <= 14 THEN '8-14 days'
-        WHEN DATEDIFF(day, DNc_Date, GETDATE()) <= 30 THEN '15-30 days'
+        WHEN DATEDIFF(day, DNc_Date, COALESCE(DNC_tempellabelDate, GETDATE())) <= 3 THEN '0-3 days'
+        WHEN DATEDIFF(day, DNc_Date, COALESCE(DNC_tempellabelDate, GETDATE())) <= 7 THEN '4-7 days'
+        WHEN DATEDIFF(day, DNc_Date, COALESCE(DNC_tempellabelDate, GETDATE())) <= 14 THEN '8-14 days'
+        WHEN DATEDIFF(day, DNc_Date, COALESCE(DNC_tempellabelDate, GETDATE())) <= 30 THEN '15-30 days'
         ELSE '30+ days'
       END as aging_bucket,
       COUNT(*) as count
     FROM t_dnc_manufacturing
-    WHERE DNC_tempellabelDate IS NULL
+    WHERE CONVERT(nvarchar(6), DNc_Date, 112) = @agingPeriod
     GROUP BY 
       CASE 
-        WHEN DATEDIFF(day, DNc_Date, GETDATE()) <= 3 THEN '0-3 days'
-        WHEN DATEDIFF(day, DNc_Date, GETDATE()) <= 7 THEN '4-7 days'
-        WHEN DATEDIFF(day, DNc_Date, GETDATE()) <= 14 THEN '8-14 days'
-        WHEN DATEDIFF(day, DNc_Date, GETDATE()) <= 30 THEN '15-30 days'
+        WHEN DATEDIFF(day, DNc_Date, COALESCE(DNC_tempellabelDate, GETDATE())) <= 3 THEN '0-3 days'
+        WHEN DATEDIFF(day, DNc_Date, COALESCE(DNC_tempellabelDate, GETDATE())) <= 7 THEN '4-7 days'
+        WHEN DATEDIFF(day, DNc_Date, COALESCE(DNC_tempellabelDate, GETDATE())) <= 14 THEN '8-14 days'
+        WHEN DATEDIFF(day, DNc_Date, COALESCE(DNC_tempellabelDate, GETDATE())) <= 30 THEN '15-30 days'
         ELSE '30+ days'
       END
   `);
@@ -1273,10 +1278,9 @@ async function getQCSummary() {
     ORDER BY period ASC
   `);
 
-  // 3. Turnaround stats for current month
-  const currentPeriod = new Date().toISOString().slice(0, 7).replace('-', '');
+  // 3. Turnaround stats for selected period
   const turnaroundReq = db.request();
-  turnaroundReq.input('currentPeriod', sql.NVarChar(6), currentPeriod);
+  turnaroundReq.input('currentPeriod', sql.NVarChar(6), targetPeriod);
   const turnaroundResult = await turnaroundReq.query(`
     SELECT 
       AVG(DATEDIFF(day, DNc_Date, DNC_tempellabelDate)) as avg_days,
@@ -1310,9 +1314,9 @@ async function getQCSummary() {
     ORDER BY count DESC
   `);
 
-  // 6. Daily intake & completions for current month
+  // 6. Daily intake & completions for selected period
   const dailyReq = db.request();
-  dailyReq.input('curPeriod', sql.NVarChar(6), currentPeriod);
+  dailyReq.input('curPeriod', sql.NVarChar(6), targetPeriod);
   const dailyIntakeResult = await dailyReq.query(`
     SELECT 
       CONVERT(date, DNc_Date) as entry_date,
@@ -1324,7 +1328,7 @@ async function getQCSummary() {
   `);
 
   const dailyCompReq = db.request();
-  dailyCompReq.input('curPeriod2', sql.NVarChar(6), currentPeriod);
+  dailyCompReq.input('curPeriod2', sql.NVarChar(6), targetPeriod);
   const dailyCompResult = await dailyCompReq.query(`
     SELECT 
       CONVERT(date, DNC_tempellabelDate) as completion_date,
@@ -1341,35 +1345,37 @@ async function getQCSummary() {
     SELECT COUNT(*) as total FROM t_dnc_manufacturing WHERE DNC_tempellabelDate IS NULL
   `);
 
-  // 8. Aging by material type (BB/BK split)
-  const agingByTypeResult = await db.request().query(`
+  // 8. Aging by material type (BB/BK split) for items entering in selected period
+  const agingByTypeReq = db.request();
+  agingByTypeReq.input('agingByTypePeriod', sql.NVarChar(6), targetPeriod);
+  const agingByTypeResult = await agingByTypeReq.query(`
     SELECT 
       ISNULL(m.Item_Type, 'Unknown') as material_type,
       CASE 
-        WHEN DATEDIFF(day, d.DNc_Date, GETDATE()) <= 3 THEN '0-3 days'
-        WHEN DATEDIFF(day, d.DNc_Date, GETDATE()) <= 7 THEN '4-7 days'
-        WHEN DATEDIFF(day, d.DNc_Date, GETDATE()) <= 14 THEN '8-14 days'
-        WHEN DATEDIFF(day, d.DNc_Date, GETDATE()) <= 30 THEN '15-30 days'
+        WHEN DATEDIFF(day, d.DNc_Date, COALESCE(d.DNC_tempellabelDate, GETDATE())) <= 3 THEN '0-3 days'
+        WHEN DATEDIFF(day, d.DNc_Date, COALESCE(d.DNC_tempellabelDate, GETDATE())) <= 7 THEN '4-7 days'
+        WHEN DATEDIFF(day, d.DNc_Date, COALESCE(d.DNC_tempellabelDate, GETDATE())) <= 14 THEN '8-14 days'
+        WHEN DATEDIFF(day, d.DNc_Date, COALESCE(d.DNC_tempellabelDate, GETDATE())) <= 30 THEN '15-30 days'
         ELSE '30+ days'
       END as aging_bucket,
       COUNT(*) as count
     FROM t_dnc_manufacturing d
     LEFT JOIN m_item_manufacturing m ON d.DNc_ItemID = m.Item_ID
-    WHERE d.DNC_tempellabelDate IS NULL
+    WHERE CONVERT(nvarchar(6), d.DNc_Date, 112) = @agingByTypePeriod
     GROUP BY 
       ISNULL(m.Item_Type, 'Unknown'),
       CASE 
-        WHEN DATEDIFF(day, d.DNc_Date, GETDATE()) <= 3 THEN '0-3 days'
-        WHEN DATEDIFF(day, d.DNc_Date, GETDATE()) <= 7 THEN '4-7 days'
-        WHEN DATEDIFF(day, d.DNc_Date, GETDATE()) <= 14 THEN '8-14 days'
-        WHEN DATEDIFF(day, d.DNc_Date, GETDATE()) <= 30 THEN '15-30 days'
+        WHEN DATEDIFF(day, d.DNc_Date, COALESCE(d.DNC_tempellabelDate, GETDATE())) <= 3 THEN '0-3 days'
+        WHEN DATEDIFF(day, d.DNc_Date, COALESCE(d.DNC_tempellabelDate, GETDATE())) <= 7 THEN '4-7 days'
+        WHEN DATEDIFF(day, d.DNc_Date, COALESCE(d.DNC_tempellabelDate, GETDATE())) <= 14 THEN '8-14 days'
+        WHEN DATEDIFF(day, d.DNc_Date, COALESCE(d.DNC_tempellabelDate, GETDATE())) <= 30 THEN '15-30 days'
         ELSE '30+ days'
       END
   `);
 
-  // 9. Daily intake by material type
+  // 9. Daily intake by material type for selected period
   const dailyIntakeByTypeReq = db.request();
-  dailyIntakeByTypeReq.input('curPeriodByType1', sql.NVarChar(6), currentPeriod);
+  dailyIntakeByTypeReq.input('curPeriodByType1', sql.NVarChar(6), targetPeriod);
   const dailyIntakeByTypeResult = await dailyIntakeByTypeReq.query(`
     SELECT 
       ISNULL(m.Item_Type, 'Unknown') as material_type,
@@ -1382,9 +1388,9 @@ async function getQCSummary() {
     ORDER BY entry_date
   `);
 
-  // 10. Daily completions by material type
+  // 10. Daily completions by material type for selected period
   const dailyCompByTypeReq = db.request();
-  dailyCompByTypeReq.input('curPeriodByType2', sql.NVarChar(6), currentPeriod);
+  dailyCompByTypeReq.input('curPeriodByType2', sql.NVarChar(6), targetPeriod);
   const dailyCompByTypeResult = await dailyCompByTypeReq.query(`
     SELECT 
       ISNULL(m.Item_Type, 'Unknown') as material_type,
@@ -1440,7 +1446,7 @@ async function getQCSummary() {
     itemGroups: groupResult.recordset,
     dailyIntake: dailyIntakeResult.recordset,
     dailyCompletions: dailyCompResult.recordset,
-    currentPeriod,
+    currentPeriod: targetPeriod,
     agingByType: agingByTypeResult.recordset,
     dailyIntakeByType: dailyIntakeByTypeResult.recordset,
     dailyCompletionsByType: dailyCompByTypeResult.recordset,

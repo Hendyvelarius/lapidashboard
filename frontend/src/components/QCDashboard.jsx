@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Chart as ChartJS, ArcElement, BarElement, CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend } from 'chart.js';
+import ChartDataLabels from 'chartjs-plugin-datalabels';
 import { Bar, Line, Doughnut } from 'react-chartjs-2';
 import Sidebar from './Sidebar';
 import Modal from './Modal';
@@ -128,7 +129,7 @@ const QCDashboard = () => {
 
       // Fetch all three endpoints in parallel
       const [summaryRes, inProcessRes, periodRes] = await Promise.all([
-        fetch(buildUrl('/api/qcSummary')),
+        fetch(buildUrl(`/api/qcSummary?period=${selectedPeriod}`)),
         fetch(buildUrl('/api/qcInProcess')),
         fetch(buildUrl(`/api/qcByPeriod?period=${selectedPeriod}`))
       ]);
@@ -158,12 +159,19 @@ const QCDashboard = () => {
     }
   }, [selectedPeriod]);
 
-  // Fetch period data when period changes
+  // Fetch period-dependent data when period changes (summary + period table)
   const fetchPeriodData = useCallback(async () => {
     try {
-      const res = await fetch(apiUrl(`/api/qcByPeriod?period=${selectedPeriod}`));
-      const json = await res.json();
-      setPeriodData(json.data || []);
+      const [summaryRes, periodRes] = await Promise.all([
+        fetch(apiUrl(`/api/qcSummary?period=${selectedPeriod}`)),
+        fetch(apiUrl(`/api/qcByPeriod?period=${selectedPeriod}`))
+      ]);
+      const [summaryJson, periodJson] = await Promise.all([
+        summaryRes.json(),
+        periodRes.json()
+      ]);
+      setSummaryData(summaryJson.data);
+      setPeriodData(periodJson.data || []);
     } catch (err) {
       console.error('Error fetching period data:', err);
     }
@@ -554,7 +562,14 @@ const QCDashboard = () => {
     maintainAspectRatio: false,
     plugins: {
       legend: { position: 'top', labels: { boxWidth: 12, padding: 12, font: { size: 11 } } },
-      tooltip: { mode: 'index', intersect: false }
+      tooltip: { mode: 'index', intersect: false },
+      datalabels: {
+        anchor: 'end',
+        align: 'top',
+        font: { size: 10, weight: 600 },
+        color: '#334155',
+        formatter: (value) => value > 0 ? value : ''
+      }
     },
     scales: {
       x: { grid: { display: false }, ticks: { font: { size: 10 } } },
@@ -669,6 +684,13 @@ const QCDashboard = () => {
         callbacks: {
           label: (ctx) => `${ctx.dataset.label}: ${ctx.raw} hari`
         }
+      },
+      datalabels: {
+        anchor: 'end',
+        align: 'top',
+        font: { size: 9, weight: 600 },
+        color: '#334155',
+        formatter: (value) => value > 0 ? Math.round(value) : ''
       }
     },
     scales: {
@@ -1070,7 +1092,7 @@ const QCDashboard = () => {
                 <div className={`qc-daily-flow-content ${dailyFlowSpin}`}>
                   <div className="qc-chart-container">
                     {dailyFlowByType[dailyFlowRender] ? (
-                      <Bar data={dailyFlowByType[dailyFlowRender]} options={dailyFlowOptions} />
+                      <Bar data={dailyFlowByType[dailyFlowRender]} options={dailyFlowOptions} plugins={[ChartDataLabels]} />
                     ) : (
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8', fontSize: '0.875rem' }}>
                         Tidak ada data {dailyFlowRender}
@@ -1112,7 +1134,7 @@ const QCDashboard = () => {
                 </div>
               </div>
               <div className="qc-chart-container">
-                {leadtimeChartData && <Bar data={leadtimeChartData} options={leadtimeChartOptions} />}
+                {leadtimeChartData && <Bar data={leadtimeChartData} options={leadtimeChartOptions} plugins={[ChartDataLabels]} />}
               </div>
             </div>
           </div>

@@ -536,7 +536,9 @@ async function deleteProductType(req, res) {
 // GET /api/qcSummary - Get QC dashboard summary (KPIs, aging, monthly trend, suppliers, daily flow)
 async function getQCSummary(req, res) {
   try {
-    const data = await getCachedData('qcSummary', () => SqlModel.getQCSummary(), CACHE_TTL.MEDIUM, shouldSkipCache(req));
+    const period = req.query.period || null;
+    const cacheKey = period ? `qcSummary_${period}` : 'qcSummary';
+    const data = await getCachedData(cacheKey, () => SqlModel.getQCSummary(period), CACHE_TTL.MEDIUM, shouldSkipCache(req));
     res.json({ data });
   } catch (err) {
     console.error('Error in fetching QC Summary:', err);
