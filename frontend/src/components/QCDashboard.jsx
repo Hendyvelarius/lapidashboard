@@ -411,7 +411,7 @@ const QCDashboard = () => {
           borderColor: '#e57373',
           borderWidth: 1,
           borderRadius: 4,
-          order: 2
+          order: 1
         },
         {
           label: 'Selesai QC',
@@ -420,7 +420,7 @@ const QCDashboard = () => {
           borderColor: '#66bb6a',
           borderWidth: 1,
           borderRadius: 4,
-          order: 1
+          order: 2
         }
       ]
     };
