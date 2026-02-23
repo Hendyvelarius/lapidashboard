@@ -1027,36 +1027,17 @@ const QCDashboard = () => {
             </div>
           </div>
 
-          {/* ====== Charts Row 1: Aging Doughnut (BB/BK) + Daily Flow ====== */}
+          {/* ====== Charts Row 1: Leadtime 12 Months + Daily Flow ====== */}
           <div className="qc-charts-row">
             <div className="qc-chart-card">
               <div className="qc-chart-header">
                 <div>
-                  <div className="qc-chart-title">QC Aging Distribution</div>
-                  <div className="qc-chart-subtitle">Berapa lama material diproses di QC</div>
+                  <div className="qc-chart-title">Leadtime 12 Months</div>
+                  <div className="qc-chart-subtitle">Rata-rata turnaround QC per bulan (BB vs BK)</div>
                 </div>
               </div>
-              <div className="qc-aging-dual-container">
-                <div className="qc-aging-donut-wrapper">
-                  <div className="qc-aging-donut-label">BB <span>({agingByTypeChartData.BB?.total || 0})</span></div>
-                  <div className="qc-aging-donut-chart">
-                    {agingByTypeChartData.BB && <Doughnut data={agingByTypeChartData.BB} options={agingByTypeChartOptions} />}
-                  </div>
-                </div>
-                <div className="qc-aging-donut-wrapper">
-                  <div className="qc-aging-donut-label">BK <span>({agingByTypeChartData.BK?.total || 0})</span></div>
-                  <div className="qc-aging-donut-chart">
-                    {agingByTypeChartData.BK && <Doughnut data={agingByTypeChartData.BK} options={agingByTypeChartOptions} />}
-                  </div>
-                </div>
-                <div className="qc-aging-legend">
-                  {['0-3 days', '4-7 days', '8-14 days', '15-30 days', '30+ days'].map((label, i) => (
-                    <div key={label} className="qc-aging-legend-item">
-                      <span className="qc-aging-legend-color" style={{ background: ['#22c55e', '#3b82f6', '#f59e0b', '#f97316', '#ef4444'][i] }} />
-                      <span className="qc-aging-legend-text">{label}</span>
-                    </div>
-                  ))}
-                </div>
+              <div className="qc-chart-container">
+                {leadtimeChartData && <Bar data={leadtimeChartData} options={leadtimeChartOptions} plugins={[ChartDataLabels]} />}
               </div>
             </div>
             <div className="qc-chart-card">
@@ -1104,7 +1085,7 @@ const QCDashboard = () => {
             </div>
           </div>
 
-          {/* ====== Charts Row 2: Monthly Trend + Leadtime 12 Months ====== */}
+          {/* ====== Charts Row 2: Monthly Trend + QC Aging Distribution ====== */}
           <div className="qc-charts-row">
             <div className="qc-chart-card">
               <div className="qc-chart-header">
@@ -1129,12 +1110,31 @@ const QCDashboard = () => {
             <div className="qc-chart-card">
               <div className="qc-chart-header">
                 <div>
-                  <div className="qc-chart-title">Leadtime 12 Months</div>
-                  <div className="qc-chart-subtitle">Rata-rata turnaround QC per bulan (BB vs BK)</div>
+                  <div className="qc-chart-title">QC Aging Distribution</div>
+                  <div className="qc-chart-subtitle">Berapa lama material diproses di QC</div>
                 </div>
               </div>
-              <div className="qc-chart-container">
-                {leadtimeChartData && <Bar data={leadtimeChartData} options={leadtimeChartOptions} plugins={[ChartDataLabels]} />}
+              <div className="qc-aging-dual-container">
+                <div className="qc-aging-donut-wrapper">
+                  <div className="qc-aging-donut-label">BB <span>({agingByTypeChartData.BB?.total || 0})</span></div>
+                  <div className="qc-aging-donut-chart">
+                    {agingByTypeChartData.BB && <Doughnut data={agingByTypeChartData.BB} options={agingByTypeChartOptions} />}
+                  </div>
+                </div>
+                <div className="qc-aging-donut-wrapper">
+                  <div className="qc-aging-donut-label">BK <span>({agingByTypeChartData.BK?.total || 0})</span></div>
+                  <div className="qc-aging-donut-chart">
+                    {agingByTypeChartData.BK && <Doughnut data={agingByTypeChartData.BK} options={agingByTypeChartOptions} />}
+                  </div>
+                </div>
+                <div className="qc-aging-legend">
+                  {['0-3 days', '4-7 days', '8-14 days', '15-30 days', '30+ days'].map((label, i) => (
+                    <div key={label} className="qc-aging-legend-item">
+                      <span className="qc-aging-legend-color" style={{ background: ['#22c55e', '#3b82f6', '#f59e0b', '#f97316', '#ef4444'][i] }} />
+                      <span className="qc-aging-legend-text">{label}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
