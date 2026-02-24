@@ -1261,7 +1261,7 @@ async function getQCSummary(period) {
       END
   `);
 
-  // 2. Monthly volume (last 6 months)
+  // 2. Monthly volume (last 13 months)
   const monthlyResult = await db.request().query(`
     SELECT 
       CONVERT(nvarchar(6), DNc_Date, 112) as period,
@@ -1273,7 +1273,7 @@ async function getQCSummary(period) {
       SUM(CASE WHEN DNc_RejectQTY > 0 THEN 1 ELSE 0 END) as has_reject,
       ROUND(SUM(DNc_RejectQTY) * 100.0 / NULLIF(SUM(DNc_ReleaseQTY + DNc_RejectQTY), 0), 2) as reject_pct
     FROM t_dnc_manufacturing
-    WHERE DNc_Date >= DATEADD(month, -6, GETDATE())
+    WHERE DNc_Date >= DATEADD(month, -13, GETDATE())
     GROUP BY CONVERT(nvarchar(6), DNc_Date, 112)
     ORDER BY period ASC
   `);
@@ -1404,7 +1404,7 @@ async function getQCSummary(period) {
     ORDER BY completion_date
   `);
 
-  // 11. Monthly volume by material type (last 6 months)
+  // 11. Monthly volume by material type (last 13 months)
   const monthlyByTypeResult = await db.request().query(`
     SELECT 
       ISNULL(m.Item_Type, 'Unknown') as material_type,
@@ -1417,9 +1417,35 @@ async function getQCSummary(period) {
       ROUND(SUM(d.DNc_RejectQTY) * 100.0 / NULLIF(SUM(d.DNc_ReleaseQTY + d.DNc_RejectQTY), 0), 2) as reject_pct
     FROM t_dnc_manufacturing d
     LEFT JOIN m_item_manufacturing m ON d.DNc_ItemID = m.Item_ID
-    WHERE d.DNc_Date >= DATEADD(month, -6, GETDATE())
+    WHERE d.DNc_Date >= DATEADD(month, -13, GETDATE())
     GROUP BY ISNULL(m.Item_Type, 'Unknown'), CONVERT(nvarchar(6), d.DNc_Date, 112)
     ORDER BY material_type, period ASC
+  `);
+
+  // 11b. Aging by material type YTD (last 13 months) for YTD view
+  const agingByTypeYTDResult = await db.request().query(`
+    SELECT 
+      ISNULL(m.Item_Type, 'Unknown') as material_type,
+      CASE 
+        WHEN DATEDIFF(day, d.DNc_Date, COALESCE(d.DNC_tempellabelDate, GETDATE())) <= 3 THEN '0-3 days'
+        WHEN DATEDIFF(day, d.DNc_Date, COALESCE(d.DNC_tempellabelDate, GETDATE())) <= 7 THEN '4-7 days'
+        WHEN DATEDIFF(day, d.DNc_Date, COALESCE(d.DNC_tempellabelDate, GETDATE())) <= 14 THEN '8-14 days'
+        WHEN DATEDIFF(day, d.DNc_Date, COALESCE(d.DNC_tempellabelDate, GETDATE())) <= 30 THEN '15-30 days'
+        ELSE '30+ days'
+      END as aging_bucket,
+      COUNT(*) as count
+    FROM t_dnc_manufacturing d
+    LEFT JOIN m_item_manufacturing m ON d.DNc_ItemID = m.Item_ID
+    WHERE d.DNc_Date >= DATEADD(month, -13, GETDATE())
+    GROUP BY 
+      ISNULL(m.Item_Type, 'Unknown'),
+      CASE 
+        WHEN DATEDIFF(day, d.DNc_Date, COALESCE(d.DNC_tempellabelDate, GETDATE())) <= 3 THEN '0-3 days'
+        WHEN DATEDIFF(day, d.DNc_Date, COALESCE(d.DNC_tempellabelDate, GETDATE())) <= 7 THEN '4-7 days'
+        WHEN DATEDIFF(day, d.DNc_Date, COALESCE(d.DNC_tempellabelDate, GETDATE())) <= 14 THEN '8-14 days'
+        WHEN DATEDIFF(day, d.DNc_Date, COALESCE(d.DNC_tempellabelDate, GETDATE())) <= 30 THEN '15-30 days'
+        ELSE '30+ days'
+      END
   `);
 
   // 12. Leadtime by month and material type (last 18 months for frontend filtering)
@@ -1448,6 +1474,7 @@ async function getQCSummary(period) {
     dailyCompletions: dailyCompResult.recordset,
     currentPeriod: targetPeriod,
     agingByType: agingByTypeResult.recordset,
+    agingByTypeYTD: agingByTypeYTDResult.recordset,
     dailyIntakeByType: dailyIntakeByTypeResult.recordset,
     dailyCompletionsByType: dailyCompByTypeResult.recordset,
     monthlyByType: monthlyByTypeResult.recordset,

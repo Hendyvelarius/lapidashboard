@@ -101,6 +101,9 @@ const QCDashboard = () => {
   // Monthly trend filter
   const [monthlyFilter, setMonthlyFilter] = useState('all');
 
+  // Aging distribution mode: 'month' (selected period) or 'ytd' (last 13 months)
+  const [agingMode, setAgingMode] = useState('month');
+
   const periodOptions = useMemo(() => getPeriodOptions(), []);
 
   // ============================================
@@ -356,7 +359,7 @@ const QCDashboard = () => {
     if (!summaryData?.monthly) return;
     setDrilldownModal({
       open: true,
-      title: 'Monthly Completion Trend',
+      title: 'Monthly Release Trend',
       type: 'completed',
       items: summaryData.monthly.map((m) => ({ name: periodToLabel(m.period), count: m.completed }))
     });
@@ -445,9 +448,10 @@ const QCDashboard = () => {
     };
   }, [summaryData]);
 
-  // Aging by material type (BB and BK separate donuts)
+  // Aging by material type (BB and BK separate donuts) - supports Month and YTD modes
   const agingByTypeChartData = useMemo(() => {
-    if (!summaryData?.agingByType) return {};
+    const source = agingMode === 'ytd' ? summaryData?.agingByTypeYTD : summaryData?.agingByType;
+    if (!source) return {};
     const order = ['0-3 days', '4-7 days', '8-14 days', '15-30 days', '30+ days'];
     const colors = [
       'rgba(34, 197, 94, 0.8)',
@@ -459,7 +463,7 @@ const QCDashboard = () => {
     const borders = ['#22c55e', '#3b82f6', '#f59e0b', '#f97316', '#ef4444'];
     const result = {};
     ['BB', 'BK'].forEach((type) => {
-      const items = summaryData.agingByType.filter((a) => a.material_type === type);
+      const items = source.filter((a) => a.material_type === type);
       const sorted = order.map((b) => items.find((a) => a.aging_bucket === b) || { aging_bucket: b, count: 0 });
       const total = sorted.reduce((sum, a) => sum + a.count, 0);
       result[type] = {
@@ -474,7 +478,7 @@ const QCDashboard = () => {
       };
     });
     return result;
-  }, [summaryData]);
+  }, [summaryData, agingMode]);
 
   const agingChartOptions = {
     responsive: true,
@@ -577,7 +581,7 @@ const QCDashboard = () => {
     }
   };
 
-  // Monthly trend data with BB/BK separation
+  // Monthly trend data - combined BB/BK when "All", otherwise single type
   const monthlyTrendByTypeData = useMemo(() => {
     if (!summaryData?.monthlyByType) return null;
     const allData = summaryData.monthlyByType;
@@ -592,15 +596,27 @@ const QCDashboard = () => {
     const bb = getTypeData('BB');
     const bk = getTypeData('BK');
 
+    // Combined data: sum totals/completed, weighted-average reject %
+    const combined = {
+      total: periods.map((_, i) => bb.total[i] + bk.total[i]),
+      completed: periods.map((_, i) => bb.completed[i] + bk.completed[i]),
+      rejectPct: periods.map((_, i) => {
+        const totalAll = bb.total[i] + bk.total[i];
+        if (totalAll === 0) return 0;
+        const rejectCount = (bb.total[i] * bb.rejectPct[i] + bk.total[i] * bk.rejectPct[i]) / 100;
+        return Math.round((rejectCount / totalAll) * 100 * 100) / 100;
+      })
+    };
+
+    const source = monthlyFilter === 'BB' ? bb : monthlyFilter === 'BK' ? bk : combined;
+    const suffix = monthlyFilter === 'all' ? '' : ` ${monthlyFilter}`;
+
     return {
       labels: periods.map((p) => periodToLabel(p)),
       datasets: [
-        { label: 'Total BB', data: bb.total, borderColor: '#4f8cff', backgroundColor: 'rgba(79, 140, 255, 0.15)', fill: true, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#4f8cff', hidden: monthlyFilter === 'BK' },
-        { label: 'Completed BB', data: bb.completed, borderColor: '#22c55e', backgroundColor: 'rgba(34, 197, 94, 0.15)', fill: true, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#22c55e', hidden: monthlyFilter === 'BK' },
-        { label: 'Reject % BB', data: bb.rejectPct, borderColor: '#ef4444', borderDash: [5, 5], tension: 0.3, pointRadius: 4, pointBackgroundColor: '#ef4444', yAxisID: 'y1', hidden: monthlyFilter === 'BK' },
-        { label: 'Total BK', data: bk.total, borderColor: '#7c4dff', backgroundColor: 'rgba(124, 77, 255, 0.15)', fill: true, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#7c4dff', hidden: monthlyFilter === 'BB' },
-        { label: 'Completed BK', data: bk.completed, borderColor: '#00bfa5', backgroundColor: 'rgba(0, 191, 165, 0.15)', fill: true, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#00bfa5', hidden: monthlyFilter === 'BB' },
-        { label: 'Reject % BK', data: bk.rejectPct, borderColor: '#ff6e40', borderDash: [8, 4], tension: 0.3, pointRadius: 4, pointBackgroundColor: '#ff6e40', yAxisID: 'y1', hidden: monthlyFilter === 'BB' }
+        { label: `Total${suffix}`, data: source.total, borderColor: '#4f8cff', backgroundColor: 'rgba(79, 140, 255, 0.15)', fill: true, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#4f8cff' },
+        { label: `Released${suffix}`, data: source.completed, borderColor: '#22c55e', backgroundColor: 'rgba(34, 197, 94, 0.15)', fill: true, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#22c55e' },
+        { label: `Reject %${suffix}`, data: source.rejectPct, borderColor: '#ef4444', borderDash: [5, 5], tension: 0.3, pointRadius: 4, pointBackgroundColor: '#ef4444', yAxisID: 'y1' }
       ]
     };
   }, [summaryData, monthlyFilter]);
@@ -971,7 +987,7 @@ const QCDashboard = () => {
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
               </div>
               <div className="qc-kpi-info">
-                <div className="qc-kpi-label">BB Completed</div>
+                <div className="qc-kpi-label">BB Released</div>
                 <div className="qc-kpi-value">{formatNumber(kpiData.bb.completed)}</div>
               </div>
             </div>
@@ -1011,7 +1027,7 @@ const QCDashboard = () => {
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
               </div>
               <div className="qc-kpi-info">
-                <div className="qc-kpi-label">BK Completed</div>
+                <div className="qc-kpi-label">BK Released</div>
                 <div className="qc-kpi-value">{formatNumber(kpiData.bk.completed)}</div>
               </div>
             </div>
@@ -1091,7 +1107,7 @@ const QCDashboard = () => {
               <div className="qc-chart-header">
                 <div>
                   <div className="qc-chart-title">Monthly QC Trend</div>
-                  <div className="qc-chart-subtitle">Volume, completion, dan reject rate 6 bulan terakhir (BB &amp; BK)</div>
+                  <div className="qc-chart-subtitle">Volume, release, dan reject rate 13 bulan terakhir (BB &amp; BK)</div>
                 </div>
                 <div className="qc-monthly-filter">
                   {['all', 'BB', 'BK'].map((f) => (
@@ -1111,7 +1127,16 @@ const QCDashboard = () => {
               <div className="qc-chart-header">
                 <div>
                   <div className="qc-chart-title">QC Aging Distribution</div>
-                  <div className="qc-chart-subtitle">Berapa lama material diproses di QC</div>
+                  <div className="qc-chart-subtitle">{agingMode === 'ytd' ? 'Data 13 bulan terakhir' : `Data bulan ${periodToLabel(selectedPeriod)}`}</div>
+                </div>
+                <div className="qc-monthly-filter">
+                  {[{ key: 'month', label: 'Month' }, { key: 'ytd', label: 'YTD' }].map(({ key, label }) => (
+                    <button
+                      key={key}
+                      className={`qc-filter-btn ${agingMode === key ? 'active' : ''}`}
+                      onClick={() => setAgingMode(key)}
+                    >{label}</button>
+                  ))}
                 </div>
               </div>
               <div className="qc-aging-dual-container">
