@@ -248,7 +248,7 @@ export const PAGE_ACCESS = {
   // Reports Page
   'reports': {
     requireAuth: true,
-    allowedDepartments: ['NT', 'PL', 'PC', 'HC', 'DS'],
+    allowedDepartments: ['NT', 'PL', 'PC', 'HC', 'DS', 'QC', 'MC', 'QA'],
     allowedUserIds: ['JDV', 'HWA'],
     allowedJobLevels: [],
     specificCombinations: [],
