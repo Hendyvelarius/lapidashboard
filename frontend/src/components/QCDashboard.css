@@ -603,6 +603,74 @@
   font-size: 0.9rem;
 }
 
+/* ============ KPI Drilldown Item Table ============ */
+
+.qc-drilldown-table-wrapper {
+  overflow: auto;
+  min-width: 0;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.qc-drilldown-table {
+  width: 100%;
+  min-width: 620px;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.qc-drilldown-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.qc-drilldown-table th {
+  background: #f1f5f9;
+  color: #475569;
+  font-weight: 600;
+  padding: 0.5rem 0.625rem;
+  text-align: left;
+  border-bottom: 2px solid #e2e8f0;
+  white-space: nowrap;
+}
+
+.qc-drilldown-table td {
+  padding: 0.45rem 0.625rem;
+  border-bottom: 1px solid #f1f5f9;
+  color: #334155;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.qc-drilldown-table-row {
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.qc-drilldown-table-row:hover {
+  background: #f0f9ff;
+}
+
+.qc-drilldown-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.qc-td-mono {
+  font-family: 'Courier New', monospace;
+  color: #64748b;
+  font-size: 0.75rem;
+}
+
+.qc-td-right {
+  text-align: right;
+}
+
+.qc-td-reject {
+  color: #ef4444;
+  font-weight: 600;
+}
+
 /* ============ Pagination ============ */
 
 .qc-pagination {

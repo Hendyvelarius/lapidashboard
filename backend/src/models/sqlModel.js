@@ -1227,6 +1227,45 @@ async function getQCByPeriod(period) {
 }
 
 /**
+ * Get items completed in QC during a specific period (by completion date, YYYYMM)
+ */
+async function getQCCompletedByPeriod(period) {
+  const db = await connect();
+  const request = db.request();
+  request.input('period', sql.NVarChar(6), period);
+  const result = await request.query(`
+    SELECT 
+      d.DNc_No,
+      d.DNc_Date,
+      d.DNc_ItemID,
+      m.Item_Name,
+      m.Item_Group,
+      ISNULL(m.Item_Type, 'Unknown') as Item_Type,
+      d.DNc_SuppName,
+      d.DNc_PrcName,
+      d.DNC_BatchNo,
+      d.DNc_ReleaseQTY,
+      d.DNc_RejectQTY,
+      d.DNc_UnitID,
+      d.DNc_InspectionDate,
+      d.DNc_Inspektor,
+      d.DNC_tempellabelDate,
+      d.DNc_SampleDate,
+      d.DNc_SampleBy,
+      d.DNc_ReleaseRemark,
+      d.DNc_RejectRemark,
+      d.alasan_Reject,
+      DATEDIFF(day, d.DNc_Date, d.DNC_tempellabelDate) as TurnaroundDays
+    FROM t_dnc_manufacturing d
+    LEFT JOIN m_item_manufacturing m ON d.DNc_ItemID = m.Item_ID
+    WHERE d.DNC_tempellabelDate IS NOT NULL
+      AND CONVERT(nvarchar(6), d.DNC_tempellabelDate, 112) = @period
+    ORDER BY d.DNC_tempellabelDate DESC
+  `);
+  return result.recordset;
+}
+
+/**
  * Get QC summary statistics for dashboard cards and charts.
  * Returns monthly volume, aging, supplier breakdown, and turnaround in one call.
  */
@@ -1352,23 +1391,24 @@ async function getQCSummary(period) {
     SELECT 
       ISNULL(m.Item_Type, 'Unknown') as material_type,
       CASE 
-        WHEN DATEDIFF(day, d.DNc_Date, COALESCE(d.DNC_tempellabelDate, GETDATE())) <= 3 THEN '0-3 days'
-        WHEN DATEDIFF(day, d.DNc_Date, COALESCE(d.DNC_tempellabelDate, GETDATE())) <= 7 THEN '4-7 days'
-        WHEN DATEDIFF(day, d.DNc_Date, COALESCE(d.DNC_tempellabelDate, GETDATE())) <= 14 THEN '8-14 days'
-        WHEN DATEDIFF(day, d.DNc_Date, COALESCE(d.DNC_tempellabelDate, GETDATE())) <= 30 THEN '15-30 days'
+        WHEN DATEDIFF(day, d.DNc_Date, d.DNC_tempellabelDate) <= 3 THEN '0-3 days'
+        WHEN DATEDIFF(day, d.DNc_Date, d.DNC_tempellabelDate) <= 7 THEN '4-7 days'
+        WHEN DATEDIFF(day, d.DNc_Date, d.DNC_tempellabelDate) <= 14 THEN '8-14 days'
+        WHEN DATEDIFF(day, d.DNc_Date, d.DNC_tempellabelDate) <= 30 THEN '15-30 days'
         ELSE '30+ days'
       END as aging_bucket,
       COUNT(*) as count
     FROM t_dnc_manufacturing d
     LEFT JOIN m_item_manufacturing m ON d.DNc_ItemID = m.Item_ID
-    WHERE CONVERT(nvarchar(6), d.DNc_Date, 112) = @agingByTypePeriod
+    WHERE d.DNC_tempellabelDate IS NOT NULL
+      AND CONVERT(nvarchar(6), d.DNC_tempellabelDate, 112) = @agingByTypePeriod
     GROUP BY 
       ISNULL(m.Item_Type, 'Unknown'),
       CASE 
-        WHEN DATEDIFF(day, d.DNc_Date, COALESCE(d.DNC_tempellabelDate, GETDATE())) <= 3 THEN '0-3 days'
-        WHEN DATEDIFF(day, d.DNc_Date, COALESCE(d.DNC_tempellabelDate, GETDATE())) <= 7 THEN '4-7 days'
-        WHEN DATEDIFF(day, d.DNc_Date, COALESCE(d.DNC_tempellabelDate, GETDATE())) <= 14 THEN '8-14 days'
-        WHEN DATEDIFF(day, d.DNc_Date, COALESCE(d.DNC_tempellabelDate, GETDATE())) <= 30 THEN '15-30 days'
+        WHEN DATEDIFF(day, d.DNc_Date, d.DNC_tempellabelDate) <= 3 THEN '0-3 days'
+        WHEN DATEDIFF(day, d.DNc_Date, d.DNC_tempellabelDate) <= 7 THEN '4-7 days'
+        WHEN DATEDIFF(day, d.DNc_Date, d.DNC_tempellabelDate) <= 14 THEN '8-14 days'
+        WHEN DATEDIFF(day, d.DNc_Date, d.DNC_tempellabelDate) <= 30 THEN '15-30 days'
         ELSE '30+ days'
       END
   `);
@@ -1427,23 +1467,24 @@ async function getQCSummary(period) {
     SELECT 
       ISNULL(m.Item_Type, 'Unknown') as material_type,
       CASE 
-        WHEN DATEDIFF(day, d.DNc_Date, COALESCE(d.DNC_tempellabelDate, GETDATE())) <= 3 THEN '0-3 days'
-        WHEN DATEDIFF(day, d.DNc_Date, COALESCE(d.DNC_tempellabelDate, GETDATE())) <= 7 THEN '4-7 days'
-        WHEN DATEDIFF(day, d.DNc_Date, COALESCE(d.DNC_tempellabelDate, GETDATE())) <= 14 THEN '8-14 days'
-        WHEN DATEDIFF(day, d.DNc_Date, COALESCE(d.DNC_tempellabelDate, GETDATE())) <= 30 THEN '15-30 days'
+        WHEN DATEDIFF(day, d.DNc_Date, d.DNC_tempellabelDate) <= 3 THEN '0-3 days'
+        WHEN DATEDIFF(day, d.DNc_Date, d.DNC_tempellabelDate) <= 7 THEN '4-7 days'
+        WHEN DATEDIFF(day, d.DNc_Date, d.DNC_tempellabelDate) <= 14 THEN '8-14 days'
+        WHEN DATEDIFF(day, d.DNc_Date, d.DNC_tempellabelDate) <= 30 THEN '15-30 days'
         ELSE '30+ days'
       END as aging_bucket,
       COUNT(*) as count
     FROM t_dnc_manufacturing d
     LEFT JOIN m_item_manufacturing m ON d.DNc_ItemID = m.Item_ID
-    WHERE d.DNc_Date >= DATEADD(month, -13, GETDATE())
+    WHERE d.DNC_tempellabelDate IS NOT NULL
+      AND d.DNC_tempellabelDate >= DATEADD(month, -13, GETDATE())
     GROUP BY 
       ISNULL(m.Item_Type, 'Unknown'),
       CASE 
-        WHEN DATEDIFF(day, d.DNc_Date, COALESCE(d.DNC_tempellabelDate, GETDATE())) <= 3 THEN '0-3 days'
-        WHEN DATEDIFF(day, d.DNc_Date, COALESCE(d.DNC_tempellabelDate, GETDATE())) <= 7 THEN '4-7 days'
-        WHEN DATEDIFF(day, d.DNc_Date, COALESCE(d.DNC_tempellabelDate, GETDATE())) <= 14 THEN '8-14 days'
-        WHEN DATEDIFF(day, d.DNc_Date, COALESCE(d.DNC_tempellabelDate, GETDATE())) <= 30 THEN '15-30 days'
+        WHEN DATEDIFF(day, d.DNc_Date, d.DNC_tempellabelDate) <= 3 THEN '0-3 days'
+        WHEN DATEDIFF(day, d.DNc_Date, d.DNC_tempellabelDate) <= 7 THEN '4-7 days'
+        WHEN DATEDIFF(day, d.DNc_Date, d.DNC_tempellabelDate) <= 14 THEN '8-14 days'
+        WHEN DATEDIFF(day, d.DNc_Date, d.DNC_tempellabelDate) <= 30 THEN '15-30 days'
         ELSE '30+ days'
       END
   `);
@@ -1463,6 +1504,24 @@ async function getQCSummary(period) {
     ORDER BY period ASC, material_type
   `);
 
+  // 13. Released count by material type grouped by completion month (for KPI cards)
+  const releasedByTypeResult = await db.request().query(`
+    SELECT 
+      ISNULL(m.Item_Type, 'Unknown') as material_type,
+      CONVERT(nvarchar(6), d.DNC_tempellabelDate, 112) as period,
+      COUNT(*) as completed,
+      SUM(d.DNc_ReleaseQTY) as total_released,
+      SUM(d.DNc_RejectQTY) as total_rejected,
+      SUM(CASE WHEN d.DNc_RejectQTY > 0 THEN 1 ELSE 0 END) as has_reject,
+      ROUND(SUM(d.DNc_RejectQTY) * 100.0 / NULLIF(SUM(d.DNc_ReleaseQTY + d.DNc_RejectQTY), 0), 2) as reject_pct
+    FROM t_dnc_manufacturing d
+    LEFT JOIN m_item_manufacturing m ON d.DNc_ItemID = m.Item_ID
+    WHERE d.DNC_tempellabelDate IS NOT NULL
+      AND d.DNC_tempellabelDate >= DATEADD(month, -13, GETDATE())
+    GROUP BY ISNULL(m.Item_Type, 'Unknown'), CONVERT(nvarchar(6), d.DNC_tempellabelDate, 112)
+    ORDER BY material_type, period ASC
+  `);
+
   return {
     totalInQC: totalInQC.recordset[0].total,
     aging: agingResult.recordset,
@@ -1478,8 +1537,9 @@ async function getQCSummary(period) {
     dailyIntakeByType: dailyIntakeByTypeResult.recordset,
     dailyCompletionsByType: dailyCompByTypeResult.recordset,
     monthlyByType: monthlyByTypeResult.recordset,
-    leadtimeMonthly: leadtimeMonthlyResult.recordset
+    leadtimeMonthly: leadtimeMonthlyResult.recordset,
+    releasedByType: releasedByTypeResult.recordset
   };
 }
 
-module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTSummary, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getQCInProcess, getQCByPeriod, getQCSummary};
+module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTSummary, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getQCSummary};

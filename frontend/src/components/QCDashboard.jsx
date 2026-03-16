@@ -77,6 +77,7 @@ const QCDashboard = () => {
   const [summaryData, setSummaryData] = useState(null);
   const [inProcessData, setInProcessData] = useState([]);
   const [periodData, setPeriodData] = useState([]);
+  const [completedData, setCompletedData] = useState([]);
   const [selectedPeriod, setSelectedPeriod] = useState(getCurrentPeriod());
   const [lastRefreshTime, setLastRefreshTime] = useState(null);
 
@@ -117,10 +118,11 @@ const QCDashboard = () => {
     // Try cache first
     if (!skipCache) {
       const cached = loadQCCache();
-      if (cached) {
+      if (cached && cached.completedData && cached.summaryData?.releasedByType) {
         setSummaryData(cached.summaryData);
         setInProcessData(cached.inProcessData || []);
         setPeriodData(cached.periodData || []);
+        setCompletedData(cached.completedData || []);
         setLastRefreshTime(cached.fetchTime);
         setLoading(false);
         return;
@@ -130,30 +132,34 @@ const QCDashboard = () => {
     try {
       const buildUrl = (path) => skipCache ? apiUrlWithRefresh(path, true) : apiUrl(path);
 
-      // Fetch all three endpoints in parallel
-      const [summaryRes, inProcessRes, periodRes] = await Promise.all([
+      // Fetch all four endpoints in parallel
+      const [summaryRes, inProcessRes, periodRes, completedRes] = await Promise.all([
         fetch(buildUrl(`/api/qcSummary?period=${selectedPeriod}`)),
         fetch(buildUrl('/api/qcInProcess')),
-        fetch(buildUrl(`/api/qcByPeriod?period=${selectedPeriod}`))
+        fetch(buildUrl(`/api/qcByPeriod?period=${selectedPeriod}`)),
+        fetch(buildUrl(`/api/qcCompletedByPeriod?period=${selectedPeriod}`))
       ]);
 
-      const [summaryJson, inProcessJson, periodJson] = await Promise.all([
+      const [summaryJson, inProcessJson, periodJson, completedJson] = await Promise.all([
         summaryRes.json(),
         inProcessRes.json(),
-        periodRes.json()
+        periodRes.json(),
+        completedRes.json()
       ]);
 
       const summary = summaryJson.data;
       const inProcess = inProcessJson.data || [];
       const period = periodJson.data || [];
+      const completed = completedJson.data || [];
 
       setSummaryData(summary);
       setInProcessData(inProcess);
       setPeriodData(period);
+      setCompletedData(completed);
       setLastRefreshTime(new Date());
 
       // Save to cache
-      saveQCCache({ summaryData: summary, inProcessData: inProcess, periodData: period });
+      saveQCCache({ summaryData: summary, inProcessData: inProcess, periodData: period, completedData: completed });
     } catch (err) {
       console.error('Error fetching QC data:', err);
       setError('Gagal mengambil data QC. Silakan coba lagi.');
@@ -165,16 +171,19 @@ const QCDashboard = () => {
   // Fetch period-dependent data when period changes (summary + period table)
   const fetchPeriodData = useCallback(async () => {
     try {
-      const [summaryRes, periodRes] = await Promise.all([
+      const [summaryRes, periodRes, completedRes] = await Promise.all([
         fetch(apiUrl(`/api/qcSummary?period=${selectedPeriod}`)),
-        fetch(apiUrl(`/api/qcByPeriod?period=${selectedPeriod}`))
+        fetch(apiUrl(`/api/qcByPeriod?period=${selectedPeriod}`)),
+        fetch(apiUrl(`/api/qcCompletedByPeriod?period=${selectedPeriod}`))
       ]);
-      const [summaryJson, periodJson] = await Promise.all([
+      const [summaryJson, periodJson, completedJson] = await Promise.all([
         summaryRes.json(),
-        periodRes.json()
+        periodRes.json(),
+        completedRes.json()
       ]);
       setSummaryData(summaryJson.data);
       setPeriodData(periodJson.data || []);
+      setCompletedData(completedJson.data || []);
     } catch (err) {
       console.error('Error fetching period data:', err);
     }
@@ -298,84 +307,82 @@ const QCDashboard = () => {
     if (!summaryData) return empty;
     const cp = summaryData.currentPeriod;
 
-    // In-progress count by type (from agingByType)
-    const bbPending = (summaryData.agingByType || []).filter((a) => a.material_type === 'BB').reduce((s, a) => s + a.count, 0);
-    const bkPending = (summaryData.agingByType || []).filter((a) => a.material_type === 'BK').reduce((s, a) => s + a.count, 0);
+    // In-progress count by type (from inProcessData – items still awaiting QC completion)
+    const bbPending = inProcessData.filter((d) => d.Item_Type === 'BB').length;
+    const bkPending = inProcessData.filter((d) => d.Item_Type === 'BK').length;
 
     // Leadtime by type (from leadtimeMonthly for current period)
     const bbLead = (summaryData.leadtimeMonthly || []).find((d) => d.material_type === 'BB' && d.period === cp);
     const bkLead = (summaryData.leadtimeMonthly || []).find((d) => d.material_type === 'BK' && d.period === cp);
 
-    // Monthly by type for current period
-    const bbMonth = (summaryData.monthlyByType || []).find((d) => d.material_type === 'BB' && d.period === cp);
-    const bkMonth = (summaryData.monthlyByType || []).find((d) => d.material_type === 'BK' && d.period === cp);
+    // Released by type (grouped by completion month, not entry month)
+    const bbReleased = (summaryData.releasedByType || []).find((d) => d.material_type === 'BB' && d.period === cp);
+    const bkReleased = (summaryData.releasedByType || []).find((d) => d.material_type === 'BK' && d.period === cp);
 
     return {
       bb: {
         pending: bbPending,
         avgDays: bbLead ? Math.round(bbLead.avg_turnaround * 10) / 10 : 0,
-        completed: bbMonth?.completed || 0,
-        rejectPct: bbMonth?.reject_pct || 0
+        completed: bbReleased?.completed || 0,
+        rejectPct: bbReleased?.reject_pct || 0
       },
       bk: {
         pending: bkPending,
         avgDays: bkLead ? Math.round(bkLead.avg_turnaround * 10) / 10 : 0,
-        completed: bkMonth?.completed || 0,
-        rejectPct: bkMonth?.reject_pct || 0
+        completed: bkReleased?.completed || 0,
+        rejectPct: bkReleased?.reject_pct || 0
       }
     };
-  }, [summaryData]);
+  }, [summaryData, inProcessData]);
 
   // ============================================
   // KPI Click Handlers (drilldowns)
   // ============================================
 
-  const handleKPIPendingClick = () => {
-    if (!summaryData?.aging) return;
-    setDrilldownModal({
-      open: true,
-      title: `Items Currently In QC (${kpiData.bb.pending + kpiData.bk.pending})`,
-      type: 'aging',
-      items: summaryData.aging.map((a) => ({ name: a.aging_bucket, count: a.count }))
-    });
+  const handleBBInProgressClick = () => {
+    const items = inProcessData.filter((d) => d.Item_Type === 'BB');
+    setDrilldownModal({ open: true, title: `BB In Progress (${items.length})`, type: 'item-inprogress', items });
   };
 
-  const handleKPITurnaroundClick = () => {
-    if (!summaryData?.turnaround) return;
-    const t = summaryData.turnaround;
-    setDrilldownModal({
-      open: true,
-      title: `QC Turnaround - ${periodToLabel(summaryData.currentPeriod)}`,
-      type: 'turnaround',
-      items: [
-        { name: 'Average', count: `${t.avg_days || 0} hari` },
-        { name: 'Minimum', count: `${t.min_days || 0} hari` },
-        { name: 'Maximum', count: `${t.max_days || 0} hari` }
-      ]
-    });
+  const handleBKInProgressClick = () => {
+    const items = inProcessData.filter((d) => d.Item_Type === 'BK');
+    setDrilldownModal({ open: true, title: `BK In Progress (${items.length})`, type: 'item-inprogress', items });
   };
 
-  const handleKPICompletedClick = () => {
-    if (!summaryData?.monthly) return;
-    setDrilldownModal({
-      open: true,
-      title: 'Monthly Release Trend',
-      type: 'completed',
-      items: summaryData.monthly.map((m) => ({ name: periodToLabel(m.period), count: m.completed }))
-    });
+  const handleBBLeadtimeClick = () => {
+    const cp = summaryData?.currentPeriod;
+    const items = completedData.filter((d) => d.Item_Type === 'BB');
+    setDrilldownModal({ open: true, title: `Leadtime BB – ${periodToLabel(cp)} (${items.length} selesai)`, type: 'item-leadtime', items });
   };
 
-  const handleKPIRejectClick = () => {
-    if (!summaryData?.monthly) return;
-    setDrilldownModal({
-      open: true,
-      title: 'Monthly Reject Rate Trend',
-      type: 'reject',
-      items: summaryData.monthly.map((m) => ({
-        name: periodToLabel(m.period),
-        count: `${m.reject_pct || 0}%  (${formatNumber(m.total_rejected)} rejected)`
-      }))
-    });
+  const handleBKLeadtimeClick = () => {
+    const cp = summaryData?.currentPeriod;
+    const items = completedData.filter((d) => d.Item_Type === 'BK');
+    setDrilldownModal({ open: true, title: `Leadtime BK – ${periodToLabel(cp)} (${items.length} selesai)`, type: 'item-leadtime', items });
+  };
+
+  const handleBBReleasedClick = () => {
+    const cp = summaryData?.currentPeriod;
+    const items = completedData.filter((d) => d.Item_Type === 'BB');
+    setDrilldownModal({ open: true, title: `BB Released – ${periodToLabel(cp)} (${items.length} batch)`, type: 'item-released', items });
+  };
+
+  const handleBKReleasedClick = () => {
+    const cp = summaryData?.currentPeriod;
+    const items = completedData.filter((d) => d.Item_Type === 'BK');
+    setDrilldownModal({ open: true, title: `BK Released – ${periodToLabel(cp)} (${items.length} batch)`, type: 'item-released', items });
+  };
+
+  const handleBBRejectClick = () => {
+    const cp = summaryData?.currentPeriod;
+    const items = completedData.filter((d) => d.Item_Type === 'BB' && d.DNc_RejectQTY > 0);
+    setDrilldownModal({ open: true, title: `Reject Rate BB – ${periodToLabel(cp)} (${items.length} batch)`, type: 'item-reject', items });
+  };
+
+  const handleBKRejectClick = () => {
+    const cp = summaryData?.currentPeriod;
+    const items = completedData.filter((d) => d.Item_Type === 'BK' && d.DNc_RejectQTY > 0);
+    setDrilldownModal({ open: true, title: `Reject Rate BK – ${periodToLabel(cp)} (${items.length} batch)`, type: 'item-reject', items });
   };
 
   // ============================================
@@ -866,6 +873,71 @@ const QCDashboard = () => {
   // ============================================
 
   const renderDrilldownModal = () => {
+    const itemTableTypes = ['item-inprogress', 'item-leadtime', 'item-released', 'item-reject'];
+    if (itemTableTypes.includes(drilldownModal.type)) {
+      const rows = drilldownModal.items;
+      const type = drilldownModal.type;
+      const isInProgress = type === 'item-inprogress';
+      const isReject = type === 'item-reject';
+      return (
+        <Modal open={drilldownModal.open} onClose={() => setDrilldownModal({ open: false, title: '', items: [], type: '' })} title={drilldownModal.title}>
+          <div className="qc-drilldown-table-wrapper">
+            <table className="qc-drilldown-table">
+              <thead>
+                <tr>
+                  <th>Kode</th>
+                  <th>Nama Material</th>
+                  <th>Batch No</th>
+                  {isInProgress && <><th>Supplier</th><th>Masuk QC</th><th>Hari di QC</th></>}
+                  {!isInProgress && !isReject && <><th>Released Qty</th><th>Masuk QC</th><th>Selesai</th><th>Turnaround</th></>}
+                  {isReject && <><th>Released Qty</th><th>Reject Qty</th><th>Masuk QC</th><th>Selesai</th></>}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.length === 0 && (
+                  <tr><td colSpan={7} style={{ textAlign: 'center', color: '#94a3b8', padding: '1.5rem' }}>Tidak ada data.</td></tr>
+                )}
+                {rows.map((d, idx) => (
+                  <tr
+                    key={idx}
+                    className="qc-drilldown-table-row"
+                    onClick={() => { setDrilldownModal({ open: false, title: '', items: [], type: '' }); setDetailModal({ open: true, item: d }); }}
+                  >
+                    <td className="qc-td-mono">{d.DNc_ItemID}</td>
+                    <td>{d.Item_Name || '-'}</td>
+                    <td className="qc-td-mono">{d.DNC_BatchNo || '-'}</td>
+                    {isInProgress && (
+                      <>
+                        <td>{d.DNc_SuppName || '-'}</td>
+                        <td>{formatDate(d.DNc_Date)}</td>
+                        <td><span className={`qc-aging-badge ${getAgingColor(d.DaysInQC)}`}>{d.DaysInQC} hari</span></td>
+                      </>
+                    )}
+                    {!isInProgress && !isReject && (
+                      <>
+                        <td className="qc-td-right">{d.DNc_ReleaseQTY > 0 ? `${formatNumber(d.DNc_ReleaseQTY)} ${d.DNc_UnitID || ''}` : '-'}</td>
+                        <td>{formatDate(d.DNc_Date)}</td>
+                        <td>{formatDate(d.DNC_tempellabelDate)}</td>
+                        <td className="qc-td-right">{d.TurnaroundDays != null ? `${d.TurnaroundDays} hari` : '-'}</td>
+                      </>
+                    )}
+                    {isReject && (
+                      <>
+                        <td className="qc-td-right">{d.DNc_ReleaseQTY > 0 ? `${formatNumber(d.DNc_ReleaseQTY)} ${d.DNc_UnitID || ''}` : '-'}</td>
+                        <td className="qc-td-right qc-td-reject">{formatNumber(d.DNc_RejectQTY)} {d.DNc_UnitID || ''}</td>
+                        <td>{formatDate(d.DNc_Date)}</td>
+                        <td>{formatDate(d.DNC_tempellabelDate)}</td>
+                      </>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Modal>
+      );
+    }
+
     return (
       <Modal open={drilldownModal.open} onClose={() => setDrilldownModal({ open: false, title: '', items: [], type: '' })} title={drilldownModal.title}>
         <div className="qc-drilldown-list">
@@ -962,7 +1034,7 @@ const QCDashboard = () => {
 
           {/* ====== KPI Cards (BB/BK split) ====== */}
           <div className="qc-kpi-row">
-            <div className="qc-kpi-card" onClick={handleKPIPendingClick}>
+            <div className="qc-kpi-card" onClick={handleBBInProgressClick}>
               <div className="qc-kpi-icon pending">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
               </div>
@@ -972,7 +1044,7 @@ const QCDashboard = () => {
               </div>
             </div>
 
-            <div className="qc-kpi-card" onClick={handleKPITurnaroundClick}>
+            <div className="qc-kpi-card" onClick={handleBBLeadtimeClick}>
               <div className="qc-kpi-icon turnaround">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
               </div>
@@ -982,7 +1054,7 @@ const QCDashboard = () => {
               </div>
             </div>
 
-            <div className="qc-kpi-card" onClick={handleKPICompletedClick}>
+            <div className="qc-kpi-card" onClick={handleBBReleasedClick}>
               <div className="qc-kpi-icon completed">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
               </div>
@@ -992,7 +1064,7 @@ const QCDashboard = () => {
               </div>
             </div>
 
-            <div className="qc-kpi-card" onClick={handleKPIRejectClick}>
+            <div className="qc-kpi-card" onClick={handleBBRejectClick}>
               <div className="qc-kpi-icon rejected">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
               </div>
@@ -1002,7 +1074,7 @@ const QCDashboard = () => {
               </div>
             </div>
 
-            <div className="qc-kpi-card" onClick={handleKPIPendingClick}>
+            <div className="qc-kpi-card" onClick={handleBKInProgressClick}>
               <div className="qc-kpi-icon pending">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
               </div>
@@ -1012,7 +1084,7 @@ const QCDashboard = () => {
               </div>
             </div>
 
-            <div className="qc-kpi-card" onClick={handleKPITurnaroundClick}>
+            <div className="qc-kpi-card" onClick={handleBKLeadtimeClick}>
               <div className="qc-kpi-icon turnaround">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
               </div>
@@ -1022,7 +1094,7 @@ const QCDashboard = () => {
               </div>
             </div>
 
-            <div className="qc-kpi-card" onClick={handleKPICompletedClick}>
+            <div className="qc-kpi-card" onClick={handleBKReleasedClick}>
               <div className="qc-kpi-icon completed">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
               </div>
@@ -1032,7 +1104,7 @@ const QCDashboard = () => {
               </div>
             </div>
 
-            <div className="qc-kpi-card" onClick={handleKPIRejectClick}>
+            <div className="qc-kpi-card" onClick={handleBKRejectClick}>
               <div className="qc-kpi-icon rejected">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
               </div>

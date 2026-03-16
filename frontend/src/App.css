@@ -55,7 +55,7 @@
   flex-direction: column;
   gap: 18px;
   overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: auto;
   flex: 1;
   min-height: 0;
 }

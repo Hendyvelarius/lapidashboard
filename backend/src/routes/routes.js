@@ -80,6 +80,7 @@ router.get('/holidays', SqlController.getHolidays);
 router.get('/qcSummary', SqlController.getQCSummary);
 router.get('/qcInProcess', SqlController.getQCInProcess);
 router.get('/qcByPeriod', SqlController.getQCByPeriod);
+router.get('/qcCompletedByPeriod', SqlController.getQCCompletedByPeriod);
 
 // ============================================
 // Product Type (Jenis Sediaan) Management Routes
