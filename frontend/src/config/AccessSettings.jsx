@@ -195,10 +195,15 @@ export const PAGE_ACCESS = {
   // QC (Quality Control) Dashboard
   'quality-control': {
     requireAuth: true,
-    allowedDepartments: ['NT', 'QC', 'PL'],
-    allowedUserIds: [],
+    allowedDepartments: ['PL'],
+    allowedUserIds: ['HWA', 'GWN', 'DNY'],
     allowedJobLevels: [],
-    specificCombinations: [],
+    specificCombinations: [
+      { department: 'QC', jobLevel: 'MGR' },
+      { department: 'QC', jobLevel: 'ASM' },
+      { department: 'QC', jobLevel: 'SPV' },
+      { department: 'QC', jobLevel: 'OFC' },
+    ],
   },
 
   // WIP Report Page
