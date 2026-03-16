@@ -196,7 +196,7 @@ export const PAGE_ACCESS = {
   'quality-control': {
     requireAuth: true,
     allowedDepartments: ['PL'],
-    allowedUserIds: ['HWA', 'GWN', 'DNY'],
+    allowedUserIds: ['HWA', 'GWN', 'DNY', '1526'],
     allowedJobLevels: [],
     specificCombinations: [
       { department: 'QC', jobLevel: 'MGR' },
