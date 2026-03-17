@@ -580,6 +580,7 @@ async function getWIPData() {
  from t_alur_proses a 
  left join (select Product_ID, Batch_No, Batch_Date from t_alur_proses where nama_tahapan like '%tempel%label' and EndDate is not null) xy on xy.Product_ID=a.Product_ID and xy.Batch_No = a.Batch_No and xy.Batch_Date=a.Batch_Date
  left join (select * from t_dnc_product where isnull(DNC_TempelLabel,'')<>'') b on a.Batch_No=b.DNc_BatchNo and a.Product_ID = b.DNc_ProductID --and a.Batch_Date =b.DNC_BatchDate
+ left join t_wip_batal wb on a.Batch_No = wb.wip_batchno and a.Product_ID = wb.wip_productID
  join (select distinct Batch_No, Batch_Date, Product_ID from t_rfid_batch_card where isActive=1 and Batch_Status='Open') c on c.Product_ID = a.Product_ID and c.Batch_Date=a.Batch_Date and c.Batch_No = a.Batch_No
  left join m_tahapan_group grp on a.kode_tahapan= grp.kode_tahapan
  join m_product prod on a.Product_ID = prod.Product_ID
@@ -600,6 +601,7 @@ async function getWIPData() {
  where
   --a.Batch_No='FP025' and
  b.DNc_BatchNo is null and
+ wb.wip_batchno is null and
  REPLACE(LEFT(a.Batch_Date, 7), '/', '') between CONVERT(nvarchar(6), dateadd(month,-12,GETDATE()), 112) and CONVERT(nvarchar(6), GETDATE(), 112)
 and (prod.Product_Name  not like '%Granulat%') 
 and not (a.Batch_No ='CY3A01' or a.Batch_No ='BI063' or a.Batch_No ='PI3L01')
