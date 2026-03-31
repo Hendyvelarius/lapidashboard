@@ -573,59 +573,101 @@ async function getLeadTime(period = 'MTD') {
 
 async function getWIPData() {
   const db = await connect();
+  // Optimized: broken into temp-table steps to avoid SQL Server 2008 R2 optimizer
+  // picking a bad execution plan when 10+ tables are joined in a single statement.
+  // Original single-statement query timed out at >300s; this approach runs in ~10s.
   const query = `
- select a.Product_ID, a.Batch_No, a.Batch_Date, a.nama_tahapan, a.kode_tahapan, a.StartDate, a.EndDate, urutan,  grp.tahapan_group,
- Product_Name, gp.Group_Dept, sediaan.Jenis_Sediaan, Prev_Step, Display
- into #tmpData
- from t_alur_proses a 
- left join (select Product_ID, Batch_No, Batch_Date from t_alur_proses where nama_tahapan like '%tempel%label' and EndDate is not null) xy on xy.Product_ID=a.Product_ID and xy.Batch_No = a.Batch_No and xy.Batch_Date=a.Batch_Date
- left join (select * from t_dnc_product where isnull(DNC_TempelLabel,'')<>'') b on a.Batch_No=b.DNc_BatchNo and a.Product_ID = b.DNc_ProductID --and a.Batch_Date =b.DNC_BatchDate
- left join t_wip_batal wb on a.Batch_No = wb.wip_batchno and a.Product_ID = wb.wip_productID
- join (select distinct Batch_No, Batch_Date, Product_ID from t_rfid_batch_card where isActive=1 and Batch_Status='Open') c on c.Product_ID = a.Product_ID and c.Batch_Date=a.Batch_Date and c.Batch_No = a.Batch_No
- left join m_tahapan_group grp on a.kode_tahapan= grp.kode_tahapan
- join m_product prod on a.Product_ID = prod.Product_ID
- left join m_product_pn_group gp on gp.Group_ProductID = a.Product_ID and replace(Group_Periode,' ','') = CONVERT(varchar(6), getdate(),112)
- left join m_product_sediaan_produksi sediaan on sediaan.Product_ID=a.Product_ID
- -- Check if any Timbang process has started (StartDate is not null) - fixed to show batches as soon as any Timbang process starts
- left join (
-			select distinct Batch_No, Batch_Date, Product_ID from t_alur_proses ap
-            inner join m_tahapan_group mtg on ap.kode_tahapan = mtg.kode_tahapan
-            where mtg.tahapan_group = 'Timbang'
-            and ap.StartDate is not null
-            ) timbangStarted on timbangStarted.Batch_Date=a.Batch_Date and timbangStarted.Batch_No=a.Batch_No and timbangStarted.Product_ID=a.Product_ID
- -- Check if Terima Bahan Baku has completed (for production stage entry)
- left join (
-			select distinct Batch_No, Batch_Date, Product_ID, EndDate from t_alur_proses where ltrim(rtrim(nama_tahapan)) like 'Terima Bahan Baku'
-            and EndDate is not null
-            ) mulaiProd on mulaiProd.Batch_Date=a.Batch_Date and mulaiProd.Batch_No=a.Batch_No and mulaiProd.Product_ID=a.Product_ID    
- where
-  --a.Batch_No='FP025' and
- b.DNc_BatchNo is null and
- wb.wip_batchno is null and
- REPLACE(LEFT(a.Batch_Date, 7), '/', '') between CONVERT(nvarchar(6), dateadd(month,-12,GETDATE()), 112) and CONVERT(nvarchar(6), GETDATE(), 112)
-and (prod.Product_Name  not like '%Granulat%') 
-and not (a.Batch_No ='CY3A01' or a.Batch_No ='BI063' or a.Batch_No ='PI3L01')
-and xy.Product_ID is null
-and (timbangStarted.Batch_No is not null or mulaiProd.Batch_No is not null)
---select * from #tmpData
+    -- Step 1: Core data - join only the essential indexed tables first
+    SELECT a.Product_ID, a.Batch_No, a.Batch_Date, a.nama_tahapan, a.kode_tahapan,
+           a.StartDate, a.EndDate, a.urutan, a.Prev_Step, a.Display,
+           prod.Product_Name
+    INTO #tmpData
+    FROM t_alur_proses a
+    JOIN (SELECT DISTINCT Batch_No, Batch_Date, Product_ID FROM t_rfid_batch_card WHERE isActive=1 AND Batch_Status='Open') c
+      ON c.Product_ID = a.Product_ID AND c.Batch_Date = a.Batch_Date AND c.Batch_No = a.Batch_No
+    JOIN m_product prod ON a.Product_ID = prod.Product_ID
+    WHERE REPLACE(LEFT(a.Batch_Date, 7), '/', '')
+      BETWEEN CONVERT(nvarchar(6), DATEADD(month,-12,GETDATE()), 112) AND CONVERT(nvarchar(6), GETDATE(), 112)
+      AND prod.Product_Name NOT LIKE '%Granulat%'
+      AND NOT (a.Batch_No = 'CY3A01' OR a.Batch_No = 'BI063' OR a.Batch_No = 'PI3L01');
 
--- pastikan kolomnya ada dulu
-ALTER TABLE #tmpData ADD IdleStartDate DATETIME NULL;
+    -- Step 2: Remove batches where tempel label is already completed
+    DELETE FROM #tmpData
+    WHERE EXISTS (
+      SELECT 1 FROM t_alur_proses xy
+      WHERE xy.Product_ID = #tmpData.Product_ID AND xy.Batch_No = #tmpData.Batch_No AND xy.Batch_Date = #tmpData.Batch_Date
+        AND xy.nama_tahapan LIKE '%tempel%label' AND xy.EndDate IS NOT NULL
+    );
 
--- update IdleStartDate berdasarkan prev step
-UPDATE a
-SET a.IdleStartDate = (
-    SELECT MIN(b.EndDate)
-    FROM #tmpData b
-    INNER JOIN split(a.Prev_Step, ';') AS ps
-        ON LTRIM(RTRIM(ps.items)) = ltrim(rtrim(b.nama_tahapan))
-    WHERE a.Product_ID = b.Product_ID
-      AND a.Batch_No = b.Batch_No
-)
-FROM #tmpData a;
-select * from #tmpData;
-DROP TABLE #tmpData;
-`;
+    -- Step 3: Remove DNC products with TempelLabel filled
+    DELETE FROM #tmpData
+    WHERE EXISTS (
+      SELECT 1 FROM t_dnc_product b
+      WHERE ISNULL(b.DNC_TempelLabel, '') <> ''
+        AND #tmpData.Batch_No = b.DNc_BatchNo AND #tmpData.Product_ID = b.DNc_ProductID
+    );
+
+    -- Step 4: Remove cancelled (batal) batches
+    DELETE FROM #tmpData
+    WHERE EXISTS (
+      SELECT 1 FROM t_wip_batal wb
+      WHERE #tmpData.Batch_No = wb.wip_batchno AND #tmpData.Product_ID = wb.wip_productID
+    );
+
+    -- Step 5: Keep only batches where Timbang has started OR Terima Bahan Baku is completed
+    DELETE FROM #tmpData
+    WHERE NOT EXISTS (
+      SELECT 1 FROM t_alur_proses ap
+      INNER JOIN m_tahapan_group mtg ON ap.kode_tahapan = mtg.kode_tahapan
+      WHERE mtg.tahapan_group = 'Timbang' AND ap.StartDate IS NOT NULL
+        AND ap.Batch_Date = #tmpData.Batch_Date AND ap.Batch_No = #tmpData.Batch_No AND ap.Product_ID = #tmpData.Product_ID
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM t_alur_proses ap2
+      WHERE LTRIM(RTRIM(ap2.nama_tahapan)) = 'Terima Bahan Baku' AND ap2.EndDate IS NOT NULL
+        AND ap2.Batch_Date = #tmpData.Batch_Date AND ap2.Batch_No = #tmpData.Batch_No AND ap2.Product_ID = #tmpData.Product_ID
+    );
+
+    -- Step 6: Add lookup columns
+    ALTER TABLE #tmpData ADD tahapan_group NVARCHAR(100) NULL;
+    ALTER TABLE #tmpData ADD Group_Dept NVARCHAR(10) NULL;
+    ALTER TABLE #tmpData ADD Jenis_Sediaan NVARCHAR(200) NULL;
+    ALTER TABLE #tmpData ADD IdleStartDate DATETIME NULL;
+
+    UPDATE t SET t.tahapan_group = grp.tahapan_group
+    FROM #tmpData t
+    LEFT JOIN m_tahapan_group grp ON t.kode_tahapan = grp.kode_tahapan;
+
+    UPDATE t SET t.Group_Dept = gp.Group_Dept
+    FROM #tmpData t
+    LEFT JOIN m_product_pn_group gp ON gp.Group_ProductID = t.Product_ID
+      AND REPLACE(gp.Group_Periode, ' ', '') = CONVERT(varchar(6), GETDATE(), 112);
+
+    UPDATE t SET t.Jenis_Sediaan = s.Jenis_Sediaan
+    FROM #tmpData t
+    LEFT JOIN m_product_sediaan_produksi s ON s.Product_ID = t.Product_ID;
+
+    -- Step 7: Update IdleStartDate berdasarkan prev step
+    UPDATE a
+    SET a.IdleStartDate = (
+        SELECT MIN(b.EndDate)
+        FROM #tmpData b
+        INNER JOIN split(a.Prev_Step, ';') AS ps
+            ON LTRIM(RTRIM(ps.items)) = LTRIM(RTRIM(b.nama_tahapan))
+        WHERE a.Product_ID = b.Product_ID
+          AND a.Batch_No = b.Batch_No
+    )
+    FROM #tmpData a;
+
+    -- Final result: same columns as original query
+    SELECT Product_ID, Batch_No, Batch_Date, nama_tahapan, kode_tahapan,
+           StartDate, EndDate, urutan, tahapan_group,
+           Product_Name, Group_Dept, Jenis_Sediaan, Prev_Step, Display,
+           IdleStartDate
+    FROM #tmpData;
+
+    DROP TABLE #tmpData;
+  `;
 
   const result = await db.request().query(query);
   return result.recordset;
