@@ -9,6 +9,7 @@ import HelpModal from './HelpModal';
 import ContextualHelpModal from './ContextualHelpModal';
 import { useHelp } from '../context/HelpContext';
 import { useAuth } from '../context/AuthContext';
+import OF1TargetModal from './OF1TargetModal';
 import './SummaryDashboard.css';
 
 // Register Chart.js components
@@ -3568,6 +3569,7 @@ function SummaryDashboard() {
   const [wipModalOpen, setWipModalOpen] = useState(false);
   const [wipBatchesModalOpen, setWipBatchesModalOpen] = useState(false);
   const [coverageModalOpen, setCoverageModalOpen] = useState(false);
+  const [of1TargetModalOpen, setOf1TargetModalOpen] = useState(false);
   const [coverageFokusModalOpen, setCoverageFokusModalOpen] = useState(false);
   const [coverageNonFokusModalOpen, setCoverageNonFokusModalOpen] = useState(false);
   const [pctModalOpen, setPctModalOpen] = useState(false);
@@ -6743,7 +6745,15 @@ function SummaryDashboard() {
             </KPICard>
 
             {/* OF1 */}
-            <KPICard ref={of1Ref} title="OF1" className="of1-card">
+            <KPICard ref={of1Ref} title="OF1" className="of1-card" headerComponent={
+              <button
+                className="of1-target-setup-btn"
+                onClick={(e) => { e.stopPropagation(); setOf1TargetModalOpen(true); }}
+                title="Setup OF1 Target Percentages"
+              >
+                ⚙ Set Target
+              </button>
+            }>
               <div className="of1-content">
                 <div className="of1-grid">
                   <div className="of1-item">
@@ -7811,6 +7821,12 @@ function SummaryDashboard() {
           </div>
         )}
       </main>
+
+      {/* OF1 Target Modal */}
+      <OF1TargetModal
+        isOpen={of1TargetModalOpen}
+        onClose={() => setOf1TargetModalOpen(false)}
+      />
     </div>
   );
 }

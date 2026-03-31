@@ -1586,4 +1586,83 @@ async function getQCSummary(period) {
   };
 }
 
-module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTSummary, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getQCSummary};
+// ============================================
+// OF1 Target Configuration
+// ============================================
+
+async function getOF1TargetProducts(periode) {
+  const db = await connect();
+  const result = await db.request()
+    .input('Periode', sql.NVarChar, periode)
+    .query(`
+      SELECT 
+        a.Product_ID,
+        a.Product_SalesID AS Product_Code,
+        a.product_shortname AS Product_Name,
+        ISNULL(b.urutan, 9999) AS Urutan,
+        CASE 
+          WHEN b.Periode IS NULL OR ISNULL(b.urutan, 9999) > 500 THEN '2. PRODUK NON FOKUS' 
+          ELSE '1. PRODUK FOKUS' 
+        END AS Product_Group
+      FROM v_m_Product_aktif a
+      LEFT JOIN m_product_pareto b 
+        ON a.Product_ID = b.Product_ID 
+        AND b.Periode = @Periode
+      WHERE ISNULL(a.Product_SalesID, '') <> '' 
+        AND a.product_saleshna <> 0
+      ORDER BY Product_Group, a.product_shortname
+    `);
+  return result.recordset;
+}
+
+async function getOF1TargetConfig(periodes) {
+  const db = await connect();
+  // periodes is an array of YYYYMM strings
+  const conditions = periodes.map((p, i) => `@p${i}`).join(', ');
+  const request = db.request();
+  periodes.forEach((p, i) => {
+    request.input(`p${i}`, sql.VarChar, p);
+  });
+  const result = await request.query(`
+    SELECT Periode, Product_ID, PersenTarget
+    FROM m_target_of1_dashboard
+    WHERE Periode IN (${conditions})
+    ORDER BY Periode, Product_ID
+  `);
+  return result.recordset;
+}
+
+async function saveOF1TargetConfig(periode, targets) {
+  // targets is an array of { Product_ID, PersenTarget }
+  const db = await connect();
+  const transaction = new sql.Transaction(db);
+  await transaction.begin();
+  
+  try {
+    // Delete existing entries for this period
+    const deleteReq = new sql.Request(transaction);
+    deleteReq.input('Periode', sql.VarChar, periode);
+    await deleteReq.query('DELETE FROM m_target_of1_dashboard WHERE Periode = @Periode');
+    
+    // Insert new entries in batches of 100
+    for (let i = 0; i < targets.length; i += 100) {
+      const batch = targets.slice(i, i + 100);
+      const values = batch.map((t, idx) => `(@Periode, @pid${i + idx}, @pct${i + idx}, 0, '')`).join(', ');
+      const insertReq = new sql.Request(transaction);
+      insertReq.input('Periode', sql.VarChar, periode);
+      batch.forEach((t, idx) => {
+        insertReq.input(`pid${i + idx}`, sql.NVarChar, t.Product_ID);
+        insertReq.input(`pct${i + idx}`, sql.Int, t.PersenTarget);
+      });
+      await insertReq.query(`INSERT INTO m_target_of1_dashboard (Periode, Product_ID, PersenTarget, TargetBets, ListBets) VALUES ${values}`);
+    }
+    
+    await transaction.commit();
+    return { success: true };
+  } catch (err) {
+    await transaction.rollback();
+    throw err;
+  }
+}
+
+module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTSummary, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getQCSummary, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig};

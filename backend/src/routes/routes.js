@@ -67,6 +67,9 @@ router.get('/releasedBatchesYTD', SqlController.getReleasedBatchesYTD);
 
 // Routing OF1 Target
 router.get('/of1Target', SqlController.getOF1Target);
+router.get('/of1TargetProducts', SqlController.getOF1TargetProducts);
+router.get('/of1TargetConfig', SqlController.getOF1TargetConfig);
+router.post('/of1TargetConfig', SqlController.saveOF1TargetConfig);
 
 // Routing Batch Expiry
 router.get('/batchExpiry', SqlController.getBatchExpiry);

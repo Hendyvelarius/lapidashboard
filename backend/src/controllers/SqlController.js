@@ -589,4 +589,68 @@ async function getQCCompletedByPeriod(req, res) {
   }
 }
 
-module.exports = { getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getPCTSummary, getOrderFulfillment, getStockReport, getofsummary, getPCTBreakdown, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getQCSummary, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod };
+async function getOF1TargetProducts(req, res) {
+  try {
+    const periode = req.query.periode;
+    if (!periode || !/^\d{6}$/.test(periode)) {
+      return res.status(400).json({ success: false, error: 'periode query parameter is required in YYYYMM format' });
+    }
+    const cacheKey = `of1TargetProducts_${periode}`;
+    const data = await getCachedData(cacheKey, () => SqlModel.getOF1TargetProducts(periode), CACHE_TTL.LONG, shouldSkipCache(req));
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching OF1 Target Products:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+async function getOF1TargetConfig(req, res) {
+  try {
+    const periodes = req.query.periodes;
+    if (!periodes) {
+      return res.status(400).json({ success: false, error: 'periodes query parameter is required (comma-separated YYYYMM)' });
+    }
+    const periodeList = periodes.split(',').filter(p => /^\d{6}$/.test(p.trim())).map(p => p.trim());
+    if (periodeList.length === 0) {
+      return res.status(400).json({ success: false, error: 'At least one valid YYYYMM period is required' });
+    }
+    const data = await SqlModel.getOF1TargetConfig(periodeList);
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching OF1 Target Config:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+async function saveOF1TargetConfig(req, res) {
+  try {
+    const { periode, targets } = req.body;
+    if (!periode || !/^\d{6}$/.test(periode)) {
+      return res.status(400).json({ success: false, error: 'periode is required in YYYYMM format' });
+    }
+    // Enforce future-only: cannot modify current or past months
+    const now = new Date();
+    const currentPeriode = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+    if (periode <= currentPeriode) {
+      return res.status(400).json({ success: false, error: 'Cannot modify targets for current or past months' });
+    }
+    if (!Array.isArray(targets) || targets.length === 0) {
+      return res.status(400).json({ success: false, error: 'targets array is required' });
+    }
+    // Validate each target
+    for (const t of targets) {
+      if (!t.Product_ID || typeof t.PersenTarget !== 'number' || t.PersenTarget < 0 || t.PersenTarget > 1000) {
+        return res.status(400).json({ success: false, error: 'Each target must have Product_ID and PersenTarget (0-1000)' });
+      }
+    }
+    const result = await SqlModel.saveOF1TargetConfig(periode, targets);
+    // Clear related cache
+    cache.delete(`of1Target`);
+    res.json(result);
+  } catch (err) {
+    console.error('Error saving OF1 Target Config:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+module.exports = { getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getPCTSummary, getOrderFulfillment, getStockReport, getofsummary, getPCTBreakdown, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getQCSummary, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig };
