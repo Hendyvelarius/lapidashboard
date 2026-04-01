@@ -1592,27 +1592,40 @@ async function getQCSummary(period) {
 
 async function getOF1TargetProducts(periode) {
   const db = await connect();
-  const result = await db.request()
-    .input('Periode', sql.NVarChar, periode)
-    .query(`
-      SELECT 
-        a.Product_ID,
-        a.Product_SalesID AS Product_Code,
-        a.product_shortname AS Product_Name,
-        ISNULL(b.urutan, 9999) AS Urutan,
-        CASE 
-          WHEN b.Periode IS NULL OR ISNULL(b.urutan, 9999) > 500 THEN '2. PRODUK NON FOKUS' 
-          ELSE '1. PRODUK FOKUS' 
-        END AS Product_Group
-      FROM v_m_Product_aktif a
-      LEFT JOIN m_product_pareto b 
-        ON a.Product_ID = b.Product_ID 
-        AND b.Periode = @Periode
-      WHERE ISNULL(a.Product_SalesID, '') <> '' 
-        AND a.product_saleshna <> 0
-      ORDER BY Product_Group, a.product_shortname
-    `);
-  return result.recordset;
+  // Use the same SP that powers the dashboard to ensure product list consistency
+  const spResult = await db.request().query('EXEC sp_Dashboard_DataReportManHours');
+  const allData = spResult.recordset;
+  
+  // Filter to the requested period
+  let filtered = allData.filter(r => String(r.Periode) === periode);
+  
+  // If requested period has no data (beyond SP range), fall back to current month's data
+  if (filtered.length === 0) {
+    const now = new Date();
+    const currentPeriode = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+    filtered = allData.filter(r => String(r.Periode) === currentPeriode);
+  }
+  
+  // Extract unique products with their group
+  const seen = new Set();
+  const products = [];
+  for (const r of filtered) {
+    if (!seen.has(r.Product_ID)) {
+      seen.add(r.Product_ID);
+      products.push({
+        Product_ID: r.Product_ID,
+        Product_Code: r.Product_Code,
+        Product_Name: r.Product_NM,
+        Product_Group: r.Product_Group
+      });
+    }
+  }
+  // Sort: Fokus first, then by name
+  products.sort((a, b) => {
+    if (a.Product_Group !== b.Product_Group) return a.Product_Group.localeCompare(b.Product_Group);
+    return (a.Product_Name || '').localeCompare(b.Product_Name || '');
+  });
+  return products;
 }
 
 async function getOF1TargetConfig(periodes) {

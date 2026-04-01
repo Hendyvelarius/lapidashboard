@@ -628,11 +628,11 @@ async function saveOF1TargetConfig(req, res) {
     if (!periode || !/^\d{6}$/.test(periode)) {
       return res.status(400).json({ success: false, error: 'periode is required in YYYYMM format' });
     }
-    // Enforce future-only: cannot modify current or past months
+    // Enforce: cannot modify past months (current month is allowed)
     const now = new Date();
     const currentPeriode = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
-    if (periode <= currentPeriode) {
-      return res.status(400).json({ success: false, error: 'Cannot modify targets for current or past months' });
+    if (periode < currentPeriode) {
+      return res.status(400).json({ success: false, error: 'Cannot modify targets for past months' });
     }
     if (!Array.isArray(targets) || targets.length === 0) {
       return res.status(400).json({ success: false, error: 'targets array is required' });

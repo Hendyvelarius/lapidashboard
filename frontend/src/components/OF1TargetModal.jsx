@@ -5,10 +5,9 @@ import './OF1TargetModal.css';
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 function getMinPeriode() {
-  // Minimum selectable period = next month after current
+  // Minimum selectable period = current month
   const now = new Date();
-  const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-  return `${next.getFullYear()}${String(next.getMonth() + 1).padStart(2, '0')}`;
+  return `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
 function formatPeriode(p) {
@@ -20,7 +19,7 @@ function formatPeriode(p) {
 function generateFuturePeriods(count = 12) {
   const periods = [];
   const now = new Date();
-  for (let i = 1; i <= count; i++) {
+  for (let i = 0; i < count; i++) {
     const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
     const p = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}`;
     periods.push(p);
