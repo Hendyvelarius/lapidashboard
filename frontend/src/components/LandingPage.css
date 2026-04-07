@@ -492,11 +492,303 @@ body.sidebar-minimized .landing-hero {
     font-size: 3rem;
   }
 
-  .quick-access-grid {
+  .info-section {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ========================================
+   LANDING DASHBOARD CARDS
+   ======================================== */
+
+.landing-dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 28px 24px;
+  width: 100%;
+}
+
+/* --- Card Base --- */
+.lp-card {
+  position: relative;
+  background: #fff;
+  border-radius: 18px;
+  padding: 0;
+  overflow: hidden;
+  cursor: pointer;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.07);
+  border: 2px solid transparent;
+  transition: transform 0.32s cubic-bezier(.4,0,.2,1),
+              box-shadow 0.32s cubic-bezier(.4,0,.2,1),
+              border-color 0.32s ease;
+  animation: lpCardIn 0.5s ease-out both;
+  outline: none;
+}
+
+/* Group cards need visible overflow for the popup */
+.lp-card.lp-card-group {
+  overflow: visible;
+}
+
+.lp-card:nth-child(1) { animation-delay: 0.05s; }
+.lp-card:nth-child(2) { animation-delay: 0.10s; }
+.lp-card:nth-child(3) { animation-delay: 0.15s; }
+.lp-card:nth-child(4) { animation-delay: 0.20s; }
+.lp-card:nth-child(5) { animation-delay: 0.25s; }
+.lp-card:nth-child(6) { animation-delay: 0.30s; }
+
+@keyframes lpCardIn {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Left accent bar */
+.lp-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 5px;
+  height: 100%;
+  background: var(--card-accent);
+  border-radius: 18px 0 0 18px;
+  transition: width 0.35s cubic-bezier(.4,0,.2,1);
+  z-index: 1;
+}
+
+/* Color wash overlay on hover */
+.lp-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--card-accent);
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  pointer-events: none;
+  border-radius: 18px;
+  z-index: 0;
+}
+
+.lp-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.13);
+  border-color: var(--card-accent);
+}
+
+.lp-card:hover::before {
+  width: 100%;
+  border-radius: 18px;
+  opacity: 0;
+}
+
+.lp-card:hover::after {
+  opacity: 0.06;
+}
+
+/* --- Card Body Layout --- */
+.lp-card-body {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 32px 28px 32px 32px;
+  min-height: 150px;
+  gap: 16px;
+  overflow: hidden;
+  border-radius: 16px;
+}
+
+.lp-card-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.lp-card-title {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0 0 8px 0;
+  transition: color 0.25s ease;
+}
+
+.lp-card:hover .lp-card-title {
+  color: var(--card-accent);
+}
+
+.lp-card-desc {
+  font-size: 0.95rem;
+  color: #6b7280;
+  margin: 0 0 16px 0;
+  line-height: 1.5;
+}
+
+.lp-card-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--card-accent);
+  font-size: 1.1rem;
+  font-weight: 600;
+  transition: background 0.25s ease, transform 0.25s ease, color 0.25s ease;
+}
+
+.lp-card:hover .lp-card-arrow {
+  background: var(--card-accent);
+  color: #fff;
+  transform: translateX(4px);
+}
+
+/* --- Large Background Icon --- */
+.lp-card-icon-bg {
+  flex-shrink: 0;
+  width: 90px;
+  height: 90px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--card-accent) 10%, transparent);
+  transition: transform 0.35s cubic-bezier(.4,0,.2,1),
+              background 0.35s ease;
+}
+
+.lp-card:hover .lp-card-icon-bg {
+  transform: scale(1.08) rotate(4deg);
+  background: color-mix(in srgb, var(--card-accent) 15%, transparent);
+}
+
+/* --- Group Card --- */
+.lp-card-group {
+  position: relative;
+  z-index: 10;
+}
+
+.lp-card-group .group-popup {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  border-radius: 18px;
+}
+
+/* --- Unauthorized States --- */
+.lp-card-unauthorized {
+  opacity: 0.5;
+  cursor: not-allowed !important;
+  filter: grayscale(0.65);
+  pointer-events: auto;
+}
+
+.lp-card-unauthorized:hover {
+  transform: none !important;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.07) !important;
+  border-color: transparent !important;
+}
+
+.lp-card-unauthorized:hover::before {
+  width: 5px !important;
+  opacity: 1 !important;
+}
+
+.lp-card-unauthorized:hover::after {
+  opacity: 0 !important;
+}
+
+.lp-card-unauthorized:hover .lp-card-title {
+  color: #1e293b !important;
+}
+
+.lp-card-unauthorized:hover .lp-card-icon-bg {
+  transform: none !important;
+}
+
+.lp-card-unauthorized:hover .lp-card-arrow {
+  background: rgba(0, 0, 0, 0.04) !important;
+  color: var(--card-accent) !important;
+  transform: none !important;
+}
+
+.lp-card-unauthorized .lp-card-arrow {
+  display: none;
+}
+
+.unauthorized-badge {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 8px;
+  letter-spacing: 0.4px;
+  z-index: 3;
+  text-transform: uppercase;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+}
+
+/* Unauthorized sub-items in group popup */
+.landing-popup-item-unauthorized {
+  opacity: 0.45;
+  cursor: not-allowed !important;
+  filter: grayscale(0.6);
+}
+
+.landing-popup-item-unauthorized:hover {
+  background: transparent !important;
+}
+
+.unauthorized-badge-small {
+  display: inline-block;
+  background: #ef4444;
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 6px;
+  margin-left: 8px;
+  letter-spacing: 0.2px;
+  vertical-align: middle;
+  text-transform: uppercase;
+}
+
+/* --- Responsive --- */
+@media (max-width: 1024px) {
+  .landing-dashboard-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 22px 18px;
+  }
+
+  .lp-card-body {
+    padding: 24px 20px 24px 26px;
+    min-height: 130px;
+  }
+
+  .lp-card-icon-bg {
+    width: 72px;
+    height: 72px;
+  }
+}
+
+@media (max-width: 768px) {
+  .landing-dashboard-grid {
     grid-template-columns: 1fr;
   }
 
-  .info-section {
-    grid-template-columns: 1fr;
+  .lp-card-body {
+    min-height: auto;
   }
 }
