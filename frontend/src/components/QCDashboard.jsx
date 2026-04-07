@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useNavigate } from 'react-router';
 import { Chart as ChartJS, ArcElement, BarElement, CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend } from 'chart.js';
 import ChartDataLabels from 'chartjs-plugin-datalabels';
 import { Bar, Line, Doughnut } from 'react-chartjs-2';
@@ -71,6 +72,7 @@ const ROWS_PER_PAGE = 25;
 // ============================================
 
 const QCDashboard = () => {
+  const navigate = useNavigate();
   // Data states
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -1004,7 +1006,14 @@ const QCDashboard = () => {
           {/* ====== Header ====== */}
           <div className="qc-header">
             <div className="qc-header-left">
-              <h1><span>Quality Control</span> Dashboard</h1>
+              <h1><span>Quality - Materials</span> Dashboard</h1>
+              <div className="quality-toggle-switch" onClick={() => navigate('/quality')}>
+                <div className="quality-toggle-track active-material">
+                  <span className="quality-toggle-label">Product</span>
+                  <span className="quality-toggle-label active">Material</span>
+                  <div className="quality-toggle-thumb" />
+                </div>
+              </div>
             </div>
             <div className="qc-header-right">
               <select

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router';
 import { Chart as ChartJS, ArcElement, BarElement, CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend } from 'chart.js';
 import { Bar, Line, Doughnut } from 'react-chartjs-2';
 import Sidebar from './Sidebar';
@@ -10,6 +11,7 @@ import { loadQualityCache, saveQualityCache, clearQualityCache, isQualityCacheVa
 import { calculateCalendarDaysToToday, setHolidays } from '../utils/workingDays';
 import { apiUrl, apiUrlWithRefresh } from '../api';
 import './QualityDashboard.css';
+import './QCDashboard.css';
 
 ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend);
 
@@ -470,6 +472,7 @@ const Speedometer = ({ label, value, maxValue = 50, stageName, batches = [], onC
 };
 
 const QualityDashboard = () => {
+  const navigate = useNavigate();
   const [sidebarMinimized, setSidebarMinimized] = useState(false);
   const [currentView, setCurrentView] = useState('monthly'); // 'monthly' or 'daily'
   const [autoMode, setAutoMode] = useState(true); // Auto-switch between monthly/daily
@@ -2805,21 +2808,30 @@ const QualityDashboard = () => {
 
       <div className="quality-main-content">
         <div className="quality-content">
-          <div className="quality-header">
-            <div className="quality-header-left">
-              <h1>Quality Dashboard</h1>
-              <div className="quality-datetime">
-                <span>📅</span>
-                <span>Last updated: {formatLastFetchTime()}</span>
+          <div className="qc-header">
+            <div className="qc-header-left">
+              <h1><span>Quality - Product</span> Dashboard</h1>
+              <div className="quality-toggle-switch" onClick={() => navigate('/quality-control')}>
+                <div className="quality-toggle-track active-product">
+                  <span className="quality-toggle-label active">Product</span>
+                  <span className="quality-toggle-label">Material</span>
+                  <div className="quality-toggle-thumb" />
+                </div>
               </div>
             </div>
-            <button 
-              onClick={handleRefresh}
-              disabled={refreshing}
-              className={`quality-refresh-btn ${refreshing ? 'refreshing' : ''}`}
-            >
-              {refreshing ? 'Refreshing...' : 'Refresh'}
-            </button>
+            <div className="qc-header-right">
+              <button 
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className="qc-refresh-btn"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+                {refreshing ? 'Refreshing...' : 'Refresh'}
+              </button>
+              <span className="qc-last-refresh">
+                Updated: {formatLastFetchTime()}
+              </span>
+            </div>
           </div>
 
           <div className={`quality-charts-container ${sidebarMinimized ? 'sidebar-minimized' : ''}`}>
