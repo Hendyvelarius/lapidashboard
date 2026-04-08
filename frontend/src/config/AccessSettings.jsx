@@ -189,6 +189,7 @@ export const PAGE_ACCESS = {
 
        { department: 'MS', jobLevel: 'MGR' },
        { department: 'DS', jobLevel: 'DIR' },
+       { department: 'HQ', jobLevel: 'HO' },
     ],
   },
 
@@ -203,6 +204,7 @@ export const PAGE_ACCESS = {
       { department: 'QC', jobLevel: 'ASM' },
       { department: 'QC', jobLevel: 'SPV' },
       { department: 'QC', jobLevel: 'OFC' },
+      { department: 'HQ', jobLevel: 'HO' },
     ],
   },
 
@@ -233,6 +235,7 @@ export const PAGE_ACCESS = {
     specificCombinations: [
       { department: 'DS', jobLevel: 'DIR' },
       { department: 'MS', jobLevel: 'MGR' },
+      { department: 'HQ', jobLevel: 'HO' },
     ],
   },
 

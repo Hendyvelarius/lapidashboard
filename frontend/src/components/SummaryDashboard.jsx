@@ -4184,92 +4184,350 @@ function SummaryDashboard() {
     
     setExporting(true);
     try {
-      // Dynamically import xlsx library
-      const XLSX = await import('xlsx');
+      // Use xlsx-js-style for styled exports
+      const XLSX = await import('xlsx-js-style');
       
       const wb = XLSX.utils.book_new();
-      const exportDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+      const exportRefDate = isHistoricalData && historicalReferenceDate ? new Date(historicalReferenceDate) : new Date();
+      const exportDate = exportRefDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
       const exportTime = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-      
-      // Sheet 1: Summary Overview
-      const summaryData = [
-        ['Summary Dashboard Export'],
-        [`Export Date: ${exportDate} ${exportTime}`],
-        [isHistoricalData ? `Historical Data: ${selectedPeriode}` : 'Live Data'],
-        [],
-        ['KPI Summary'],
-        ['Metric', 'Value', 'Status'],
-        ['Sales Achievement', data?.sales?.achievementPercentage ? `${data.sales.achievementPercentage.toFixed(1)}%` : 'N/A', ''],
-        ['Coverage (All Products)', data?.coverage?.percentage ? `${data.coverage.percentage.toFixed(1)}%` : 'N/A', ''],
-        ['Coverage (Fokus)', data?.coverageFokus?.percentage ? `${data.coverageFokus.percentage.toFixed(1)}%` : 'N/A', ''],
-        ['OTA (On Time Achievement)', data?.ota?.percentage ? `${data.ota.percentage.toFixed(1)}%` : 'N/A', ''],
-        ['Order Fulfillment', data?.orderFulfillment?.fulfillmentRate ? `${data.orderFulfillment.fulfillmentRate.toFixed(1)}%` : 'N/A', ''],
-        ['Material Availability', data?.materialAvailability?.availabilityRate ? `${data.materialAvailability.availabilityRate.toFixed(1)}%` : 'N/A', ''],
+
+      // --- Styling helpers ---
+      const headerFill = { fgColor: { rgb: '1F4E79' } };
+      const subHeaderFill = { fgColor: { rgb: 'D6E4F0' } };
+      const lightRowFill = { fgColor: { rgb: 'F2F7FB' } };
+      const greenFill = { fgColor: { rgb: 'E2EFDA' } };
+      const redFill = { fgColor: { rgb: 'FCE4EC' } };
+      const yellowFill = { fgColor: { rgb: 'FFF8E1' } };
+      const titleFont = { name: 'Calibri', sz: 16, bold: true, color: { rgb: '1F4E79' } };
+      const subtitleFont = { name: 'Calibri', sz: 11, color: { rgb: '666666' } };
+      const headerFont = { name: 'Calibri', sz: 11, bold: true, color: { rgb: 'FFFFFF' } };
+      const subHeaderFont = { name: 'Calibri', sz: 11, bold: true, color: { rgb: '1F4E79' } };
+      const cellFont = { name: 'Calibri', sz: 11 };
+      const boldCellFont = { name: 'Calibri', sz: 11, bold: true };
+      const thinBorder = {
+        top: { style: 'thin', color: { rgb: 'D0D0D0' } },
+        bottom: { style: 'thin', color: { rgb: 'D0D0D0' } },
+        left: { style: 'thin', color: { rgb: 'D0D0D0' } },
+        right: { style: 'thin', color: { rgb: 'D0D0D0' } }
+      };
+      const centerAlign = { horizontal: 'center', vertical: 'center' };
+      const rightAlign = { horizontal: 'right', vertical: 'center' };
+      const leftAlign = { horizontal: 'left', vertical: 'center', wrapText: true };
+
+      // Helper: style a header row in a worksheet
+      const styleHeaderRow = (ws, rowIdx, colCount) => {
+        for (let c = 0; c < colCount; c++) {
+          const addr = XLSX.utils.encode_cell({ r: rowIdx, c });
+          if (!ws[addr]) ws[addr] = { v: '', t: 's' };
+          ws[addr].s = { fill: headerFill, font: headerFont, alignment: centerAlign, border: thinBorder };
+        }
+      };
+
+      // Helper: style data rows with alternating colors
+      const whiteFill = { fgColor: { rgb: 'FFFFFF' } };
+      const styleDataRows = (ws, startRow, endRow, colCount) => {
+        for (let r = startRow; r <= endRow; r++) {
+          for (let c = 0; c < colCount; c++) {
+            const addr = XLSX.utils.encode_cell({ r, c });
+            if (!ws[addr]) ws[addr] = { v: '', t: 's' };
+            ws[addr].s = {
+              font: cellFont,
+              alignment: c === 0 ? leftAlign : rightAlign,
+              border: thinBorder,
+              fill: (r - startRow) % 2 === 0 ? whiteFill : lightRowFill
+            };
+          }
+        }
+      };
+
+      // Helper: format ISO date string to readable date
+      const formatDateForExcel = (val) => {
+        if (!val) return '';
+        const str = String(val);
+        // Match ISO format like 2024-01-07T00:00:00.000Z or 2024-01-07
+        const match = str.match(/(\d{4})-(\d{2})-(\d{2})/);
+        if (match) return `${match[3]}/${match[2]}/${match[1]}`;
+        return str;
+      };
+
+      // Helper: create a styled data sheet from array of objects
+      const createStyledSheet = (dataArray, columns) => {
+        // columns: [{ key, header, width, format }]
+        const header = columns.map(c => c.header);
+        const rows = dataArray.map(item => columns.map(c => {
+          const val = item[c.key];
+          if (c.format === 'number' && val != null) return Number(val) || 0;
+          if (c.format === 'date') return formatDateForExcel(val);
+          return val ?? '';
+        }));
+        const aoa = [header, ...rows];
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        ws['!cols'] = columns.map(c => ({ wch: c.width || 15 }));
+        styleHeaderRow(ws, 0, columns.length);
+        if (rows.length > 0) {
+          styleDataRows(ws, 1, rows.length, columns.length);
+        }
+        // Freeze header row and enable autoFilter for sorting
+        ws['!freeze'] = { xSplit: 0, ySplit: 1 };
+        ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length, c: columns.length - 1 } }) };
+        return ws;
+      };
+
+      // ===== Sheet 1: Summary Overview =====
+      const ofRilisQa = data?.orderFulfillment?.rilisQa ?? 0;
+      const bbOTA = data?.ota?.bahanBakuPercentage ?? 0;
+      const bkOTA = data?.ota?.bahanKemasPercentage ?? 0;
+      const overallOTA = (bbOTA + bkOTA) > 0 ? Math.round((bbOTA + bkOTA) / 2) : 0;
+      const bbMaterial = data?.materialAvailability?.bahanBaku ?? 0;
+      const bkMaterial = data?.materialAvailability?.bahanKemas ?? 0;
+      const overallMaterial = (bbMaterial + bkMaterial) > 0 ? Math.round((bbMaterial + bkMaterial) / 2) : 0;
+
+      const summaryAoa = [
+        ['Summary Dashboard Report', '', ''],
+        [`Data: ${isHistoricalData ? selectedPeriode : 'Live'} | Exported: ${exportDate} ${exportTime}`, '', ''],
+        ['', '', ''],
+        ['KPI OVERVIEW', '', ''],
+        ['Metric', 'Value', 'Details'],
+        ['Sales Achievement', `${Math.round(data?.sales?.achievement || 0)}%`, ''],
+        ['  Fokus Products', `${Math.round(data?.sales?.fokusAchievementPercentage || 0)}%`, ''],
+        ['  Non-Fokus Products', `${Math.round(data?.sales?.nonFokusAchievementPercentage || 0)}%`, ''],
+        ['  Products Met Target', `${data?.sales?.metTargetCount || 0} / ${data?.sales?.totalProductCount || 0}`, `${Math.round(data?.sales?.targetAchievementPercentage || 0)}%`],
+        ['', '', ''],
+        ['COVERAGE FG STOCK', '', ''],
+        ['All Products Coverage', `${data?.coverage?.percentage || 0}%`, `Under: ${data?.coverage?.under || 0} | Over: ${data?.coverage?.over || 0}`],
+        ['Fokus Coverage', `${data?.coverageFokus?.percentage || 0}%`, `Under: ${data?.coverageFokus?.under || 0} | Over: ${data?.coverageFokus?.over || 0}`],
+        ['Non-Fokus Coverage', `${data?.coverageNonFokus?.percentage || 0}%`, `Under: ${data?.coverageNonFokus?.under || 0} | Over: ${data?.coverageNonFokus?.over || 0}`],
+        ['', '', ''],
+        ['ORDER FULFILLMENT', '', ''],
+        ['Turun PPI', `${data?.orderFulfillment?.turunPpi || 0}%`, ''],
+        ['Potong Stock', `${data?.orderFulfillment?.potongStock || 0}%`, ''],
+        ['Proses', `${data?.orderFulfillment?.proses || 0}%`, ''],
+        ['Kemas', `${data?.orderFulfillment?.kemas || 0}%`, ''],
+        ['Dokumen', `${data?.orderFulfillment?.dokumen || 0}%`, ''],
+        ['Rilis QC', `${data?.orderFulfillment?.rilisQc || 0}%`, ''],
+        ['Rilis QA', `${ofRilisQa}%`, ''],
+        ['', '', ''],
+        ['OTA (On Time Achievement)', '', ''],
+        ['Bahan Baku (Not Late)', `${bbOTA}%`, ''],
+        ['  On Time', `${data?.ota?.bahanBaku?.onTime || 0}`, ''],
+        ['  Early', `${data?.ota?.bahanBaku?.early || 0}`, ''],
+        ['  Late', `${data?.ota?.bahanBaku?.late || 0}`, ''],
+        ['Bahan Kemas (Not Late)', `${bkOTA}%`, ''],
+        ['  On Time', `${data?.ota?.bahanKemas?.onTime || 0}`, ''],
+        ['  Early', `${data?.ota?.bahanKemas?.early || 0}`, ''],
+        ['  Late', `${data?.ota?.bahanKemas?.late || 0}`, ''],
+        ['On Delivery', `${data?.ota?.onDeliveryCount || 0}`, ''],
+        ['', '', ''],
+        ['MATERIAL AVAILABILITY', '', ''],
+        ['Bahan Baku', `${bbMaterial}%`, ''],
+        ['Bahan Kemas', `${bkMaterial}%`, ''],
+        ['', '', ''],
+        ['PRODUCTION', '', ''],
+        ['WIP Total Batches', `${data?.wip?.totalBatches || 0}`, ''],
+        ['WIP Late Batches (>38 days)', `${data?.wip?.lateBatches || 0}`, ''],
+        ['Process Cycle Time (Avg)', `${data?.pct?.average || 0} days`, `Longest: ${data?.pct?.longest || 0} days`],
+        ['', '', ''],
+        ['STOCK OUT & LOST SALES', '', ''],
+        ['Stock Out Products', `${data?.stockOut?.total || 0}`, `Fokus: ${data?.stockOut?.focus || 0} | Non-Fokus: ${data?.stockOut?.nonFocus || 0}`],
+        ['Lost Sales Value', `${data?.stockOut?.lostSalesFormatted || '0'}`, ''],
+        ['', '', ''],
+        ['INVENTORY', '', ''],
+        ['OJ Slow Moving', `${data?.inventoryOJ?.slowMoving || 0}`, ''],
+        ['OJ Dead Stock', `${data?.inventoryOJ?.deadStock || 0}`, ''],
+        ['OJ Return', `${data?.inventoryOJ?.return || 0}`, ''],
       ];
-      const summaryWS = XLSX.utils.aoa_to_sheet(summaryData);
-      summaryWS['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 15 }];
+
+      const summaryWS = XLSX.utils.aoa_to_sheet(summaryAoa);
+      summaryWS['!cols'] = [{ wch: 32 }, { wch: 22 }, { wch: 30 }];
+
+      // Style title
+      const addrA1 = XLSX.utils.encode_cell({ r: 0, c: 0 });
+      summaryWS[addrA1].s = { font: titleFont };
+      const addrA2 = XLSX.utils.encode_cell({ r: 1, c: 0 });
+      summaryWS[addrA2].s = { font: subtitleFont };
+
+      // Style section headers and data rows
+      const sectionRows = [3, 10, 15, 24, 36, 40, 44, 48];
+      const headerRows = [4];
+      summaryAoa.forEach((row, r) => {
+        if (sectionRows.includes(r)) {
+          // Section header styling
+          for (let c = 0; c < 3; c++) {
+            const addr = XLSX.utils.encode_cell({ r, c });
+            if (!summaryWS[addr]) summaryWS[addr] = { v: '', t: 's' };
+            summaryWS[addr].s = { font: { ...subHeaderFont, sz: 12 }, fill: subHeaderFill, border: thinBorder };
+          }
+        } else if (headerRows.includes(r)) {
+          styleHeaderRow(summaryWS, r, 3);
+        } else if (r > 4 && row[0] !== '') {
+          for (let c = 0; c < 3; c++) {
+            const addr = XLSX.utils.encode_cell({ r, c });
+            if (!summaryWS[addr]) summaryWS[addr] = { v: '', t: 's' };
+            const isIndented = String(row[0]).startsWith('  ');
+            summaryWS[addr].s = {
+              font: isIndented ? cellFont : boldCellFont,
+              alignment: c === 0 ? leftAlign : centerAlign,
+              border: thinBorder
+            };
+
+          }
+        }
+      });
+
+      // Merge title row
+      summaryWS['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 2 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 2 } }
+      ];
+
       XLSX.utils.book_append_sheet(wb, summaryWS, 'Summary');
 
-      // Sheet 2: Forecast Data (exclude future periods beyond current month)
+      // ===== Sheet 2: Forecast Data =====
       if (forecastRawData && forecastRawData.length > 0) {
-        const exportDate = isHistoricalData && selectedPeriode ? new Date(selectedPeriode.substring(0, 4), parseInt(selectedPeriode.substring(4, 6)) - 1) : new Date();
-        const maxPeriod = exportDate.getFullYear() * 100 + (exportDate.getMonth() + 1);
+        const maxPeriod = exportRefDate.getFullYear() * 100 + (exportRefDate.getMonth() + 1);
         const filteredForecastData = forecastRawData.filter(item => parseInt(item.Periode) <= maxPeriod);
-        const forecastWS = XLSX.utils.json_to_sheet(filteredForecastData);
+        
+        const forecastCols = [
+          { key: 'Periode', header: 'Period', width: 12 },
+          { key: 'Product_ID', header: 'Product ID', width: 14 },
+          { key: 'Product_NM', header: 'Product Name', width: 30 },
+          { key: 'Product_Group', header: 'Product Group', width: 22 },
+          { key: 'Forecast', header: 'Forecast', width: 12, format: 'number' },
+          { key: 'Sales', header: 'Sales', width: 12, format: 'number' },
+          { key: 'Release', header: 'Stock (Release)', width: 15, format: 'number' },
+          { key: 'HNA', header: 'HNA', width: 14, format: 'number' },
+          { key: 'Retur', header: 'Return', width: 10, format: 'number' },
+        ];
+        const forecastWS = createStyledSheet(filteredForecastData, forecastCols);
         XLSX.utils.book_append_sheet(wb, forecastWS, 'Forecast Data');
       }
 
-      // Sheet 3: OF (Order Fulfillment) Data
+      // ===== Sheet 3: Order Fulfillment =====
       if (ofRawData && ofRawData.length > 0) {
-        const ofWS = XLSX.utils.json_to_sheet(ofRawData);
+        const ofCols = [
+          { key: 'ProductID', header: 'Product ID', width: 14 },
+          { key: 'Product_Name', header: 'Product Name', width: 30 },
+          { key: 'ListBet', header: 'Batch No', width: 16 },
+          { key: 'RuangLingkup', header: 'Ruang Lingkup', width: 18 },
+          { key: 'TurunPPI', header: 'Turun PPI', width: 12 },
+          { key: 'PotongStock', header: 'Potong Stock', width: 14 },
+          { key: 'Proses', header: 'Proses', width: 10 },
+          { key: 'Kemas', header: 'Kemas', width: 10 },
+          { key: 'Dok', header: 'Dokumen', width: 10 },
+          { key: 'QC', header: 'QC', width: 8 },
+          { key: 'QA', header: 'QA', width: 8 },
+        ];
+        const ofWS = createStyledSheet(ofRawData, ofCols);
         XLSX.utils.book_append_sheet(wb, ofWS, 'Order Fulfillment');
       }
 
-      // Sheet 4: WIP Data
+      // ===== Sheet 4: WIP Data =====
       if (wipRawData && wipRawData.length > 0) {
-        const wipWS = XLSX.utils.json_to_sheet(wipRawData);
+        const wipCols = [
+          { key: 'batch', header: 'Batch No', width: 16 },
+          { key: 'name', header: 'Product Name', width: 30 },
+          { key: 'status', header: 'Status', width: 14 },
+          { key: 'startDate', header: 'Start Date', width: 14 },
+          { key: 'duration', header: 'Days in Production', width: 18, format: 'number' },
+        ];
+        const wipWS = createStyledSheet(wipRawData, wipCols);
         XLSX.utils.book_append_sheet(wb, wipWS, 'WIP Data');
       }
 
-      // Sheet 5: PCT (Process Cycle Time) Data
+      // ===== Sheet 5: Process Cycle Time =====
       if (pctRawData && pctRawData.length > 0) {
-        const pctWS = XLSX.utils.json_to_sheet(pctRawData);
+        // Normalize Dept field: replace legacy 'Unknown' values from old snapshots
+        const normalizedPctData = pctRawData.map(item => ({
+          ...item,
+          Dept: (item.Dept === 'Unknown' || !item.Dept) ? 'Belum Ada' : item.Dept
+        }));
+        const pctCols = [
+          { key: 'Product_ID', header: 'Product ID', width: 14 },
+          { key: 'Product_Name', header: 'Product Name', width: 30 },
+          { key: 'Dept', header: 'Department', width: 16 },
+          { key: 'Kategori', header: 'Category', width: 14 },
+          { key: 'PCTAverage', header: 'PCT Average (Days)', width: 20, format: 'number' },
+          { key: 'BatchCount', header: 'Batch Count', width: 14, format: 'number' },
+          { key: 'Batch_Nos', header: 'Batch Numbers', width: 40 },
+        ];
+        const pctWS = createStyledSheet(normalizedPctData, pctCols);
         XLSX.utils.book_append_sheet(wb, pctWS, 'Process Cycle Time');
       }
 
-      // Sheet 6: OTA Data
+      // ===== Sheet 6: OTA Data =====
       if (otaRawData && otaRawData.length > 0) {
-        const otaWS = XLSX.utils.json_to_sheet(otaRawData);
+        const otaCols = [
+          { key: 'item_type', header: 'Item Type', width: 12 },
+          { key: 'PO_No', header: 'PO Number', width: 18 },
+          { key: 'Item_Name', header: 'Item Name', width: 30 },
+          { key: 'TTBA_QTY', header: 'Quantity', width: 12, format: 'number' },
+          { key: 'Status', header: 'Status', width: 14 },
+          { key: 'PO_NeededDate', header: 'PO Needed Date', width: 16 },
+          { key: 'TTBA_Date', header: 'TTBA Date', width: 16 },
+        ];
+        const otaWS = createStyledSheet(otaRawData, otaCols);
         XLSX.utils.book_append_sheet(wb, otaWS, 'OTA Data');
       }
 
-      // Sheet 7: Material Data
+      // ===== Sheet 7: Material Data =====
       if (materialRawData && materialRawData.length > 0) {
-        const materialWS = XLSX.utils.json_to_sheet(materialRawData);
+        const materialCols = [
+          { key: 'Item_Type', header: 'Item Type', width: 12 },
+          { key: 'PPI_ItemID', header: 'Item ID', width: 16 },
+          { key: 'Item_Name', header: 'Item Name', width: 30 },
+          { key: 'Item_Unit', header: 'Unit', width: 10 },
+          { key: 'needed', header: 'Needed', width: 14, format: 'number' },
+          { key: 'last_stock', header: 'Last Stock', width: 14, format: 'number' },
+        ];
+        const materialWS = createStyledSheet(materialRawData, materialCols);
         XLSX.utils.book_append_sheet(wb, materialWS, 'Material Data');
       }
 
-      // Sheet 8: BBBK Data
+      // ===== Sheet 8: BBBK Data =====
       if (bbbkRawData && bbbkRawData.length > 0) {
-        const bbbkWS = XLSX.utils.json_to_sheet(bbbkRawData);
+        const bbbkCols = Object.keys(bbbkRawData[0]).map(key => ({
+          key, header: key.replace(/_/g, ' '), width: Math.max(key.length + 4, 14)
+        }));
+        const bbbkWS = createStyledSheet(bbbkRawData, bbbkCols);
         XLSX.utils.book_append_sheet(wb, bbbkWS, 'BBBK Data');
       }
 
-      // Sheet 9: Lost Sales Data
+      // ===== Sheet 9: Lost Sales =====
       if (lostSalesRawData && lostSalesRawData.length > 0) {
-        const lostSalesWS = XLSX.utils.json_to_sheet(lostSalesRawData);
+        const lostSalesCols = [
+          { key: 'Product_ID', header: 'Product ID', width: 14 },
+          { key: 'Product_Name', header: 'Product Name', width: 30 },
+          { key: 'Product_Group', header: 'Product Group', width: 22 },
+          { key: 'Saldo', header: 'Stock (Saldo)', width: 14, format: 'number' },
+          { key: 'Qty_Booked', header: 'Qty Booked', width: 14, format: 'number' },
+          { key: 'TotalPending', header: 'Total Pending', width: 14, format: 'number' },
+        ];
+        const lostSalesWS = createStyledSheet(lostSalesRawData, lostSalesCols);
         XLSX.utils.book_append_sheet(wb, lostSalesWS, 'Lost Sales');
       }
 
-      // Sheet 10: Batch Expiry Data
+      // ===== Sheet 10: Batch Expiry =====
       if (batchExpiryRawData && batchExpiryRawData.length > 0) {
-        const expiryWS = XLSX.utils.json_to_sheet(batchExpiryRawData);
+        const expiryCols = [
+          { key: 'Product_ID', header: 'Product ID', width: 14 },
+          { key: 'Product_Name', header: 'Product Name', width: 30 },
+          { key: 'Batch_No', header: 'Batch No', width: 16 },
+          { key: 'ExpDate', header: 'Expiry Date', width: 14, format: 'date' },
+          { key: 'DaysUntilExpiry', header: 'Days Until Expiry', width: 18, format: 'number' },
+          { key: 'MonthsUntilExpiry', header: 'Months Until Expiry', width: 20, format: 'number' },
+          { key: 'BatchStockRelease', header: 'Stock Release', width: 14, format: 'number' },
+          { key: 'BatchStockKarantina', header: 'Stock Karantina', width: 16, format: 'number' },
+          { key: 'HNA', header: 'HNA', width: 14, format: 'number' },
+        ];
+        const expiryWS = createStyledSheet(batchExpiryRawData, expiryCols);
         XLSX.utils.book_append_sheet(wb, expiryWS, 'Batch Expiry');
       }
 
-      // Generate filename
-      const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
-      const filename = `SummaryDashboard_${isHistoricalData ? selectedPeriode : 'Live'}_${dateStr}.xlsx`;
+      // Generate filename with cleaner date
+      const fileDateStr = exportRefDate.toISOString().split('T')[0].replace(/-/g, '');
+      const periodLabel = isHistoricalData ? String(selectedPeriode).replace(/[^a-zA-Z0-9-]/g, '_') : 'Live';
+      const filename = `SummaryDashboard_${periodLabel}_${fileDateStr}.xlsx`;
       
       // Save the file
       XLSX.writeFile(wb, filename);

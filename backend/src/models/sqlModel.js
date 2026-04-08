@@ -731,16 +731,11 @@ async function getPCTSummary() {
         WHERE b2.Product_ID = bd.Product_ID
         FOR XML PATH(''), TYPE
       ).value('.', 'NVARCHAR(MAX)'), 1, 2, '') AS Batch_Nos,
-      ISNULL(mpg.Group_Dept, 'Unknown') AS Dept,
-      CASE 
-        WHEN EXISTS (SELECT 1 FROM m_product_otc otc WHERE otc.Product_ID = bd.Product_ID) THEN 'OTC'
-        WHEN bd.Product_Name LIKE '%generik%' OR bd.Product_Name LIKE '%generic%' THEN 'Generik'
-        ELSE 'ETH'
-      END AS Kategori
+      ISNULL(ms.Dept, 'Belum Ada') AS Dept,
+      ISNULL(ms.Jenis_Sediaan, 'Belum Ada') AS Kategori
     FROM BatchDetails bd
-    LEFT JOIN m_Product_PN_Group mpg ON mpg.Group_ProductID = bd.Product_ID 
-      AND mpg.Group_Periode = CONVERT(VARCHAR(7), GETDATE(), 120)
-    GROUP BY bd.Product_ID, bd.Product_Name, mpg.Group_Dept
+    LEFT JOIN m_alur_jenis_sediaan_produk ms ON ms.Product_ID = bd.Product_ID
+    GROUP BY bd.Product_ID, bd.Product_Name, ms.Dept, ms.Jenis_Sediaan
     ORDER BY bd.Product_ID
   `;
   
