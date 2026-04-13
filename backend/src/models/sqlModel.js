@@ -1673,4 +1673,34 @@ async function saveOF1TargetConfig(periode, targets) {
   }
 }
 
-module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTSummary, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getQCSummary, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig};
+async function getExpiredMaterials() {
+  const db = await connect();
+  const query = `
+    SELECT 
+      b.item_group,
+      b.item_name,
+      a.st_itemid,
+      a.st_dncno,
+      ROUND(a.st_saldoawal + a.st_terima - a.st_keluar, 6) AS Saldo,
+      b.item_unit,
+      a.st_ED,
+      b.Item_LastPrice *
+        ISNULL(dbo.fnConvertBJ(a.st_itemid, 1, b.Item_LastPurchaseUnit, b.Item_Unit), 1) *
+        (SELECT TOP(1) kurs_bulanan FROM lapi_Gi..t_currency WHERE curr_code = b.Item_LastPriceCurrency ORDER BY periode DESC)
+      AS UnitPrice
+    FROM t_item_stock_position_dnc a
+    LEFT JOIN m_item_manufacturing b ON a.st_itemid = b.item_id
+    WHERE REPLACE(a.st_periode, ' ', '') = CONVERT(NVARCHAR(6), GETDATE(), 112)
+      AND ISNUMERIC(LEFT(b.item_group, 1)) = 0
+      AND ROUND(a.st_saldoawal + a.st_terima - a.st_keluar, 6) > 0
+      AND b.item_type = 'BB'
+      AND LEN(a.st_itemid) > 4
+      AND a.st_itemid NOT IN ('IN 065', 'IN 068', 'CO 025')
+      AND CONVERT(NVARCHAR(8), a.st_ed, 112) < CONVERT(NVARCHAR(8), GETDATE(), 112)
+    ORDER BY a.st_ED, b.item_group, a.st_itemid
+  `;
+  const result = await db.request().query(query);
+  return result.recordset;
+}
+
+module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTSummary, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getQCSummary, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig, getExpiredMaterials};

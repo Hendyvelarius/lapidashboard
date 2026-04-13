@@ -74,6 +74,9 @@ router.post('/of1TargetConfig', SqlController.saveOF1TargetConfig);
 // Routing Batch Expiry
 router.get('/batchExpiry', SqlController.getBatchExpiry);
 
+// Routing Expired Materials (Bahan Baku)
+router.get('/expiredMaterials', SqlController.getExpiredMaterials);
+
 // Routing Holidays for working days calculation
 router.get('/holidays', SqlController.getHolidays);
 

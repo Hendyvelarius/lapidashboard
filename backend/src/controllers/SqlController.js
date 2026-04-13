@@ -653,4 +653,14 @@ async function saveOF1TargetConfig(req, res) {
   }
 }
 
-module.exports = { getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getPCTSummary, getOrderFulfillment, getStockReport, getofsummary, getPCTBreakdown, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getQCSummary, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig };
+async function getExpiredMaterials(req, res) {
+  try {
+    const data = await getCachedData('expiredMaterials', () => SqlModel.getExpiredMaterials(), CACHE_TTL.MEDIUM, shouldSkipCache(req));
+    res.json(data);
+  } catch (err) {
+    console.error('Error in fetching Expired Materials:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+module.exports = { getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getPCTSummary, getOrderFulfillment, getStockReport, getofsummary, getPCTBreakdown, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getQCSummary, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig, getExpiredMaterials };

@@ -3593,6 +3593,8 @@ function SummaryDashboard() {
   });
   const [batchExpiryRawData, setBatchExpiryRawData] = useState([]);
   const [nearExpiryModalOpen, setNearExpiryModalOpen] = useState(false);
+  const [expiredMaterialsRawData, setExpiredMaterialsRawData] = useState([]);
+  const [expiredMaterialsModalOpen, setExpiredMaterialsModalOpen] = useState(false);
   const [data, setData] = useState({
     sales: null,
     inventory: null,
@@ -3753,6 +3755,7 @@ function SummaryDashboard() {
             setOtaRawData(cachedData.rawData.otaData || []);
             setMaterialRawData(cachedData.rawData.materialData || []);
             setBatchExpiryRawData(cachedData.rawData.batchExpiryData || []);
+            setExpiredMaterialsRawData(cachedData.rawData.expiredMaterialsData || []);
           }
           setLastFetchTime(cachedData.timestamp);
           setLoading(false);
@@ -3769,7 +3772,7 @@ function SummaryDashboard() {
       // Use apiUrlWithRefresh to bypass server cache when forceRefresh is true
       const buildUrl = (path) => forceRefresh ? apiUrlWithRefresh(path, true) : apiUrl(path);
       
-      const [wipRes, ofRes, pctRes, forecastRes, bbbkRes, dailySalesRes, lostSalesRes, otaRes, materialRes, batchExpiryRes] = await Promise.all([
+      const [wipRes, ofRes, pctRes, forecastRes, bbbkRes, dailySalesRes, lostSalesRes, otaRes, materialRes, batchExpiryRes, expiredMaterialsRes] = await Promise.all([
         fetch(buildUrl('/api/wip')),
         fetch(buildUrl('/api/ofsummary')),
         fetch(buildUrl('/api/pctAverage')),
@@ -3779,7 +3782,8 @@ function SummaryDashboard() {
         fetch(buildUrl('/api/lostSales')),
         fetch(buildUrl('/api/ota')),
         fetch(buildUrl('/api/material')),
-        fetch(buildUrl('/api/batchExpiry'))
+        fetch(buildUrl('/api/batchExpiry')),
+        fetch(buildUrl('/api/expiredMaterials'))
       ]);
 
       const wipData = await wipRes.json();
@@ -3792,6 +3796,7 @@ function SummaryDashboard() {
       const otaData = await otaRes.json();
       const materialData = await materialRes.json();
       const batchExpiryData = await batchExpiryRes.json();
+      const expiredMaterialsData = await expiredMaterialsRes.json();
       
       // Store raw data
       const rawData = {
@@ -3803,7 +3808,8 @@ function SummaryDashboard() {
         pctData: pctData?.data || pctData || [],
         otaData: otaData || [],
         materialData: materialData || [],
-        batchExpiryData: batchExpiryData?.data || batchExpiryData || []
+        batchExpiryData: batchExpiryData?.data || batchExpiryData || [],
+        expiredMaterialsData: expiredMaterialsData || []
       };
 
       setOfRawData(applyOFBusinessLogic(rawData.ofData));
@@ -3815,6 +3821,7 @@ function SummaryDashboard() {
       setOtaRawData(rawData.otaData);
       setMaterialRawData(rawData.materialData);
       setBatchExpiryRawData(rawData.batchExpiryData);
+      setExpiredMaterialsRawData(rawData.expiredMaterialsData);
       
       // Process and set data
       const processedData = {
@@ -3832,6 +3839,7 @@ function SummaryDashboard() {
         inventoryBB: processInventoryBBData(bbbkData || []),
         inventoryBK: processInventoryBKData(bbbkData || []),
         inventoryBBBK: processInventoryBBBKData(bbbkData || []),
+        expiredBB: processExpiredMaterialsData(expiredMaterialsData || []),
         pct: processPCTData(pctData || []),
         ota: processOTAData(otaData || []),
         wip: processWIPData(wipData?.data || wipData || [])
@@ -3943,6 +3951,10 @@ function SummaryDashboard() {
 
   const handleInventoryBKReturnClick = () => {
     setInventoryBKReturnModalOpen(true);
+  };
+
+  const handleExpiredMaterialsClick = () => {
+    setExpiredMaterialsModalOpen(true);
   };
 
   const handleCoverageClick = () => {
@@ -4097,6 +4109,7 @@ function SummaryDashboard() {
           setOtaRawData(snapshot.raw_data.otaData || []);
           setMaterialRawData(snapshot.raw_data.materialData || []);
           setBatchExpiryRawData(snapshot.raw_data.batchExpiryData || []);
+          setExpiredMaterialsRawData(snapshot.raw_data.expiredMaterialsData || []);
           
           // Process data for display using snapshot date as reference
           // This ensures historical data is processed relative to when it was captured
@@ -4118,6 +4131,7 @@ function SummaryDashboard() {
             inventoryBB: processInventoryBBData(rawData.bbbkData || [], snapshotDate),
             inventoryBK: processInventoryBKData(rawData.bbbkData || [], snapshotDate),
             inventoryBBBK: processInventoryBBBKData(rawData.bbbkData || [], snapshotDate),
+            expiredBB: processExpiredMaterialsData(rawData.expiredMaterialsData || []),
             pct: processPCTData(rawData.pctData || []),
             ota: processOTAData(rawData.otaData || []),
             wip: processWIPData(rawData.wipData || [])
@@ -4336,6 +4350,7 @@ function SummaryDashboard() {
         ['OJ Slow Moving', `${data?.inventoryOJ?.slowMoving || 0}`, ''],
         ['OJ Dead Stock', `${data?.inventoryOJ?.deadStock || 0}`, ''],
         ['OJ Return', `${data?.inventoryOJ?.return || 0}`, ''],
+        ['BB Expired Materials', `${data?.expiredBB?.totalItems || 0}`, ''],
       ];
 
       const summaryWS = XLSX.utils.aoa_to_sheet(summaryAoa);
@@ -5643,6 +5658,59 @@ function SummaryDashboard() {
       totalValue: totalInventoryValue,
       batchCount: nearExpiryBatches.length,
       batches: nearExpiryBatches.sort((a, b) => (a.DaysUntilExpiry || 0) - (b.DaysUntilExpiry || 0))
+    };
+  };
+
+  const processExpiredMaterialsData = (expiredData) => {
+    if (!expiredData || expiredData.length === 0) {
+      return {
+        totalItems: 0,
+        totalValue: 0,
+        chartData: null
+      };
+    }
+
+    // Calculate total value and per-item value
+    let totalValue = 0;
+    const itemsWithValue = expiredData.map(item => {
+      const saldo = item.Saldo || 0;
+      const unitPrice = item.UnitPrice || 0;
+      const value = saldo * unitPrice;
+      totalValue += value;
+      return { ...item, totalValue: value };
+    });
+
+    // Sort by total value descending
+    itemsWithValue.sort((a, b) => b.totalValue - a.totalValue);
+
+    // Group by item_group for donut chart
+    const groupMap = {};
+    itemsWithValue.forEach(item => {
+      const group = item.item_group || 'Unknown';
+      if (!groupMap[group]) {
+        groupMap[group] = { group, value: 0 };
+      }
+      groupMap[group].value += item.totalValue;
+    });
+
+    const groups = Object.values(groupMap).sort((a, b) => b.value - a.value);
+    const groupColors = ['#ef4444', '#f59e0b', '#8b5cf6', '#06b6d4', '#10b981', '#f97316', '#ec4899', '#6366f1'];
+
+    const chartData = {
+      labels: groups.map(g => `${g.group}: ${formatNumber(g.value)}`),
+      datasets: [{
+        data: groups.map(g => g.value),
+        backgroundColor: groups.map((_, i) => groupColors[i % groupColors.length]),
+        borderWidth: 0,
+        cutout: '65%'
+      }]
+    };
+
+    return {
+      totalItems: expiredData.length,
+      totalValue,
+      items: itemsWithValue,
+      chartData
     };
   };
 
@@ -7018,7 +7086,7 @@ function SummaryDashboard() {
                     <CircularProgress 
                       percentage={data.orderFulfillment?.turunPpi || 0} 
                       color="#f59e0b"
-                      size={80}
+                      size={65}
                       title={getOfStageTooltip('Turun PPI')}
                       onClick={() => handleOfStageClick('Turun PPI')}
                     />
@@ -7028,7 +7096,7 @@ function SummaryDashboard() {
                     <CircularProgress 
                       percentage={data.orderFulfillment?.potongStock || 0} 
                       color="#10b981"
-                      size={80}
+                      size={65}
                       title={getOfStageTooltip('Potong Stock')}
                       onClick={() => handleOfStageClick('Potong Stock')}
                     />
@@ -7038,7 +7106,7 @@ function SummaryDashboard() {
                     <CircularProgress 
                       percentage={data.orderFulfillment?.proses || 0} 
                       color="#6b7280"
-                      size={80}
+                      size={65}
                       title={getOfStageTooltip('Proses')}
                       onClick={() => handleOfStageClick('Proses')}
                     />
@@ -7048,7 +7116,7 @@ function SummaryDashboard() {
                     <CircularProgress 
                       percentage={data.orderFulfillment?.kemas || 0} 
                       color="#8b5cf6"
-                      size={80}
+                      size={65}
                       title={getOfStageTooltip('Kemas')}
                       onClick={() => handleOfStageClick('Kemas')}
                     />
@@ -7058,7 +7126,7 @@ function SummaryDashboard() {
                     <CircularProgress 
                       percentage={data.orderFulfillment?.rilisQc || 0} 
                       color="#f97316"
-                      size={80}
+                      size={65}
                       title={getOfStageTooltip('Rilis QC')}
                       onClick={() => handleOfStageClick('Rilis QC')}
                     />
@@ -7068,7 +7136,7 @@ function SummaryDashboard() {
                     <CircularProgress 
                       percentage={data.orderFulfillment?.dokumen || 0} 
                       color="#06b6d4"
-                      size={80}
+                      size={65}
                       title={getOfStageTooltip('Dokumen')}
                       onClick={() => handleOfStageClick('Dokumen')}
                     />
@@ -7078,7 +7146,7 @@ function SummaryDashboard() {
                     <CircularProgress 
                       percentage={data.orderFulfillment?.rilisQa || 0} 
                       color="#ef4444"
-                      size={80}
+                      size={65}
                       title={getOfStageTooltip('Rilis QA')}
                       onClick={() => handleOfStageClick('Rilis QA')}
                     />
@@ -7565,10 +7633,8 @@ function SummaryDashboard() {
               </div>
             </KPICard>
 
-            {/* Row 4 Container - PCT and Inventory */}
-            <div className="row-4-wrapper">
-              {/* PCT */}
-              <KPICard ref={cycletimeRef} title="PCT" className="pct-card">
+            {/* PCT - same row as OF1 */}
+            <KPICard ref={cycletimeRef} title="PCT" className="pct-card">
                 <div className="pct-content">
                   <div className="pct-speedometer">
                     <div 
@@ -7717,6 +7783,60 @@ function SummaryDashboard() {
                     />
                     <div className="inventory-label">Return/Reject</div>
                   </div>
+                  <div className="inventory-item">
+                    <div 
+                      style={{ 
+                        width: 60, height: 60, position: 'relative', cursor: 'pointer' 
+                      }}
+                      onClick={handleExpiredMaterialsClick}
+                      title="Click to view expired materials"
+                    >
+                      {data.expiredBB?.chartData ? (
+                        <>
+                          <Doughnut 
+                            data={data.expiredBB.chartData}
+                            options={{
+                              responsive: true,
+                              maintainAspectRatio: true,
+                              plugins: {
+                                legend: { display: false },
+                                tooltip: {
+                                  callbacks: {
+                                    label: function(context) {
+                                      return context.label || '';
+                                    }
+                                  }
+                                }
+                              }
+                            }}
+                          />
+                          <div style={{
+                            position: 'absolute',
+                            top: '50%',
+                            left: '50%',
+                            transform: 'translate(-50%, -50%)',
+                            textAlign: 'center',
+                            fontSize: '16px',
+                            fontWeight: 'bold',
+                            color: '#1f2937',
+                            pointerEvents: 'none',
+                            lineHeight: '1.2'
+                          }}>
+                            {formatNumber(data.expiredBB.totalValue)}
+                          </div>
+                        </>
+                      ) : (
+                        <CircularProgress 
+                          percentage={0} 
+                          color="#e5e7eb"
+                          size={60}
+                          centerContent="0"
+                          showPercentage={false}
+                        />
+                      )}
+                    </div>
+                    <div className="inventory-label">Expired</div>
+                  </div>
                 </div>
               </div>
             </KPICard>
@@ -7765,7 +7885,6 @@ function SummaryDashboard() {
               </div>
             </KPICard>
             </div>
-            </div> {/* Close row-4-wrapper */}
           </div>
         </div>
         
@@ -7815,6 +7934,39 @@ function SummaryDashboard() {
           onClose={() => setNearExpiryModalOpen(false)}
           batchExpiryData={batchExpiryRawData}
         />
+        
+        {/* Expired Materials Details Modal */}
+        {expiredMaterialsModalOpen && (
+          <div className="modal-overlay" onClick={() => setExpiredMaterialsModalOpen(false)}>
+            <div className="modal-content of-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '800px', width: '90vw' }}>
+              <div className="modal-header">
+                <h2>Detail Expired Bahan Baku</h2>
+                <button className="modal-close" onClick={() => setExpiredMaterialsModalOpen(false)}>&times;</button>
+              </div>
+              <div className="modal-body">
+                <div style={{ marginBottom: '16px', fontSize: '14px', color: '#6b7280' }}>
+                  Total: <strong style={{ color: '#ef4444' }}>{expiredMaterialsRawData.length}</strong> material expired — Nilai total: <strong style={{ color: '#ef4444' }}>Rp {formatNumber(data.expiredBB?.totalValue || 0)}</strong>
+                </div>
+                <div className="of-batch-list">
+                  {data.expiredBB?.items?.map((item, i) => (
+                    <div key={i} className="of-batch-item pending">
+                      <div className="batch-code">{item.st_itemid} | DNC: {item.st_dncno}</div>
+                      <div className="product-info">
+                        <span className="product-name">{item.item_name}</span>
+                        <span className="product-id">
+                          Saldo: {item.Saldo?.toLocaleString()} {item.item_unit} | ED: {new Date(item.st_ED).toLocaleDateString('id-ID')} | Nilai: Rp {formatNumber(item.totalValue)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {(!expiredMaterialsRawData || expiredMaterialsRawData.length === 0) && (
+                  <div className="no-data">Tidak ada bahan baku expired</div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
         
         {/* Inventory OJ Slow Moving & Dead Stock Details Modal */}
         <InventoryOJSlowDeadStockDetailsModal 
