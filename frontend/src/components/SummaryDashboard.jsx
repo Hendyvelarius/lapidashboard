@@ -5680,8 +5680,23 @@ function SummaryDashboard() {
       return { ...item, totalValue: value };
     });
 
-    // Sort by total value descending
-    itemsWithValue.sort((a, b) => b.totalValue - a.totalValue);
+    // Sort by expiry date ascending (most expired first)
+    itemsWithValue.sort((a, b) => new Date(a.st_ED) - new Date(b.st_ED));
+
+    // Compute subtotals by expiry status
+    let expiredValue = 0;
+    let nearExpiryValue = 0;
+    let expiredCount = 0;
+    let nearExpiryCount = 0;
+    itemsWithValue.forEach(item => {
+      if (item.expiryStatus === 'Expired') {
+        expiredValue += item.totalValue;
+        expiredCount++;
+      } else {
+        nearExpiryValue += item.totalValue;
+        nearExpiryCount++;
+      }
+    });
 
     // Group by item_group for donut chart
     const groupMap = {};
@@ -5709,6 +5724,10 @@ function SummaryDashboard() {
     return {
       totalItems: expiredData.length,
       totalValue,
+      expiredCount,
+      expiredValue,
+      nearExpiryCount,
+      nearExpiryValue,
       items: itemsWithValue,
       chartData
     };
@@ -7938,8 +7957,10 @@ function SummaryDashboard() {
                 <button className="modal-close" onClick={() => setExpiredMaterialsModalOpen(false)}>&times;</button>
               </div>
               <div className="modal-body">
-                <div style={{ marginBottom: '16px', fontSize: '14px', color: '#6b7280' }}>
-                  Total: <strong style={{ color: '#ef4444' }}>{expiredMaterialsRawData.length}</strong> material near expiry — Nilai total: <strong style={{ color: '#ef4444' }}>Rp {formatNumber(data.expiredBB?.totalValue || 0)}</strong>
+                <div style={{ marginBottom: '16px', fontSize: '14px', color: '#6b7280', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div>🔴 Expired: <strong style={{ color: '#ef4444' }}>{data.expiredBB?.expiredCount || 0}</strong> item — Rp <strong style={{ color: '#ef4444' }}>{formatNumber(data.expiredBB?.expiredValue || 0)}</strong></div>
+                  <div>🟡 Near Expiry: <strong style={{ color: '#f59e0b' }}>{data.expiredBB?.nearExpiryCount || 0}</strong> item — Rp <strong style={{ color: '#f59e0b' }}>{formatNumber(data.expiredBB?.nearExpiryValue || 0)}</strong></div>
+                  <div style={{ marginTop: '4px', borderTop: '1px solid #e5e7eb', paddingTop: '4px' }}>Total: <strong>{expiredMaterialsRawData.length}</strong> item — Rp <strong>{formatNumber(data.expiredBB?.totalValue || 0)}</strong></div>
                 </div>
                 <div className="of-batch-list">
                   {data.expiredBB?.items?.map((item, i) => (
