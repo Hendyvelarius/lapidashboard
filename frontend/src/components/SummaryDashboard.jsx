@@ -7800,13 +7800,7 @@ function SummaryDashboard() {
                               maintainAspectRatio: true,
                               plugins: {
                                 legend: { display: false },
-                                tooltip: {
-                                  callbacks: {
-                                    label: function(context) {
-                                      return context.label || '';
-                                    }
-                                  }
-                                }
+                                tooltip: { enabled: false }
                               }
                             }}
                           />
