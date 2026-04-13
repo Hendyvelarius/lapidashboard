@@ -1684,6 +1684,7 @@ async function getExpiredMaterials() {
       ROUND(a.st_saldoawal + a.st_terima - a.st_keluar, 6) AS Saldo,
       b.item_unit,
       a.st_ED,
+      CASE WHEN a.st_ed < GETDATE() THEN 'Expired' ELSE 'Near Expiry' END AS expiryStatus,
       b.Item_LastPrice *
         ISNULL(dbo.fnConvertBJ(a.st_itemid, 1, b.Item_LastPurchaseUnit, b.Item_Unit), 1) *
         (SELECT TOP(1) kurs_bulanan FROM lapi_Gi..t_currency WHERE curr_code = b.Item_LastPriceCurrency ORDER BY periode DESC)
@@ -1696,7 +1697,7 @@ async function getExpiredMaterials() {
       AND b.item_type = 'BB'
       AND LEN(a.st_itemid) > 4
       AND a.st_itemid NOT IN ('IN 065', 'IN 068', 'CO 025')
-      AND CONVERT(NVARCHAR(8), a.st_ed, 112) < CONVERT(NVARCHAR(8), GETDATE(), 112)
+      AND a.st_ed < DATEADD(MONTH, 3, GETDATE())
     ORDER BY a.st_ED, b.item_group, a.st_itemid
   `;
   const result = await db.request().query(query);

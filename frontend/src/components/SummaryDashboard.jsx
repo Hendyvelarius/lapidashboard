@@ -4350,7 +4350,7 @@ function SummaryDashboard() {
         ['OJ Slow Moving', `${data?.inventoryOJ?.slowMoving || 0}`, ''],
         ['OJ Dead Stock', `${data?.inventoryOJ?.deadStock || 0}`, ''],
         ['OJ Return', `${data?.inventoryOJ?.return || 0}`, ''],
-        ['BB Expired Materials', `${data?.expiredBB?.totalItems || 0}`, ''],
+        ['BB Near Expiry Materials', `${data?.expiredBB?.totalItems || 0}`, ''],
       ];
 
       const summaryWS = XLSX.utils.aoa_to_sheet(summaryAoa);
@@ -7789,7 +7789,7 @@ function SummaryDashboard() {
                         width: 60, height: 60, position: 'relative', cursor: 'pointer' 
                       }}
                       onClick={handleExpiredMaterialsClick}
-                      title="Click to view expired materials"
+                      title="Click to view near expiry materials"
                     >
                       {data.expiredBB?.chartData ? (
                         <>
@@ -7829,7 +7829,7 @@ function SummaryDashboard() {
                         />
                       )}
                     </div>
-                    <div className="inventory-label">Expired</div>
+                    <div className="inventory-label">Near Expiry</div>
                   </div>
                 </div>
               </div>
@@ -7929,17 +7929,17 @@ function SummaryDashboard() {
           batchExpiryData={batchExpiryRawData}
         />
         
-        {/* Expired Materials Details Modal */}
+        {/* Near Expiry Materials Details Modal */}
         {expiredMaterialsModalOpen && (
           <div className="modal-overlay" onClick={() => setExpiredMaterialsModalOpen(false)}>
             <div className="modal-content of-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '800px', width: '90vw' }}>
               <div className="modal-header">
-                <h2>Detail Expired Bahan Baku</h2>
+                <h2>Detail Near Expiry Bahan Baku</h2>
                 <button className="modal-close" onClick={() => setExpiredMaterialsModalOpen(false)}>&times;</button>
               </div>
               <div className="modal-body">
                 <div style={{ marginBottom: '16px', fontSize: '14px', color: '#6b7280' }}>
-                  Total: <strong style={{ color: '#ef4444' }}>{expiredMaterialsRawData.length}</strong> material expired — Nilai total: <strong style={{ color: '#ef4444' }}>Rp {formatNumber(data.expiredBB?.totalValue || 0)}</strong>
+                  Total: <strong style={{ color: '#ef4444' }}>{expiredMaterialsRawData.length}</strong> material near expiry — Nilai total: <strong style={{ color: '#ef4444' }}>Rp {formatNumber(data.expiredBB?.totalValue || 0)}</strong>
                 </div>
                 <div className="of-batch-list">
                   {data.expiredBB?.items?.map((item, i) => (
@@ -7948,14 +7948,14 @@ function SummaryDashboard() {
                       <div className="product-info">
                         <span className="product-name">{item.item_name}</span>
                         <span className="product-id">
-                          Saldo: {item.Saldo?.toLocaleString()} {item.item_unit} | ED: {new Date(item.st_ED).toLocaleDateString('id-ID')} | Nilai: Rp {formatNumber(item.totalValue)}
+                          {item.expiryStatus === 'Expired' ? '🔴' : '🟡'} {item.expiryStatus} | Saldo: {item.Saldo?.toLocaleString()} {item.item_unit} | ED: {new Date(item.st_ED).toLocaleDateString('id-ID')} | Nilai: Rp {formatNumber(item.totalValue)}
                         </span>
                       </div>
                     </div>
                   ))}
                 </div>
                 {(!expiredMaterialsRawData || expiredMaterialsRawData.length === 0) && (
-                  <div className="no-data">Tidak ada bahan baku expired</div>
+                  <div className="no-data">Tidak ada bahan baku near expiry</div>
                 )}
               </div>
             </div>
