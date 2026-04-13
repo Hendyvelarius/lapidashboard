@@ -29,6 +29,7 @@
 .summary-kpi-card.pct-card {
   grid-column: 4;
   grid-row: 3;
+  padding: 0;
 }
 
 .summary-kpi-card.pct-card .summary-kpi-content {
