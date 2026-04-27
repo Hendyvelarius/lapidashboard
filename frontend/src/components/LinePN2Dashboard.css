@@ -457,6 +457,36 @@ body.sidebar-minimized .line-pn2-charts-container.sidebar-minimized {
   background: #6b7280;
 }
 
+/* Continuous auto-scrolling batch list (TV / full-screen view).
+   Scrolling kicks in when content overflows; otherwise the list renders statically. */
+.speedometer-batch-table--scrolling {
+  overflow: hidden;
+  /* Soft fade at top/bottom so the loop seam is less abrupt */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 6%, black 94%, transparent 100%);
+          mask-image: linear-gradient(to bottom, transparent 0%, black 6%, black 94%, transparent 100%);
+}
+
+.batch-list--animate {
+  animation: batch-list-scroll var(--scroll-duration, 30s) linear infinite;
+  will-change: transform;
+}
+
+/* Pause on hover for desktop readability — TV viewers won't trigger it. */
+.speedometer-batch-table--scrolling:hover .batch-list--animate {
+  animation-play-state: paused;
+}
+
+@keyframes batch-list-scroll {
+  from { transform: translateY(0); }
+  to   { transform: translateY(-50%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .batch-list--animate {
+    animation: none;
+  }
+}
+
 /* Responsive adjustments for speedometers */
 @media (max-width: 1600px) {
   .line-pn2-speedometers-grid {
