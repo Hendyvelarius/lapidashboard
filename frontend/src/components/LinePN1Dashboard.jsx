@@ -6,6 +6,7 @@ import Modal from './Modal';
 import DashboardLoading from './DashboardLoading';
 import ContextualHelpModal from './ContextualHelpModal';
 import { useHelp } from '../context/HelpContext';
+import { useAuth } from '../context/AuthContext';
 import { loadLinePN1Cache, saveLinePN1Cache, clearLinePN1Cache, isLinePN1CacheValid } from '../utils/dashboardCache';
 import { calculateCalendarDaysToToday, setHolidays } from '../utils/workingDays';
 import { apiUrl, apiUrlWithRefresh } from '../api';
@@ -308,19 +309,26 @@ const getQueueColor = (batchCount, stageName) => {
   }
 };
 
-// Continuous slow-scrolling batch list (designed for TV / full-screen viewing).
-// - Renders the list duplicated and animates translateY(0 -> -50%) linearly so the loop seams cleanly.
-// - Falls back to a static single copy when content fits (no overflow).
-// - Speed is a constant px/sec so readability stays the same regardless of batch count or viewport.
+// Batch list — auto-scrolls only in TV Mode (user.log_NIK === 'TV').
+// Outside TV Mode, behavior is the original native scrollbar via CSS overflow-y: auto.
+// In TV Mode: renders the list duplicated and animates translateY(0 -> -50%) linearly so the loop seams cleanly,
+// at a constant px/sec so readability stays the same regardless of batch count or viewport.
 const SCROLL_MAX_HEIGHT = 350;   // px, must match .speedometer-batch-table max-height
 const SCROLL_PX_PER_SEC = 22;    // slow-readable; raise to scroll faster
 
 const ScrollingBatchList = ({ batches, stageName, onBatchClick }) => {
+  const { user } = useAuth();
+  const isTVMode = user?.log_NIK === 'TV';
   const trackRef = useRef(null);
   const [shouldScroll, setShouldScroll] = useState(false);
   const [scrollDuration, setScrollDuration] = useState(20);
 
   useEffect(() => {
+    // Outside TV Mode, fall back to native user-controlled scrolling — skip measurement and animation.
+    if (!isTVMode) {
+      if (shouldScroll) setShouldScroll(false);
+      return;
+    }
     const track = trackRef.current;
     if (!track) return;
     const measure = () => {
@@ -339,22 +347,23 @@ const ScrollingBatchList = ({ batches, stageName, onBatchClick }) => {
     const ro = new ResizeObserver(measure);
     ro.observe(track);
     return () => ro.disconnect();
-  }, [batches.length, shouldScroll]);
+  }, [batches.length, shouldScroll, isTVMode]);
 
-  const list = shouldScroll ? [...batches, ...batches] : batches;
+  const animate = isTVMode && shouldScroll;
+  const list = animate ? [...batches, ...batches] : batches;
 
   return (
-    <div className={`speedometer-batch-table${shouldScroll ? ' speedometer-batch-table--scrolling' : ''}`}>
+    <div className={`speedometer-batch-table${animate ? ' speedometer-batch-table--scrolling' : ''}`}>
       <div
         ref={trackRef}
-        className={`batch-list${shouldScroll ? ' batch-list--animate' : ''}`}
-        style={shouldScroll ? { animationDuration: `${scrollDuration}s` } : undefined}
+        className={`batch-list${animate ? ' batch-list--animate' : ''}`}
+        style={animate ? { animationDuration: `${scrollDuration}s` } : undefined}
       >
         {list.map((batch, index) => (
           <div
             key={index}
             className="batch-item"
-            aria-hidden={shouldScroll && index >= batches.length ? true : undefined}
+            aria-hidden={animate && index >= batches.length ? true : undefined}
             onClick={(e) => {
               e.stopPropagation();
               onBatchClick && onBatchClick(stageName, batch);
