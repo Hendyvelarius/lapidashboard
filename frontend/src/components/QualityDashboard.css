@@ -481,12 +481,6 @@ body.sidebar-minimized .quality-charts-container.sidebar-minimized {
   to   { transform: translateY(-50%); }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .batch-list--animate {
-    animation: none;
-  }
-}
-
 /* Responsive adjustments for speedometers */
 @media (max-width: 1600px) {
   .quality-speedometers-grid {
