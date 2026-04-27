@@ -310,6 +310,71 @@ const getQueueColor = (batchCount, stageName) => {
   }
 };
 
+// Continuous slow-scrolling batch list (designed for TV / full-screen viewing).
+// - Renders the list duplicated and animates translateY(0 -> -50%) linearly so the loop seams cleanly.
+// - Falls back to a static single copy when content fits (no overflow).
+// - Speed is a constant px/sec so readability stays the same regardless of batch count or viewport.
+const SCROLL_MAX_HEIGHT = 350;   // px, must match .speedometer-batch-table max-height
+const SCROLL_PX_PER_SEC = 22;    // slow-readable; raise to scroll faster
+
+const ScrollingBatchList = ({ batches, stageName, onBatchClick }) => {
+  const trackRef = useRef(null);
+  const [shouldScroll, setShouldScroll] = useState(false);
+  const [scrollDuration, setScrollDuration] = useState(20);
+
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    const measure = () => {
+      // Track holds 2 copies when scrolling, 1 copy otherwise — divide accordingly to get single-copy height.
+      const copies = shouldScroll ? 2 : 1;
+      const singleH = track.scrollHeight / copies;
+      const overflow = singleH > SCROLL_MAX_HEIGHT + 2;
+      if (overflow !== shouldScroll) {
+        setShouldScroll(overflow);
+      }
+      if (overflow) {
+        setScrollDuration(Math.max(8, singleH / SCROLL_PX_PER_SEC));
+      }
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(track);
+    return () => ro.disconnect();
+  }, [batches.length, shouldScroll]);
+
+  const list = shouldScroll ? [...batches, ...batches] : batches;
+
+  return (
+    <div className={`speedometer-batch-table${shouldScroll ? ' speedometer-batch-table--scrolling' : ''}`}>
+      <div
+        ref={trackRef}
+        className={`batch-list${shouldScroll ? ' batch-list--animate' : ''}`}
+        style={shouldScroll ? { animationDuration: `${scrollDuration}s` } : undefined}
+      >
+        {list.map((batch, index) => (
+          <div
+            key={index}
+            className="batch-item"
+            aria-hidden={shouldScroll && index >= batches.length ? true : undefined}
+            onClick={(e) => {
+              e.stopPropagation();
+              onBatchClick && onBatchClick(stageName, batch);
+            }}
+            style={{ cursor: onBatchClick ? 'pointer' : 'default' }}
+          >
+            <div className="batch-product">{batch.productName}</div>
+            <div className="batch-details">
+              <span className="batch-number">{batch.batchNo}</span>
+              <span className="batch-days">{batch.daysInStage}d</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 // Speedometer Component
 const Speedometer = ({ label, value, maxValue = 50, stageName, batches = [], onClick, onBatchClick }) => {
   const thresholds = getStageThresholds(stageName);
@@ -409,27 +474,11 @@ const Speedometer = ({ label, value, maxValue = 50, stageName, batches = [], onC
 
       {/* Batch Details Table */}
       {sortedBatches.length > 0 ? (
-        <div className="speedometer-batch-table">
-          <div className="batch-list">
-            {sortedBatches.map((batch, index) => (
-              <div 
-                key={index} 
-                className="batch-item"
-                onClick={(e) => {
-                  e.stopPropagation(); // Prevent triggering the speedometer onClick
-                  onBatchClick && onBatchClick(stageName, batch);
-                }}
-                style={{ cursor: onBatchClick ? 'pointer' : 'default' }}
-              >
-                <div className="batch-product">{batch.productName}</div>
-                <div className="batch-details">
-                  <span className="batch-number">{batch.batchNo}</span>
-                  <span className="batch-days">{batch.daysInStage}d</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <ScrollingBatchList
+          batches={sortedBatches}
+          stageName={stageName}
+          onBatchClick={onBatchClick}
+        />
       ) : (
         <div className="speedometer-batch-table">
           <div style={{
