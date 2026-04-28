@@ -3078,38 +3078,34 @@ const LostSalesDetailsModal = ({ isOpen, onClose, lostSalesData, forecastData })
 };
 
 // Stock Out Details Modal Component
-const StockOutDetailsModal = ({ isOpen, onClose, stockOutData, referenceDate = null }) => {
+const StockOutDetailsModal = ({ isOpen, onClose, lostSalesData }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  
-  if (!isOpen || !stockOutData) return null;
 
-  // Get current period for filtering - use referenceDate for historical data
-  const currentDate = referenceDate ? new Date(referenceDate) : new Date();
-  const currentPeriod = `${currentDate.getFullYear()}${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
-  
-  // Filter forecast data by current period and stock out products (Release = 0)
-  const currentPeriodData = stockOutData.filter(item => 
-    String(item.Periode || '').toString() === currentPeriod
+  if (!isOpen || !lostSalesData) return null;
+
+  // Stock out = zero stock (Saldo = 0) but with active demand (Qty_Booked > 0).
+  // This excludes products that simply aren't being produced (no demand).
+  const stockOutProducts = lostSalesData.filter(item =>
+    (item.Saldo || 0) === 0 && (item.Qty_Booked || 0) > 0
   );
-  const stockOutProducts = currentPeriodData.filter(item => (item.Release || 0) === 0);
-  
-  // Split by Product_Group
-  const allFokusProducts = stockOutProducts.filter(item => 
-    item.Product_Group === "1. PRODUK FOKUS"
-  );
-  const allNonFokusProducts = stockOutProducts.filter(item => 
-    item.Product_Group === "2. PRODUK NON FOKUS"
-  );
+
+  // Split by Product_Group, sort by demand (Qty_Booked) descending
+  const allFokusProducts = stockOutProducts
+    .filter(item => item.Product_Group === "1. PRODUK FOKUS")
+    .sort((a, b) => (b.Qty_Booked || 0) - (a.Qty_Booked || 0));
+  const allNonFokusProducts = stockOutProducts
+    .filter(item => item.Product_Group === "2. PRODUK NON FOKUS")
+    .sort((a, b) => (b.Qty_Booked || 0) - (a.Qty_Booked || 0));
 
   // Filter based on search term
   const filterProducts = (products) => {
     if (!searchTerm.trim()) return products;
-    
+
     return products.filter(product => {
-      const productId = (product.Product_ID || '').toString().toLowerCase();
-      const productName = (product.Product_NM || '').toLowerCase();
+      const productId = (product.MSO_ProductID || '').toString().toLowerCase();
+      const productName = (product.Product_Name || '').toLowerCase();
       const search = searchTerm.toLowerCase();
-      
+
       return productId.includes(search) || productName.includes(search);
     });
   };
@@ -3163,14 +3159,13 @@ const StockOutDetailsModal = ({ isOpen, onClose, stockOutData, referenceDate = n
                 {fokusProducts.length > 0 ? (
                   fokusProducts.map((product, index) => (
                     <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #ef4444' }}>
-                      <div className="batch-code">ID: {product.Product_ID}</div>
+                      <div className="batch-code">ID: {product.MSO_ProductID}</div>
                       <div className="product-info">
-                        <span className="product-name">{product.Product_NM || 'N/A'}</span>
+                        <span className="product-name">{product.Product_Name || 'N/A'}</span>
                         <span className="product-id">
-                          Produksi: {product.Produksi || 0} | 
-                          WIP: {product.WIP || 0} | 
-                          Quarantine: {product.StockKarantinaNotRekapBPHP || 0}
-                          {product.StockLock ? ` | Locked: ${product.StockLock}` : ''}
+                          Demand: {formatNumber(product.Qty_Booked || 0)} |
+                          Stock: 0 |
+                          Potential Loss: {formatNumber(product.TotalPending || 0)}
                         </span>
                       </div>
                     </div>
@@ -3190,14 +3185,13 @@ const StockOutDetailsModal = ({ isOpen, onClose, stockOutData, referenceDate = n
                 {nonFokusProducts.length > 0 ? (
                   nonFokusProducts.map((product, index) => (
                     <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #f59e0b' }}>
-                      <div className="batch-code">ID: {product.Product_ID}</div>
+                      <div className="batch-code">ID: {product.MSO_ProductID}</div>
                       <div className="product-info">
-                        <span className="product-name">{product.Product_NM || 'N/A'}</span>
+                        <span className="product-name">{product.Product_Name || 'N/A'}</span>
                         <span className="product-id">
-                          Produksi: {product.Produksi || 0} | 
-                          WIP: {product.WIP || 0} | 
-                          Quarantine: {product.StockKarantinaNotRekapBPHP || 0}
-                          {product.StockLock ? ` | Locked: ${product.StockLock}` : ''}
+                          Demand: {formatNumber(product.Qty_Booked || 0)} |
+                          Stock: 0 |
+                          Potential Loss: {formatNumber(product.TotalPending || 0)}
                         </span>
                       </div>
                     </div>
@@ -7910,11 +7904,10 @@ function SummaryDashboard() {
         />
         
         {/* Stock Out Details Modal */}
-        <StockOutDetailsModal 
+        <StockOutDetailsModal
           isOpen={stockOutModalOpen}
           onClose={() => setStockOutModalOpen(false)}
-          stockOutData={forecastRawData}
-          referenceDate={historicalReferenceDate}
+          lostSalesData={lostSalesRawData}
         />
         
         {/* Lost Sales Details Modal */}
