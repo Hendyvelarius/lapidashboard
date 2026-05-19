@@ -684,34 +684,46 @@
 .material-availability-content {
   display: flex;
   flex-direction: row;
-  gap: 1rem;
+  gap: 0.8rem;
   height: 100%;
-  justify-content: center;
   align-items: center;
-  padding: 0.5rem;
+  padding: 0 0.5rem;
 }
 
-.material-info-card {
-  background: #f8fafc;
-  border-radius: 8px;
-  padding: 0.75rem;
-  text-align: center;
-  border: 2px solid #e5e7eb;
+.material-availability-main {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.5rem;
   flex: 1;
+  justify-content: center;
+}
+
+.material-info-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1;
+  max-width: 120px;
+}
+
+.material-info-card {
+  background: #f8fafc;
+  border-radius: 6px;
+  padding: 0.5rem;
+  text-align: center;
+  border: 1px solid #e5e7eb;
 }
 
 .material-info-label {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: #374151;
+  font-size: 0.7rem;
+  color: #6b7280;
+  font-weight: 500;
+  line-height: 1.1;
 }
 
 .material-info-value {
-  font-size: 1.2rem;
+  font-size: 1rem;
   font-weight: bold;
   color: #1f2937;
 }

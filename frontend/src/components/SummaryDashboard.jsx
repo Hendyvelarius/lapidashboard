@@ -5419,6 +5419,7 @@ function SummaryDashboard() {
   const processMaterialAvailabilityData = (materialData) => {
     if (!materialData || materialData.length === 0) {
       return {
+        overall: 0,
         bahanBaku: 0,
         bahanKemas: 0
       };
@@ -5431,12 +5432,12 @@ function SummaryDashboard() {
     // Calculate average availability percentage
     const calculateAverageAvailabilityPercentage = (items) => {
       if (items.length === 0) return 0;
-      
+
       // Filter out items where needed is 0 or undefined to avoid division by zero
       const validItems = items.filter(item => (item.needed || 0) > 0);
-      
+
       if (validItems.length === 0) return 0;
-      
+
       // Calculate individual availability percentages
       const percentages = validItems.map(item => {
         const lastStock = item.last_stock || 0;
@@ -5444,13 +5445,14 @@ function SummaryDashboard() {
         // Cap at 100% to avoid skewing the average with overstocked items
         return Math.min((lastStock / needed) * 100, 100);
       });
-      
+
       // Calculate average percentage
       const totalPercentage = percentages.reduce((sum, percentage) => sum + percentage, 0);
       return Math.round(totalPercentage / percentages.length);
     };
 
     return {
+      overall: calculateAverageAvailabilityPercentage([...bahanBakuItems, ...bahanKemasItems]),
       bahanBaku: calculateAverageAvailabilityPercentage(bahanBakuItems),
       bahanKemas: calculateAverageAvailabilityPercentage(bahanKemasItems)
     };
@@ -7413,25 +7415,22 @@ function SummaryDashboard() {
             {/* Material Availability */}
             <KPICard ref={materialRef} title="MATERIAL AVAILABILITY" className="material-availability-card">
               <div className="material-availability-content">
-                <div className="material-info-card">
-                  <CircularProgress 
-                    percentage={data.materialAvailability?.bahanBaku || 0} 
+                <div className="material-availability-main">
+                  <CircularProgress
+                    percentage={data.materialAvailability?.overall || 0}
                     color="#10b981"
-                    size={60}
-                    onClick={handleMaterialBahanBakuClick}
-                    title="Click to view Bahan Baku details"
+                    size={90}
                   />
-                  <div className="material-info-label">Bahan Baku</div>
                 </div>
-                <div className="material-info-card">
-                  <CircularProgress 
-                    percentage={data.materialAvailability?.bahanKemas || 0} 
-                    color="#f59e0b"
-                    size={60}
-                    onClick={handleMaterialBahanKemasClick}
-                    title="Click to view Bahan Kemas details"
-                  />
-                  <div className="material-info-label">Bahan Kemas</div>
+                <div className="material-info-cards">
+                  <div className="material-info-card" onClick={handleMaterialBahanBakuClick} style={{ cursor: 'pointer' }} title="Click to view Bahan Baku details">
+                    <div className="material-info-value">{data.materialAvailability?.bahanBaku || 0}%</div>
+                    <div className="material-info-label">Bahan Baku</div>
+                  </div>
+                  <div className="material-info-card" onClick={handleMaterialBahanKemasClick} style={{ cursor: 'pointer' }} title="Click to view Bahan Kemas details">
+                    <div className="material-info-value">{data.materialAvailability?.bahanKemas || 0}%</div>
+                    <div className="material-info-label">Bahan Kemas</div>
+                  </div>
                 </div>
               </div>
             </KPICard>
