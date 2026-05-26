@@ -4857,19 +4857,19 @@ function SummaryDashboard() {
       dailyWeekLabels.push(dayLabel);
     }
     
-    // Calculate last 12 months sales and forecast data for chart
-    // This shows rolling 12 months instead of YTD
-    const last12MonthsData = {};
-    const last12MonthsForecastData = {};
+    // Calculate last 13 months sales and forecast data for chart
+    // This shows rolling 13 months instead of YTD
+    const last13MonthsData = {};
+    const last13MonthsForecastData = {};
     
-    // Generate the last 12 month periods (including current month)
-    const last12Periods = [];
-    for (let i = 11; i >= 0; i--) {
+    // Generate the last 13 month periods (including current month)
+    const last13Periods = [];
+    for (let i = 12; i >= 0; i--) {
       const targetDate = new Date(currentYear, currentMonth - 1 - i, 1);
       const targetYear = targetDate.getFullYear();
       const targetMonth = targetDate.getMonth() + 1;
       const periodKey = targetYear * 100 + targetMonth;
-      last12Periods.push({
+      last13Periods.push({
         period: periodKey,
         year: targetYear,
         month: targetMonth,
@@ -4877,36 +4877,36 @@ function SummaryDashboard() {
       });
     }
     
-    // Process forecast data for last 12 months chart
+    // Process forecast data for last 13 months chart
     stockData.forEach(item => {
       const periode = parseInt(item.Periode);
       
-      // Check if this period is within our last 12 months
-      const periodInfo = last12Periods.find(p => p.period === periode);
+      // Check if this period is within our last 13 months
+      const periodInfo = last13Periods.find(p => p.period === periode);
       if (periodInfo) {
         const salesValue = (item.Sales || 0) * (item.HNA || 0);
         const forecastValue = (item.Forecast || 0) * (item.HNA || 0);
         
-        if (!last12MonthsData[periode]) {
-          last12MonthsData[periode] = 0;
+        if (!last13MonthsData[periode]) {
+          last13MonthsData[periode] = 0;
         }
-        if (!last12MonthsForecastData[periode]) {
-          last12MonthsForecastData[periode] = 0;
+        if (!last13MonthsForecastData[periode]) {
+          last13MonthsForecastData[periode] = 0;
         }
         
-        last12MonthsData[periode] += salesValue;
-        last12MonthsForecastData[periode] += forecastValue;
+        last13MonthsData[periode] += salesValue;
+        last13MonthsForecastData[periode] += forecastValue;
       }
     });
     
-    // Convert to arrays for chart (last 12 months in order)
-    const monthlyLabels = last12Periods.map(p => p.label);
+    // Convert to arrays for chart (last 13 months in order)
+    const monthlyLabels = last13Periods.map(p => p.label);
     const yearlySalesData = [];
     const yearlyForecastArray = [];
     
-    for (const periodInfo of last12Periods) {
-      yearlySalesData.push(last12MonthsData[periodInfo.period] || 0);
-      yearlyForecastArray.push(last12MonthsForecastData[periodInfo.period] || 0);
+    for (const periodInfo of last13Periods) {
+      yearlySalesData.push(last13MonthsData[periodInfo.period] || 0);
+      yearlyForecastArray.push(last13MonthsForecastData[periodInfo.period] || 0);
     }
     
     // Calculate Fokus and Non Fokus achievement percentages based on sales value vs forecast value
@@ -6223,7 +6223,7 @@ function SummaryDashboard() {
       }
     },
     scales: {
-      x: { display: true, ticks: { font: { size: 10 } } },
+      x: { display: true, ticks: { font: { size: 10 }, autoSkip: false } },
       y: { 
         display: true, 
         ticks: { 
