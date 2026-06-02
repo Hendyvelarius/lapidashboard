@@ -648,16 +648,43 @@ async function getWIPData() {
     LEFT JOIN m_product_sediaan_produksi s ON s.Product_ID = t.Product_ID;
 
     -- Step 7: Update IdleStartDate berdasarkan prev step
+    -- A step only becomes "idle" (queued/waiting for the stage) once EVERY one of its
+    -- prev steps exists in the batch AND is completed. In that case IdleStartDate is the
+    -- LAST (MAX) prev EndDate -- i.e. the moment the final prerequisite finished.
+    -- If any prev step is missing from the batch, or was left incomplete (e.g. the step
+    -- was started before all prereqs ended), the step has no genuine idle period, so we
+    -- fall back to the step's own StartDate ("count from the beginning of the step").
+    -- StartDate may be NULL (step not started), which correctly leaves IdleStartDate NULL.
     UPDATE a
-    SET a.IdleStartDate = (
-        SELECT MIN(b.EndDate)
-        FROM #tmpData b
-        INNER JOIN split(a.Prev_Step, ';') AS ps
-            ON LTRIM(RTRIM(ps.items)) = LTRIM(RTRIM(b.nama_tahapan))
-        WHERE a.Product_ID = b.Product_ID
-          AND a.Batch_No = b.Batch_No
-    )
-    FROM #tmpData a;
+    SET a.IdleStartDate =
+          CASE WHEN x.PrevCount > 0 AND x.PrevCount = x.CompletedCount
+               THEN x.MaxPrevEnd
+               ELSE a.StartDate
+          END
+    FROM #tmpData a
+    CROSS APPLY (
+      SELECT COUNT(*)            AS PrevCount,
+             SUM(n.IsComplete)   AS CompletedCount,
+             MAX(n.PrevEnd)      AS MaxPrevEnd
+      FROM (
+        -- One row per distinct prev step name, with its completion state for this batch.
+        SELECT d.pname,
+               MAX(b.EndDate) AS PrevEnd,
+               CASE WHEN COUNT(b.EndDate) > 0
+                     AND COUNT(b.EndDate) = COUNT(b.nama_tahapan)
+                    THEN 1 ELSE 0 END AS IsComplete
+        FROM (
+          SELECT DISTINCT LTRIM(RTRIM(ps.items)) AS pname
+          FROM split(a.Prev_Step, ';') ps
+          WHERE LTRIM(RTRIM(ps.items)) <> ''
+        ) d
+        LEFT JOIN #tmpData b
+          ON b.Product_ID = a.Product_ID
+         AND b.Batch_No  = a.Batch_No
+         AND LTRIM(RTRIM(b.nama_tahapan)) = d.pname
+        GROUP BY d.pname
+      ) n
+    ) x;
 
     -- Final result: same columns as original query
     SELECT Product_ID, Batch_No, Batch_Date, nama_tahapan, kode_tahapan,

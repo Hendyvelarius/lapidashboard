@@ -4412,22 +4412,217 @@ function SummaryDashboard() {
         XLSX.utils.book_append_sheet(wb, forecastWS, 'Forecast Data');
       }
 
-      // ===== Sheet 3: Order Fulfillment =====
+      // ===== Sheet 3: Order Fulfillment (product-based) =====
+      // One row per product: identifiers (name, ruang lingkup), a KPI block
+      // (planned batches, completed batches = QA released, and % completion), then the
+      // number of batches that have finished each stage (Turun PPI -> ... -> QA).
+      // A summary block on the right gives the average completion per Ruang Lingkup,
+      // per production line (PN1/PN2), and the overall rate.
       if (ofRawData && ofRawData.length > 0) {
-        const ofCols = [
-          { key: 'ProductID', header: 'Product ID', width: 14 },
-          { key: 'Product_Name', header: 'Product Name', width: 30 },
-          { key: 'ListBet', header: 'Batch No', width: 16 },
-          { key: 'RuangLingkup', header: 'Ruang Lingkup', width: 18 },
+        // Fetch the current-period PN1/PN2 production-line mapping for the summary block.
+        let pnGroupMap = {};
+        try {
+          const pnRes = await fetch(apiUrl('/api/productGroupDept'));
+          if (pnRes.ok) {
+            const pnJson = await pnRes.json();
+            (pnJson.data || []).forEach(r => { pnGroupMap[r.Group_ProductID] = r.Group_Dept; });
+          }
+        } catch (e) {
+          console.warn('Could not fetch PN group mapping for OF sheet:', e);
+        }
+
+        // Stage columns: each cell counts how many of the product's batches finished that stage.
+        const STAGES = [
           { key: 'TurunPPI', header: 'Turun PPI', width: 12 },
-          { key: 'PotongStock', header: 'Potong Stock', width: 14 },
-          { key: 'Proses', header: 'Proses', width: 10 },
-          { key: 'Kemas', header: 'Kemas', width: 10 },
+          { key: 'PotongStock', header: 'Potong Stock', width: 13 },
+          { key: 'Proses', header: 'Proses', width: 9 },
+          { key: 'Kemas', header: 'Kemas', width: 9 },
+          { key: 'QC', header: 'QC', width: 7 },
           { key: 'Dok', header: 'Dokumen', width: 10 },
-          { key: 'QC', header: 'QC', width: 8 },
-          { key: 'QA', header: 'QA', width: 8 },
+          { key: 'QA', header: 'QA', width: 7 },
         ];
-        const ofWS = createStyledSheet(ofRawData, ofCols);
+
+        // Aggregate batch-level OF rows into one row per product.
+        // planned = number of batches; each stage = batches with that stage flag === 1.
+        // completed = QA count (the final stage); % completion = completed / planned.
+        const ofProductMap = {};
+        ofRawData.forEach(item => {
+          const pid = item.ProductID || item.Product_ID || 'UNKNOWN';
+          if (!ofProductMap[pid]) {
+            ofProductMap[pid] = {
+              productId: pid,
+              productName: item.Product_Name || '',
+              ruangLingkup: item.RuangLingkup || '',
+              planned: 0,
+              stageCounts: STAGES.reduce((acc, s) => { acc[s.key] = 0; return acc; }, {})
+            };
+          }
+          const prod = ofProductMap[pid];
+          prod.planned += 1;
+          STAGES.forEach(s => { if (item[s.key] === 1) prod.stageCounts[s.key] += 1; });
+        });
+
+        const ofProducts = Object.values(ofProductMap)
+          .map(p => ({ ...p, completed: p.stageCounts.QA, pct: p.planned > 0 ? p.stageCounts.QA / p.planned : 0 }))
+          .sort((a, b) => a.productName.localeCompare(b.productName));
+
+        // ----- Right-side summary: average of per-product % within each group -----
+        const avgOf = (arr) => (arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : 0);
+
+        const rlGroups = {};
+        ofProducts.forEach(p => { (rlGroups[p.ruangLingkup] = rlGroups[p.ruangLingkup] || []).push(p.pct); });
+        const rlSummary = Object.keys(rlGroups).sort().map(rl => [rl, avgOf(rlGroups[rl])]);
+
+        const pn1Pcts = ofProducts.filter(p => pnGroupMap[p.productId] === 'PN1').map(p => p.pct);
+        const pn2Pcts = ofProducts.filter(p => pnGroupMap[p.productId] === 'PN2').map(p => p.pct);
+        const overallPct = avgOf(ofProducts.map(p => p.pct));
+
+        // Right block content: [label, value] (value null = section header / blank).
+        const rightRows = [];
+        rightRows.push(['Average Completion by Ruang Lingkup', null]);
+        rlSummary.forEach(([rl, v]) => rightRows.push([rl, v]));
+        rightRows.push(['', null]);
+        rightRows.push(['Average Completion by Production Line', null]);
+        rightRows.push(['PN1', pn1Pcts.length ? avgOf(pn1Pcts) : null]);
+        rightRows.push(['PN2', pn2Pcts.length ? avgOf(pn2Pcts) : null]);
+        rightRows.push(['', null]);
+        rightRows.push(['Overall Completion Rate', overallPct]);
+
+        const sectionLabels = new Set([
+          'Average Completion by Ruang Lingkup',
+          'Average Completion by Production Line',
+          'Overall Completion Rate'
+        ]);
+
+        // ----- Column layout -----
+        // Identifiers first, then the product-level KPI block (Planned / Completed / %),
+        // then the per-stage batch counts. The KPI block is themed green so it reads as a
+        // separate summary, distinct from the stage counts next to it.
+        const NAME_COL = 0;
+        const RL_COL = 1;
+        const PLANNED_COL = 2;
+        const COMPLETED_COL = 3;
+        const PCT_COL = 4;
+        const STAGE_START = 5;
+        const LEFT_COLS = STAGE_START + STAGES.length;   // number of left-table columns
+        const SUMMARY_LABEL_COL = LEFT_COLS + 1;         // skip one spacer column
+        const SUMMARY_VALUE_COL = SUMMARY_LABEL_COL + 1;
+        const TOTAL_COLS = SUMMARY_VALUE_COL + 1;
+        const KPI_COLS = new Set([PLANNED_COL, COMPLETED_COL, PCT_COL]);
+
+        const LEFT_HEADERS = [];
+        LEFT_HEADERS[NAME_COL] = 'Product Name';
+        LEFT_HEADERS[RL_COL] = 'Ruang Lingkup';
+        LEFT_HEADERS[PLANNED_COL] = 'Planned Batches';
+        LEFT_HEADERS[COMPLETED_COL] = 'Completed Batches';
+        LEFT_HEADERS[PCT_COL] = '% Completion';
+        STAGES.forEach((s, i) => { LEFT_HEADERS[STAGE_START + i] = s.header; });
+
+        // KPI block theming (green), kept apart from the stage columns (blue/white).
+        const kpiHeaderFill = { fgColor: { rgb: '548235' } };
+        const kpiFillEven = greenFill;                       // E2EFDA
+        const kpiFillOdd = { fgColor: { rgb: 'D4E8C8' } };
+
+        const totalRows = Math.max(ofProducts.length + 1, rightRows.length);
+        const aoa = [];
+        for (let r = 0; r < totalRows; r++) {
+          const row = new Array(TOTAL_COLS).fill('');
+          if (r === 0) {
+            LEFT_HEADERS.forEach((h, i) => { row[i] = h; });
+          } else if (r - 1 < ofProducts.length) {
+            const p = ofProducts[r - 1];
+            row[NAME_COL] = p.productName;
+            row[RL_COL] = p.ruangLingkup;
+            row[PLANNED_COL] = p.planned;
+            row[COMPLETED_COL] = p.completed;
+            row[PCT_COL] = p.pct;
+            STAGES.forEach((s, i) => { row[STAGE_START + i] = p.stageCounts[s.key]; });
+          }
+          if (r < rightRows.length) {
+            row[SUMMARY_LABEL_COL] = rightRows[r][0];
+            const v = rightRows[r][1];
+            row[SUMMARY_VALUE_COL] = (v === null || v === undefined) ? '' : v;
+          }
+          aoa.push(row);
+        }
+
+        const ofWS = XLSX.utils.aoa_to_sheet(aoa);
+        const cols = new Array(TOTAL_COLS).fill(null).map(() => ({ wch: 12 }));
+        cols[NAME_COL] = { wch: 38 };
+        cols[RL_COL] = { wch: 18 };
+        cols[PLANNED_COL] = { wch: 15 };
+        cols[COMPLETED_COL] = { wch: 16 };
+        cols[PCT_COL] = { wch: 13 };
+        STAGES.forEach((s, i) => { cols[STAGE_START + i] = { wch: s.width }; });
+        cols[LEFT_COLS] = { wch: 3 };                            // spacer
+        cols[SUMMARY_LABEL_COL] = { wch: 36 };
+        cols[SUMMARY_VALUE_COL] = { wch: 16 };
+        ofWS['!cols'] = cols;
+
+        // Left header row: KPI columns get the green theme, the rest the default blue.
+        for (let c = 0; c < LEFT_COLS; c++) {
+          const addr = XLSX.utils.encode_cell({ r: 0, c });
+          if (!ofWS[addr]) ofWS[addr] = { v: '', t: 's' };
+          ofWS[addr].s = {
+            fill: KPI_COLS.has(c) ? kpiHeaderFill : headerFill,
+            font: headerFont,
+            alignment: centerAlign,
+            border: thinBorder
+          };
+        }
+
+        // Left data rows: names left-aligned, numbers/percent centered; KPI block tinted green.
+        for (let r = 1; r <= ofProducts.length; r++) {
+          const even = (r - 1) % 2 === 0;
+          for (let c = 0; c < LEFT_COLS; c++) {
+            const addr = XLSX.utils.encode_cell({ r, c });
+            if (!ofWS[addr]) ofWS[addr] = { v: '', t: 's' };
+            const fill = KPI_COLS.has(c)
+              ? (even ? kpiFillEven : kpiFillOdd)
+              : (even ? whiteFill : lightRowFill);
+            ofWS[addr].s = {
+              font: cellFont,
+              alignment: (c === NAME_COL || c === RL_COL) ? leftAlign : centerAlign,
+              border: thinBorder,
+              fill
+            };
+          }
+          const pAddr = XLSX.utils.encode_cell({ r, c: PCT_COL });
+          ofWS[pAddr].t = 'n';
+          ofWS[pAddr].z = '0%';
+        }
+
+        // Right summary block
+        rightRows.forEach((rr, idx) => {
+          const label = rr[0];
+          if (label === '') return; // spacer row, leave unstyled
+          const isSection = sectionLabels.has(label);
+          const labelAddr = XLSX.utils.encode_cell({ r: idx, c: SUMMARY_LABEL_COL });
+          const valAddr = XLSX.utils.encode_cell({ r: idx, c: SUMMARY_VALUE_COL });
+          if (!ofWS[labelAddr]) ofWS[labelAddr] = { v: '', t: 's' };
+          if (!ofWS[valAddr]) ofWS[valAddr] = { v: '', t: 's' };
+          ofWS[labelAddr].s = {
+            font: isSection ? subHeaderFont : cellFont,
+            fill: isSection ? subHeaderFill : whiteFill,
+            alignment: leftAlign,
+            border: thinBorder
+          };
+          if (typeof rr[1] === 'number') {
+            ofWS[valAddr].t = 'n';
+            ofWS[valAddr].z = '0.0%';
+          }
+          ofWS[valAddr].s = {
+            font: isSection ? subHeaderFont : cellFont,
+            fill: isSection ? subHeaderFill : whiteFill,
+            alignment: centerAlign,
+            border: thinBorder
+          };
+        });
+
+        // Freeze header row + autofilter on the product table only
+        ofWS['!freeze'] = { xSplit: 0, ySplit: 1 };
+        ofWS['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: ofProducts.length, c: LEFT_COLS - 1 } }) };
+
         XLSX.utils.book_append_sheet(wb, ofWS, 'Order Fulfillment');
       }
 
