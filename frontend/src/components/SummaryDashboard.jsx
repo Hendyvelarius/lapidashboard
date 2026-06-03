@@ -4623,7 +4623,24 @@ function SummaryDashboard() {
         ofWS['!freeze'] = { xSplit: 0, ySplit: 1 };
         ofWS['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: ofProducts.length, c: LEFT_COLS - 1 } }) };
 
-        XLSX.utils.book_append_sheet(wb, ofWS, 'Order Fulfillment');
+        XLSX.utils.book_append_sheet(wb, ofWS, 'OF by Product');
+
+        // ===== Sheet 3b: Order Fulfillment by Batch (one row per batch, 0/1 per stage) =====
+        const ofBatchCols = [
+          { key: 'ProductID', header: 'Product ID', width: 14 },
+          { key: 'Product_Name', header: 'Product Name', width: 30 },
+          { key: 'ListBet', header: 'Batch No', width: 16 },
+          { key: 'RuangLingkup', header: 'Ruang Lingkup', width: 18 },
+          { key: 'TurunPPI', header: 'Turun PPI', width: 12 },
+          { key: 'PotongStock', header: 'Potong Stock', width: 14 },
+          { key: 'Proses', header: 'Proses', width: 10 },
+          { key: 'Kemas', header: 'Kemas', width: 10 },
+          { key: 'QC', header: 'QC', width: 8 },
+          { key: 'Dok', header: 'Dokumen', width: 10 },
+          { key: 'QA', header: 'QA', width: 8 },
+        ];
+        const ofBatchWS = createStyledSheet(ofRawData, ofBatchCols);
+        XLSX.utils.book_append_sheet(wb, ofBatchWS, 'OF by Batch');
       }
 
       // ===== Sheet 4: WIP Data =====
