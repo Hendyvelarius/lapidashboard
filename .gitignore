@@ -1,0 +1,6 @@
+# Claude Code / agent local data (project memory, settings, etc.)
+.claude/
+
+# OS / editor cruft
+Thumbs.db
+.DS_Store
