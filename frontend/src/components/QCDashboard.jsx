@@ -6,6 +6,8 @@ import { Bar, Line, Doughnut } from 'react-chartjs-2';
 import Sidebar from './Sidebar';
 import Modal from './Modal';
 import DashboardLoading from './DashboardLoading';
+import ContextualHelpModal from './ContextualHelpModal';
+import { useHelp } from '../context/HelpContext';
 import { loadQCCache, saveQCCache, clearQCCache, isQCCacheValid } from '../utils/dashboardCache';
 import { apiUrl, apiUrlWithRefresh } from '../api';
 import './QCDashboard.css';
@@ -73,6 +75,38 @@ const ROWS_PER_PAGE = 25;
 
 const QCDashboard = () => {
   const navigate = useNavigate();
+
+  // Help system: register this dashboard and scroll to the active topic's section
+  const { helpMode, activeTopic, selectTopic, setCurrentDashboard } = useHelp();
+  const kpiRef = useRef(null);
+  const leadtimeRef = useRef(null);
+  const dailyflowRef = useRef(null);
+  const monthlyRef = useRef(null);
+  const agingRef = useRef(null);
+  const tablesRef = useRef(null);
+
+  useEffect(() => {
+    setCurrentDashboard('qc');
+    return () => setCurrentDashboard(null);
+  }, [setCurrentDashboard]);
+
+  useEffect(() => {
+    if (helpMode && activeTopic) {
+      const refMap = {
+        kpi: kpiRef,
+        leadtime: leadtimeRef,
+        dailyflow: dailyflowRef,
+        monthly: monthlyRef,
+        aging: agingRef,
+        tables: tablesRef
+      };
+      const targetRef = refMap[activeTopic];
+      if (targetRef && targetRef.current) {
+        targetRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [helpMode, activeTopic]);
+
   // Data states
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -1042,7 +1076,7 @@ const QCDashboard = () => {
           </div>
 
           {/* ====== KPI Cards (BB/BK split) ====== */}
-          <div className="qc-kpi-row">
+          <div className="qc-kpi-row" ref={kpiRef}>
             <div className="qc-kpi-card" onClick={handleBBInProgressClick}>
               <div className="qc-kpi-icon pending">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -1126,7 +1160,7 @@ const QCDashboard = () => {
 
           {/* ====== Charts Row 1: Leadtime 12 Months + Daily Flow ====== */}
           <div className="qc-charts-row">
-            <div className="qc-chart-card">
+            <div className="qc-chart-card" ref={leadtimeRef}>
               <div className="qc-chart-header">
                 <div>
                   <div className="qc-chart-title">Leadtime 12 Months</div>
@@ -1137,7 +1171,7 @@ const QCDashboard = () => {
                 {leadtimeChartData && <Bar data={leadtimeChartData} options={leadtimeChartOptions} plugins={[ChartDataLabels]} />}
               </div>
             </div>
-            <div className="qc-chart-card">
+            <div className="qc-chart-card" ref={dailyflowRef}>
               <div className="qc-chart-header">
                 <div>
                   <div className="qc-chart-title">Daily QC Flow</div>
@@ -1184,7 +1218,7 @@ const QCDashboard = () => {
 
           {/* ====== Charts Row 2: Monthly Trend + QC Aging Distribution ====== */}
           <div className="qc-charts-row">
-            <div className="qc-chart-card">
+            <div className="qc-chart-card" ref={monthlyRef}>
               <div className="qc-chart-header">
                 <div>
                   <div className="qc-chart-title">Monthly QC Trend</div>
@@ -1204,7 +1238,7 @@ const QCDashboard = () => {
                 {monthlyTrendByTypeData && <Line data={monthlyTrendByTypeData} options={monthlyTrendOptions} />}
               </div>
             </div>
-            <div className="qc-chart-card">
+            <div className="qc-chart-card" ref={agingRef}>
               <div className="qc-chart-header">
                 <div>
                   <div className="qc-chart-title">QC Aging Distribution</div>
@@ -1246,7 +1280,7 @@ const QCDashboard = () => {
           </div>
 
           {/* ====== Tables Section ====== */}
-          <div className="qc-tables-section">
+          <div className="qc-tables-section" ref={tablesRef}>
             <div className="qc-tabs">
               <button className={`qc-tab ${activeTab === 'inprocess' ? 'active' : ''}`} onClick={() => { setActiveTab('inprocess'); setTableTypeFilter('all'); }}>
                 In Process ({formatNumber(inProcessData.length)})
@@ -1368,6 +1402,23 @@ const QCDashboard = () => {
       {/* ====== Modals ====== */}
       {renderDetailModal()}
       {renderDrilldownModal()}
+
+      {/* Contextual Help Modal */}
+      {helpMode && activeTopic && (
+        <ContextualHelpModal
+          topic={activeTopic}
+          dashboardType="qc"
+          onClose={() => selectTopic(null)}
+          targetRef={{
+            kpi: kpiRef,
+            leadtime: leadtimeRef,
+            dailyflow: dailyflowRef,
+            monthly: monthlyRef,
+            aging: agingRef,
+            tables: tablesRef
+          }[activeTopic]}
+        />
+      )}
     </div>
   );
 };

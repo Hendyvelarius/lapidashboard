@@ -32,22 +32,31 @@ export const helpContent = {
         description: 'Target penjualan & pencapaian',
         pages: [
           {
-            subtitle: 'Apa itu Target Penjualan?',
-            description: 'Bagian ini menampilkan target penjualan dan pencapaian aktual perusahaan. Data ini membantu Anda memahami seberapa baik performa penjualan dibandingkan dengan target yang ditetapkan.',
+            subtitle: 'Apa itu Selling In (Target Penjualan)?',
+            description: 'Membandingkan target penjualan bulan berjalan dengan realisasi penjualan aktual (dalam nilai Rupiah), agar performa penjualan mudah dipantau.',
             details: [
-              'Target bulanan: Jumlah yang harus dicapai dalam bulan ini',
-              'Pencapaian MTD (Month To Date): Total yang sudah terjual sampai hari ini',
-              'Persentase: Seberapa besar pencapaian dibanding target',
-              'Warna hijau = target tercapai, kuning = perlu ditingkatkan, merah = jauh dari target'
+              'Target: nilai forecast penjualan bulan ini (unit × harga)',
+              'Realisasi (MTD): total penjualan sampai hari ini bulan ini',
+              'Achievement: persentase realisasi terhadap target',
+              'Dipecah per grup: Produk Fokus vs Non-Fokus'
+            ]
+          },
+          {
+            subtitle: 'Bagaimana Cara Menghitungnya?',
+            description: 'Nilai penjualan dan target dihitung dari jumlah unit dikali harga jual (HNA), lalu dibandingkan.',
+            details: [
+              'Realisasi MTD = jumlah (unit terjual × harga HNA) untuk periode berjalan',
+              'Target = jumlah (unit forecast × harga HNA) untuk periode berjalan',
+              'Achievement = Realisasi ÷ Target × 100%',
+              'Achievement Fokus & Non-Fokus dihitung terpisah berdasarkan grup produk'
             ]
           },
           {
             subtitle: 'Sumber Data',
-            description: 'Data target penjualan diambil dari sistem perencanaan penjualan (forecast) yang dibuat oleh tim Marketing dan Sales. Data pencapaian aktual berasal dari laporan penjualan harian.',
+            description: 'Data berasal dari laporan penjualan & forecast produk.',
             details: [
-              'Target Bulanan: Jumlah yang harus dicapai dalam bulan ini',
-              'Pencapaian MTD: Total yang sudah terjual sampai hari ini',
-              'Persentase pencapaian dibandingkan dengan target'
+              'Laporan Penjualan, Forecast & Stok Produk (sp_Dashboard_DataReportManHours): unit forecast, unit terjual, harga HNA, dan grup produk per periode',
+              'Penjualan Harian (sp_Dashboard_SalesNPending "Sales"): nilai penjualan harian untuk tren mingguan/harian'
             ]
           }
         ]
@@ -60,22 +69,30 @@ export const helpContent = {
         description: 'Persediaan barang jadi',
         pages: [
           {
-            subtitle: 'Apa itu Coverage Stock?',
-            description: 'Coverage menunjukkan berapa lama stok barang jadi yang ada saat ini bisa memenuhi kebutuhan penjualan. Dihitung dalam satuan hari.',
+            subtitle: 'Apa itu Coverage Stock Barang Jadi?',
+            description: 'Menunjukkan seberapa besar stok barang jadi saat ini dibanding kebutuhan (forecast) bulan berjalan, dinyatakan sebagai persentase.',
             details: [
-              'Coverage (hari): Berapa hari stok saat ini bisa mencukupi penjualan',
-              'Under Coverage: Produk dengan stok kurang (di bawah 30 hari) - perlu produksi segera',
-              'On Target: Produk dengan stok ideal (30-60 hari)',
-              'Over Coverage: Produk dengan stok berlebih (lebih dari 60 hari) - hindari produksi berlebihan'
+              'Coverage: persentase stok terhadap forecast bulan ini',
+              'Under Coverage: produk dengan coverage < 130% (stok relatif kurang)',
+              'Over Coverage: produk dengan coverage ≥ 300% (stok berlebih)',
+              'Coverage 130%–299% dianggap normal'
+            ]
+          },
+          {
+            subtitle: 'Bagaimana Cara Menghitungnya?',
+            description: 'Coverage dihitung per produk sebagai perbandingan stok terhadap forecast, lalu dirata-ratakan.',
+            details: [
+              'Coverage per produk = (Stok tersedia ÷ Forecast) × 100%',
+              'Angka utama = rata-rata coverage seluruh produk pada periode berjalan',
+              'Under = jumlah produk < 130%; Over = jumlah produk ≥ 300%',
+              'Catatan: ukuran ini adalah rasio stok-terhadap-forecast, bukan jumlah hari'
             ]
           },
           {
             subtitle: 'Sumber Data',
-            description: 'Data stok barang jadi diambil dari sistem gudang. Coverage dihitung berdasarkan rata-rata penjualan harian dari 30 hari terakhir.',
+            description: 'Data berasal dari laporan stok & forecast produk.',
             details: [
-              'Coverage (hari): Berapa lama stok bisa mencukupi penjualan',
-              'Under Coverage: Produk dengan stok kurang dari 30 hari',
-              'Over Coverage: Produk dengan stok lebih dari 60 hari'
+              'Laporan Penjualan, Forecast & Stok Produk (sp_Dashboard_DataReportManHours): stok tersedia (Release) dan forecast per produk per periode'
             ]
           }
         ]
@@ -89,21 +106,28 @@ export const helpContent = {
         pages: [
           {
             subtitle: 'Apa itu OTA (On Time Arrival)?',
-            description: 'OTA mengukur seberapa tepat waktu kedatangan material dari supplier. Ini penting karena keterlambatan material bisa menghambat jadwal produksi.',
+            description: 'Mengukur ketepatan waktu kedatangan material dari supplier, dipisah antara Bahan Baku (BB) dan Bahan Kemas (BK).',
             details: [
-              'Early (Lebih Awal): Material datang lebih cepat dari jadwal',
-              'On Time (Tepat Waktu): Material datang sesuai jadwal - INI YANG PALING IDEAL',
-              'Late (Terlambat): Material datang lebih lambat dari jadwal - INI YANG HARUS DIHINDARI',
-              '% Not Late: Persentase kedatangan yang tidak terlambat (Early + On Time) - Target ideal: minimal 95%'
+              'Early: material datang lebih cepat dari jadwal',
+              'On Time: material datang tepat waktu (paling ideal)',
+              'Late: material terlambat — yang harus dihindari',
+              '% Not Late = Early + On Time; target ideal minimal 95%'
+            ]
+          },
+          {
+            subtitle: 'Bagaimana Cara Menghitungnya?',
+            description: 'Setiap kedatangan material dinilai statusnya (Early / On Time / Late), lalu dihitung persentasenya.',
+            details: [
+              '% Not Late = (jumlah Early + On Time) ÷ total kedatangan × 100%, dihitung terpisah untuk BB & BK',
+              'On Time keseluruhan = On Time ÷ (On Time + Early + Late)',
+              'Status "On Delivery" (masih dalam pengiriman) dihitung terpisah, tidak masuk perbandingan'
             ]
           },
           {
             subtitle: 'Sumber Data',
-            description: 'Data diambil dari sistem penerimaan barang (BBBK) yang mencatat tanggal janji supplier dan tanggal kedatangan aktual material.',
+            description: 'Data berasal dari sistem penilaian ketepatan kedatangan material.',
             details: [
-              'Early: Material datang lebih cepat',
-              'On Time: Material datang tepat waktu',
-              'Late: Material terlambat - ini yang harus dihindari'
+              'Ketepatan Kedatangan Material / OTA (sp_Dashboard_OTA): tipe material (BB/BK) dan status kedatangan (Early / On Time / Late) tiap material'
             ]
           }
         ]
@@ -116,22 +140,29 @@ export const helpContent = {
         description: 'Work in progress',
         pages: [
           {
-            subtitle: 'Apa itu WIP?',
-            description: 'WIP (Work In Progress) adalah batch produk yang sedang dalam proses produksi di berbagai tahapan. Membantu memantau berapa banyak batch yang sedang dikerjakan.',
+            subtitle: 'Apa itu WIP (Work In Progress)?',
+            description: 'Ringkasan batch yang sedang dalam proses produksi beserta status dan nilainya.',
             details: [
-              'Total WIP: Jumlah batch yang sedang dalam proses',
-              'Status per tahapan: Penyediaan, Produksi, Packaging, dll',
-              'Durasi: Berapa lama batch sudah dalam proses',
-              'Target ideal: WIP tidak menumpuk terlalu banyak di satu tahapan'
+              'Total batch yang sedang diproses',
+              'Distribusi status: Proses, Kemas, dan Karantina',
+              'Batch terlambat = yang sudah lebih dari 38 hari dalam proses',
+              'Donut menampilkan proporsi nilai (Rupiah) tiap status'
+            ]
+          },
+          {
+            subtitle: 'Bagaimana Cara Menghitungnya?',
+            description: 'Batch dikelompokkan berdasarkan status; proporsi donut dihitung dari nilai tiap status.',
+            details: [
+              'Nilai batch = harga × jumlah (pakai jumlah aktual bila ada, jika tidak pakai standar)',
+              'Proporsi status = nilai status ÷ total nilai seluruh batch',
+              'Batch terlambat = durasi lebih dari 38 hari'
             ]
           },
           {
             subtitle: 'Sumber Data',
-            description: 'Data diambil dari sistem produksi yang melacak batch yang sedang dalam proses produksi di berbagai tahapan.',
+            description: 'Data berasal dari sistem pelacakan batch produksi.',
             details: [
-              'Total WIP: Jumlah batch yang sedang dalam proses',
-              'Status per tahapan: Penyediaan, Produksi, Packaging, dll',
-              'Durasi: Berapa lama batch sudah dalam proses'
+              'Data WIP (/api/wip): status, durasi, jumlah, dan harga tiap batch yang sedang aktif'
             ]
           }
         ]
@@ -145,21 +176,28 @@ export const helpContent = {
         pages: [
           {
             subtitle: 'Apa itu Stock Out?',
-            description: 'Stock Out adalah kondisi dimana produk tertentu benar-benar habis (stok = 0) sehingga permintaan customer tidak bisa dipenuhi. Ini mengakibatkan kehilangan penjualan (lost sales).',
+            description: 'Kondisi produk benar-benar habis sehingga permintaan customer tidak bisa dipenuhi, yang mengakibatkan kehilangan penjualan (lost sales).',
             details: [
-              'Jumlah SKU Stock Out: Berapa banyak jenis produk yang habis stoknya',
-              'Lost Sales: Total penjualan yang hilang karena tidak ada stok (dalam rupiah)',
-              'Fokus vs Non-Fokus: Produk fokus adalah produk utama/prioritas tinggi',
-              '⚠️ Catatan: Sistem hanya menghitung lost sales untuk produk yang BENAR-BENAR kosong (Release = 0)'
+              'Jumlah SKU: berapa jenis produk yang punya permintaan tak terpenuhi',
+              'Lost Sales: total nilai penjualan yang hilang (Rupiah)',
+              'Fokus vs Non-Fokus: prioritas produk',
+              '⚠️ Hanya produk yang benar-benar kosong (stok = 0) dengan pesanan tertahan yang dihitung'
+            ]
+          },
+          {
+            subtitle: 'Bagaimana Cara Menghitungnya?',
+            description: 'Lost sales dihitung dari nilai pesanan yang tidak bisa dipenuhi karena stok kurang.',
+            details: [
+              'Lost Sales = jumlah nilai pesanan tertahan (produk dengan jumlah dipesan > stok tersedia)',
+              'Jumlah SKU = produk dengan pesanan tertahan lebih dari 0',
+              'Benar-benar habis = stok = 0 DAN ada pesanan (jumlah dipesan > 0); dipisah Fokus / Non-Fokus'
             ]
           },
           {
             subtitle: 'Sumber Data',
-            description: 'Data diambil dari sistem gudang (produk dengan stok = 0) dan sistem penjualan (permintaan yang tidak terpenuhi). Hanya menghitung lost sales untuk produk yang benar-benar kosong.',
+            description: 'Data berasal dari sistem penjualan & pesanan tertahan.',
             details: [
-              'Jumlah SKU: Berapa banyak jenis produk yang habis',
-              'Lost Sales: Potensi penjualan yang hilang (Rupiah)',
-              'Fokus vs Non-Fokus: Prioritas produk'
+              'Pending / Lost Sales (sp_Dashboard_SalesNPending "Pending"): stok tersedia (Saldo), jumlah dipesan (Qty_Booked), nilai tertahan (TotalPending), dan grup produk'
             ]
           }
         ]
@@ -173,21 +211,28 @@ export const helpContent = {
         pages: [
           {
             subtitle: 'Apa itu Ketersediaan Bahan Baku?',
-            description: 'Bagian ini menunjukkan status bahan baku (material) yang diperlukan untuk produksi. Memastikan bahan baku cukup agar produksi tidak terhambat.',
+            description: 'Menunjukkan seberapa cukup material yang tersedia dibanding kebutuhan produksi, dipisah antara Bahan Baku (BB) dan Bahan Kemas (BK).',
             details: [
-              'Available: Persentase bahan baku yang sudah tersedia dan siap digunakan',
-              'On Progress: Persentase bahan baku yang sedang dalam proses pengiriman',
-              'Not Available: Persentase bahan baku yang belum ada sama sekali - ini yang perlu diperhatikan!',
-              'Target ideal: Available minimal 80%, Not Available maksimal 5%'
+              'Bahan Baku (BB): persentase ketersediaan bahan baku',
+              'Bahan Kemas (BK): persentase ketersediaan bahan kemas',
+              'Overall: rata-rata gabungan keduanya',
+              'Makin tinggi makin baik agar produksi tidak terhambat'
+            ]
+          },
+          {
+            subtitle: 'Bagaimana Cara Menghitungnya?',
+            description: 'Ketersediaan dihitung per item sebagai perbandingan stok terhadap kebutuhan, lalu dirata-ratakan.',
+            details: [
+              'Ketersediaan per item = (stok terakhir ÷ kebutuhan) × 100%, dibatasi maksimal 100%',
+              'Angka BB / BK = rata-rata ketersediaan seluruh item pada tipe tersebut',
+              'Item tanpa kebutuhan (needed = 0) tidak dihitung'
             ]
           },
           {
             subtitle: 'Sumber Data',
-            description: 'Data diambil dari sistem manajemen gudang bahan baku yang mencatat stok material dan jadwal kedatangan.',
+            description: 'Data berasal dari sistem ketersediaan material.',
             details: [
-              'Available: Bahan baku sudah tersedia',
-              'On Progress: Bahan baku dalam pengiriman',
-              'Not Available: Bahan baku belum ada'
+              'Ketersediaan Material (sp_Dashboard_MA): tipe item (BB/BK), stok terakhir (last_stock), dan kebutuhan (needed) tiap material'
             ]
           }
         ]
@@ -200,22 +245,28 @@ export const helpContent = {
         description: 'Order fulfillment',
         pages: [
           {
-            subtitle: 'Apa itu Order Fulfillment?',
-            description: 'Order Fulfillment menunjukkan status pemenuhan pesanan dari customer. Melacak berapa banyak order yang sudah selesai, sedang proses, atau sedang dalam QC.',
+            subtitle: 'Apa itu Order Fulfillment (OF1)?',
+            description: 'Menunjukkan sejauh mana pesanan produksi sudah menyelesaikan tiap tahap pemenuhan, dari turun PPI hingga rilis QA.',
             details: [
-              'Released: Order yang sudah selesai diproduksi dan siap dikirim',
-              'Quarantined: Order yang sedang dalam pemeriksaan Quality Control',
-              'WIP: Order yang sedang dalam proses produksi',
-              'Target ideal: Released tinggi, Quarantined dan WIP rendah'
+              'Tahapan: Turun PPI → Potong Stock → Proses → Kemas → Dokumen → Rilis QC → Rilis QA',
+              'Tiap tahap ditampilkan sebagai persentase penyelesaian',
+              'Makin ke kanan (Rilis QA) makin dekat siap dikirim'
+            ]
+          },
+          {
+            subtitle: 'Bagaimana Cara Menghitungnya?',
+            description: 'Untuk tiap tahap, dihitung persentase batch yang sudah menyelesaikannya, lalu dirata-rata antar produk.',
+            details: [
+              'Persentase tahap per produk = batch yang selesai tahap ÷ total batch produk itu',
+              'Angka tiap tahap = rata-rata persentase seluruh produk',
+              'Untuk produk TOLL OUT / IMPOR yang QA-nya sudah selesai, tahap-tahap antara dianggap selesai'
             ]
           },
           {
             subtitle: 'Sumber Data',
-            description: 'Data diambil dari sistem order fulfillment yang melacak status pemenuhan pesanan dari customer.',
+            description: 'Data berasal dari sistem order fulfillment.',
             details: [
-              'Released: Order yang sudah selesai diproduksi',
-              'Quarantined: Order yang sedang dalam pemeriksaan QC',
-              'WIP: Order yang sedang dalam proses produksi'
+              'Order Fulfillment (sp_Dashboard_OF1): status penyelesaian tiap tahap (Turun PPI, Potong Stock, Proses, Kemas, Dokumen, QC, QA) per batch'
             ]
           }
         ]
@@ -228,22 +279,28 @@ export const helpContent = {
         description: 'Production cycle time',
         pages: [
           {
-            subtitle: 'Apa itu Production Cycle Time?',
-            description: 'Cycle Time adalah waktu yang dibutuhkan untuk menyelesaikan produksi satu batch produk, dihitung dari awal proses sampai selesai dikemas dan siap dikirim.',
+            subtitle: 'Apa itu Production Cycle Time (PCT)?',
+            description: 'Rata-rata waktu (hari) yang dibutuhkan untuk menyelesaikan produksi satu batch, dari awal proses hingga siap dirilis.',
             details: [
-              'Cycle Time (hari): Rata-rata waktu yang dibutuhkan untuk selesaikan produksi',
-              'Semakin rendah semakin baik (produksi lebih cepat)',
-              'Breakdown per Line: PN1, PN2 (lini produksi berbeda)',
-              'Quality Release: Waktu yang dibutuhkan QC untuk approve produk'
+              'PCT rata-rata: makin rendah makin cepat',
+              'PCT terlama: produk dengan siklus terpanjang',
+              'Sumber & definisi tahap sama dengan PCT di Dashboard Produksi'
+            ]
+          },
+          {
+            subtitle: 'Bagaimana Cara Menghitungnya?',
+            description: 'PCT rata-rata dihitung sebagai rata-rata tertimbang berdasarkan jumlah batch, agar konsisten dengan Dashboard Produksi.',
+            details: [
+              'PCT rata-rata = jumlah (PCT rata-rata produk × jumlah batch) ÷ total batch',
+              'PCT terlama = nilai PCT rata-rata produk tertinggi',
+              'Hanya batch yang sudah selesai (lulus "Tempel Label Realese") yang dihitung'
             ]
           },
           {
             subtitle: 'Sumber Data',
-            description: 'Data diambil dari sistem produksi (WIP) yang mencatat waktu batch mulai sampai selesai released.',
+            description: 'Data berasal dari ringkasan PCT per produk.',
             details: [
-              'Cycle Time: Rata-rata waktu produksi (hari)',
-              'Breakdown per Line: PN1, PN2, dll',
-              'Quality Release: Waktu untuk QC approval'
+              'Ringkasan PCT (/api/pct): PCT rata-rata & jumlah batch per produk, dari data pelacakan proses yang sama dengan Dashboard Produksi (t_alur_proses)'
             ]
           }
         ]
@@ -256,22 +313,30 @@ export const helpContent = {
         description: 'Kondisi persediaan',
         pages: [
           {
-            subtitle: 'Apa itu Inventory Dashboard?',
-            description: 'Bagian ini menampilkan kondisi kesehatan persediaan barang jadi. Membantu mengidentifikasi produk-produk yang bermasalah atau tidak efisien.',
+            subtitle: 'Apa itu Inventory (Kondisi Persediaan)?',
+            description: 'Menunjukkan kesehatan persediaan barang jadi: berapa nilai stok yang lambat bergerak, mati, dan yang diretur.',
             details: [
-              'Slow Moving: Produk yang penjualannya sangat lambat (3-6 bulan tidak bergerak banyak)',
-              'Dead Stock: Produk yang sudah tidak laku sama sekali (>6 bulan tidak ada penjualan)',
-              'Return Item: Produk yang dikembalikan oleh customer (bisa karena rusak, expired, dll)',
-              '⚠️ Target ideal: Slow Moving <5%, Dead Stock <2%, Return <1%'
+              'Slow Moving: produk yang penjualannya lambat (stok menumpuk)',
+              'Dead Stock: produk yang praktis tidak laku',
+              'Return: nilai produk yang dikembalikan customer',
+              'Ditampilkan dalam nilai (Rupiah) dan persentase terhadap total nilai persediaan'
+            ]
+          },
+          {
+            subtitle: 'Bagaimana Cara Menghitungnya?',
+            description: 'Sistem menilai riwayat penjualan tiap produk terhadap forecast untuk menandai slow moving / dead stock, lalu menghitung nilainya.',
+            details: [
+              'Dead Stock: penjualan < 60% forecast selama 6 bulan terakhir DAN masih ada stok di awal & akhir periode',
+              'Slow Moving: (bukan dead stock) penjualan < 60% forecast selama 3 bulan terakhir DAN masih ada stok',
+              'Return: total (jumlah retur × harga HNA) sepanjang tahun berjalan (YTD)',
+              'Persentase = nilai masing-masing ÷ total nilai persediaan bulan berjalan'
             ]
           },
           {
             subtitle: 'Sumber Data',
-            description: 'Data diambil dari sistem gudang yang melacak pergerakan stok barang jadi. Klasifikasi berdasarkan analisis sales history 6 bulan terakhir.',
+            description: 'Data berasal dari laporan penjualan, stok & retur produk.',
             details: [
-              'Slow Moving: Produk dengan penjualan lambat (3-6 bulan)',
-              'Dead Stock: Produk tidak bergerak sama sekali (>6 bulan)',
-              'Return: Produk yang dikembalikan dari customer'
+              'Laporan Penjualan, Forecast & Stok Produk (sp_Dashboard_DataReportManHours): penjualan, forecast, stok (Release), retur, dan harga (HNA) per produk per periode'
             ]
           }
         ]
@@ -293,21 +358,40 @@ export const helpContent = {
         pages: [
           {
             subtitle: 'Apa itu Production Output?',
-            description: 'Menampilkan target produksi bulanan dan realisasi aktual untuk memantau performa produksi sepanjang tahun.',
+            description: 'Membandingkan target produksi dengan realisasi (jumlah yang benar-benar diproduksi) selama 12 bulan terakhir, sehingga performa produksi mudah dipantau dari bulan ke bulan.',
             details: [
-              'Target: Jumlah unit yang harus diproduksi setiap bulan',
-              'Realisasi: Jumlah unit yang berhasil diproduksi',
-              'Grafik menunjukkan tren produksi dari bulan ke bulan',
-              'Klik bar untuk melihat detail per produk'
+              'Target: jumlah unit yang direncanakan untuk diproduksi pada bulan tersebut',
+              'Realisasi: jumlah unit yang benar-benar selesai diproduksi, dipecah per kategori Generik, OTC, dan ETH',
+              'Achievement: persentase pencapaian realisasi terhadap target',
+              'Klik bar sebuah bulan untuk melihat rincian per produk',
+              'Bulan berjalan bersifat sementara karena belum penuh satu bulan'
+            ]
+          },
+          {
+            subtitle: 'Bagaimana Cara Menghitungnya?',
+            description: 'Target dihitung dari forecast (perkiraan) penjualan yang diberi penyangga, lalu dikurangi stok yang sudah tersedia. Realisasi adalah penjumlahan hasil produksi tiap produk.',
+            details: [
+              'Target per produk = (Forecast penjualan × 1,3) − Stok yang sudah tersedia di awal bulan',
+              'Faktor 1,3 adalah penyangga (buffer) 30% untuk mengantisipasi permintaan lebih',
+              'Jika hasilnya negatif dianggap 0 — artinya stok sudah cukup sehingga tidak perlu produksi',
+              'Target bulan = jumlah target seluruh produk pada bulan itu',
+              'Realisasi = jumlah kolom Produksi seluruh produk, dikelompokkan ke Generik / OTC / ETH',
+              'Achievement = Realisasi ÷ Target × 100%',
+              'Contoh: Forecast 1.000, stok awal 200 → Target = (1.000 × 1,3) − 200 = 1.100 unit'
             ]
           },
           {
             subtitle: 'Sumber Data',
-            description: 'Data diambil dari sistem produksi dan sistem perencanaan (forecast) yang mencatat target bulanan dan output produksi harian.'
+            description: 'Data berasal dari laporan perencanaan & output produksi, digabung dengan penetapan kategori produk.',
+            details: [
+              'Laporan Perencanaan & Output Produksi (sp_Dashboard_DataReportManHours): menyediakan Forecast penjualan, Stok awal bulan, dan jumlah Produksi per produk per bulan',
+              'Daftar & Kategori Produk (productList / otcProducts): menentukan produk masuk kategori Generik, OTC, atau ETH',
+              'Periode: 12 bulan terakhir hingga bulan berjalan'
+            ]
           }
         ]
       },
-      
+
       pct: {
         id: 'pct',
         title: 'PCT Breakdown',
@@ -315,24 +399,43 @@ export const helpContent = {
         description: 'Waktu proses per tahapan',
         pages: [
           {
-            subtitle: 'Apa itu PCT (Production Cycle Time)?',
-            description: 'Menampilkan rata-rata waktu (dalam hari) yang dibutuhkan untuk setiap tahapan proses produksi, dari timbang hingga quality assurance.',
+            subtitle: 'Apa itu PCT (Production Cycle Time) Breakdown?',
+            description: 'Menampilkan rata-rata waktu (dalam hari) yang dihabiskan pada tiap tahapan besar proses, dari Timbang hingga QA. Hanya batch yang sudah selesai penuh (sudah "Tempel Label Realese") yang dihitung.',
             details: [
-              'Timbang: Waktu proses penimbangan bahan',
-              'Proses: Waktu produksi utama (mixing, granulasi, dll)',
-              'QC: Waktu pemeriksaan Quality Control',
-              'Mikro: Waktu uji mikrobiologi',
-              'QA: Waktu approval Quality Assurance final',
-              'Donut chart menampilkan proporsi waktu per tahap'
+              'Timbang: penyiapan & penimbangan bahan baku',
+              'Produksi: proses inti — dari terima bahan baku hingga barang jadi dikirim (mencakup Proses, Kemas Primer, dan Kemas Sekunder)',
+              'QC: pemeriksaan Quality Control',
+              'Mikro: pengujian mikrobiologi',
+              'QA: pelulusan/approval akhir Quality Assurance',
+              'Donut chart menampilkan proporsi waktu tiap tahap — makin kecil makin cepat'
+            ]
+          },
+          {
+            subtitle: 'Bagaimana Cara Menghitungnya?',
+            description: 'Untuk tiap batch, lama sebuah tahap = selisih hari kalender antara langkah awal dan langkah akhir tahap tersebut. Angka pada dashboard adalah rata-rata dari seluruh batch yang selesai pada periode terpilih (MTD/YTD).',
+            details: [
+              'Timbang: mulai "Penyiapan BB" → selesai "Pengiriman Bahan Baku"',
+              'Produksi: mulai "Terima Bahan Baku" → selesai "Pengiriman Obat Jadi"',
+              'QC: mulai "Pickup Sample QC" → selesai "Penyerahan Hasil Uji QC"',
+              'Mikro: dari uji pertama sampai uji terakhir ("Pengujian MC" / "Pengujian Sterilitas MC")',
+              'QA: mulai "Penyerahan PPI ke QA" / "Penyerahan Hasil Uji QC" → selesai "Tempel Label Realese"',
+              'Memakai hari kalender (termasuk akhir pekan & libur)',
+              'Periode: MTD = batch selesai bulan ini; YTD = batch selesai tahun ini'
             ]
           },
           {
             subtitle: 'Sumber Data',
-            description: 'Data diambil dari sistem WIP yang melacak timestamp setiap batch di setiap tahapan. Hanya batch yang sudah complete dengan "Tempel Label Release" yang dihitung.'
+            description: 'Data berasal dari pelacakan langkah proses per batch, dipetakan ke kelompok tahapan.',
+            details: [
+              'Pelacakan Proses Produksi (t_alur_proses): waktu mulai & selesai tiap langkah pada tiap batch',
+              'Master Produk (m_Product): nama & informasi produk',
+              'Master Kelompok Tahapan (m_tahapan_group): pemetaan langkah ke kelompok tahapan',
+              'Filter: hanya batch yang sudah menyelesaikan "Tempel Label Realese" pada periode terpilih; produk "Granulat" dikecualikan'
+            ]
           }
         ]
       },
-      
+
       wip: {
         id: 'wip',
         title: 'WIP - Active Batches',
@@ -341,17 +444,47 @@ export const helpContent = {
         pages: [
           {
             subtitle: 'Apa itu WIP (Work In Progress)?',
-            description: 'Menampilkan semua batch produk yang sedang dalam proses produksi, beserta tahapan dan durasi masing-masing batch.',
+            description: 'Menampilkan seluruh batch yang sedang dalam proses produksi (belum selesai dilulus/dilabeli), beserta tahapan saat ini dan lama waktunya.',
             details: [
-              'Status: Tahapan saat ini (Penyediaan, Produksi, Packaging, dll)',
-              'Durasi: Berapa lama batch sudah dalam proses (hari)',
-              'Timeline visual menunjukkan progress setiap batch',
-              'Warna indikator: hijau (< 7 hari), kuning (7-14 hari), merah (> 14 hari)'
+              'Status/Tahapan: posisi batch saat ini (Timbang, Proses, Kemas Primer, Kemas Sekunder, QC, Mikro, QA)',
+              'Durasi: berapa hari batch berada di tahapan saat ini',
+              'Sebuah batch bisa berada di beberapa tahap sekaligus karena jendela tahap dapat tumpang tindih'
+            ]
+          },
+          {
+            subtitle: 'Bagaimana Cara Menghitungnya?',
+            description: 'Sistem mengambil batch yang masih aktif, menentukan tahap tiap batch dari langkah proses yang sudah/belum berjalan, lalu menghitung lama di tahap = hari kalender sejak tahap dimulai hingga hari ini.',
+            details: [
+              'Batch aktif = batch berstatus "Open" yang belum menyelesaikan "Tempel Label Realese" (belum dilulus & belum dibatalkan)',
+              'Awal & akhir tiap tahap ditentukan dari langkah proses spesifik (contoh: Proses dimulai saat "Terima Bahan Baku"), bukan sekadar pengelompokan kasar',
+              'Durasi di tahap = jumlah hari kalender dari tahap dimulai sampai hari ini',
+              '"Menunggu" vs "Berjalan": jendela tahap sudah terbuka tetapi langkahnya belum dimulai = Menunggu; sudah dimulai = Berjalan',
+              'Ambang warna (hijau/kuning/merah) berbeda-beda per departemen dan per tahap'
+            ]
+          },
+          {
+            subtitle: 'Batas Tiap Tahap (Kapan Mulai & Selesai)',
+            description: 'Setiap tahap punya titik mulai dan selesai yang jelas, ditentukan dari langkah proses tertentu:',
+            details: [
+              'Timbang: mulai "Penyiapan BB" → selesai "Pengiriman Bahan Baku"',
+              'Proses: mulai "Terima Bahan Baku" → selesai tepat saat Kemas Primer dimulai',
+              'Kemas Primer: mulai saat semua prasyarat pengemasan primer selesai → selesai saat proses pengemasan primer selesai',
+              'Kemas Sekunder: mulai saat prasyarat pengemasan sekunder selesai → selesai "Pengiriman Obat Jadi"',
+              'QC: mulai "Pickup Sample QC" → selesai "Penyerahan Hasil Uji QC"',
+              'Mikro: dari uji pertama hingga uji terakhir ("Pengujian MC" / "Pengujian Sterilitas MC")',
+              'QA: mulai "Penyerahan PPI ke QA" / "Penyerahan Hasil Uji QC" → selesai "Tempel Label Realese"'
             ]
           },
           {
             subtitle: 'Sumber Data',
-            description: 'Data realtime dari sistem produksi yang melacak status batch di setiap departemen dan lini produksi.'
+            description: 'Data real-time berasal dari pelacakan langkah proses dan daftar batch aktif.',
+            details: [
+              'Pelacakan Proses Produksi (t_alur_proses): langkah & waktu mulai/selesai tiap batch',
+              'Kartu Batch (t_rfid_batch_card): daftar batch aktif beserta statusnya (Open/Close)',
+              'Master Kelompok Tahapan (m_tahapan_group): pemetaan langkah ke kelompok tahapan',
+              'Master Produk (m_Product): nama & informasi produk',
+              'Dikecualikan: batch yang sudah dilulus (t_dnc_product), batch yang dibatalkan (t_wip_batal), dan produk "Granulat"; rentang 12 bulan terakhir'
+            ]
           }
         ]
       }
@@ -391,17 +524,32 @@ export const helpContent = {
         pages: [
           {
             subtitle: 'Apa itu Output Chart?',
-            description: 'Grafik ini menampilkan output produksi Line PN1. Grafik akan otomatis berganti antara tampilan bulanan (Monthly) dan harian (Daily) setiap beberapa detik untuk memberikan perspektif yang lengkap.',
+            description: 'Menampilkan output produksi Line PN1. Grafik berganti otomatis antara tampilan Bulanan (Monthly) dan Harian (Daily) untuk memberi gambaran yang lengkap.',
             details: [
-              'Monthly Output: Total produksi per bulan dalam setahun',
-              'Daily Output: Produksi harian dalam bulan berjalan',
-              'Auto-rotate: Grafik berganti otomatis antara Monthly dan Daily',
-              'Bar chart (Monthly) dan Line chart (Daily) untuk visualisasi yang optimal'
+              'Monthly Output: total produksi per bulan selama 12 bulan terakhir, dibandingkan target',
+              'Daily Output: jumlah produksi per hari pada bulan berjalan',
+              'Auto-rotate: Bar chart (Monthly) & Line chart (Daily) bergantian otomatis',
+              'Hanya produk milik Line PN1 yang dihitung'
+            ]
+          },
+          {
+            subtitle: 'Bagaimana Cara Menghitungnya?',
+            description: 'Output harian dihitung dari jumlah hasil produksi yang sudah disetujui pada hari itu; output bulanan adalah akumulasinya. Target memakai rumus berbasis forecast.',
+            details: [
+              'Output harian = jumlah hasil produksi seluruh produk Line PN1 yang sudah disetujui pada tanggal tersebut',
+              'Hanya laporan produksi yang sudah di-approve (bukan yang ditolak) yang dihitung',
+              'Output bulanan = total output seluruh hari dalam bulan itu',
+              'Target bulan = jumlah (Forecast × 1,3 − stok awal bulan) tiap produk; nilai negatif dianggap 0'
             ]
           },
           {
             subtitle: 'Sumber Data',
-            description: 'Data diambil dari sistem produksi Line PN1 yang mencatat output harian. Data bulanan adalah agregasi dari output harian per bulan.'
+            description: 'Data berasal dari laporan hasil produksi yang sudah disetujui, digabung dengan rencana produksi.',
+            details: [
+              'Laporan Hasil Produksi / BPHP (t_bphp_detail, t_bphp_header, t_bphp_status): jumlah produksi harian yang sudah disetujui',
+              'Laporan Perencanaan & Output Produksi (sp_Dashboard_DataReportManHours): Forecast & stok awal bulan untuk target',
+              'Pemetaan Produk ke Departemen (m_product_pn_group): menentukan produk milik Line PN1'
+            ]
           }
         ]
       },
@@ -414,17 +562,32 @@ export const helpContent = {
         pages: [
           {
             subtitle: 'Apa itu Daily OF1?',
-            description: 'Menampilkan status pemenuhan order (Order Fulfillment) untuk batch-batch bulan ini di Line PN1. Grafik menunjukkan perkembangan harian dari Released, Quarantined, dan WIP.',
+            description: 'Menampilkan status pemenuhan order (Order Fulfillment) batch bulan ini di Line PN1: berapa yang sudah Released, masih Quarantined, dan masih WIP, per hari.',
             details: [
-              'Released (hijau): Batch yang sudah selesai dan siap dikirim',
-              'Quarantined (kuning): Batch dalam pemeriksaan Quality Control',
-              'WIP (biru): Batch yang masih dalam proses produksi',
-              'Line chart menunjukkan tren pemenuhan order dari hari ke hari'
+              'Released (hijau): batch sudah lulus & siap dikirim',
+              'Quarantined (kuning): batch dalam karantina/pemeriksaan Quality Control',
+              'WIP (biru): batch masih dalam proses produksi',
+              'Line chart menunjukkan tren pemenuhan order dari hari ke hari terhadap target'
+            ]
+          },
+          {
+            subtitle: 'Bagaimana Cara Menghitungnya?',
+            description: 'Sistem membandingkan jumlah batch yang ditargetkan bulan ini dengan yang sudah dilulus; sisanya dikelompokkan sebagai karantina atau WIP per tanggal.',
+            details: [
+              'Target batch bulan ini berasal dari daftar target OF1 per produk',
+              'Released = batch berstatus "DILULUSKAN" pada bulan berjalan, dihitung akumulatif per hari',
+              'Sisa target yang belum lulus dipetakan ke Quarantined (sudah di QC) atau WIP (masih diproses)',
+              'Hanya batch milik Line PN1'
             ]
           },
           {
             subtitle: 'Sumber Data',
-            description: 'Data realtime dari sistem order fulfillment Line PN1 yang melacak status setiap batch per hari.'
+            description: 'Data real-time dari sistem order fulfillment yang melacak status setiap batch per hari.',
+            details: [
+              'Target Order Fulfillment (r_target_of1_dashboard): target & release per produk per periode',
+              'Ringkasan Order Fulfillment (sp_Dashboard_OF1): daftar batch target bulan berjalan',
+              'Catatan Pelulusan Batch (t_dnc_product): batch berstatus "DILULUSKAN"'
+            ]
           }
         ]
       },
@@ -437,18 +600,48 @@ export const helpContent = {
         pages: [
           {
             subtitle: 'Apa itu WIP Section?',
-            description: 'Bagian ini menampilkan detail semua batch yang sedang dalam proses produksi di Line PN1. Speedometer menunjukkan jumlah batch per tahapan, dan tabel di bawahnya menampilkan informasi lengkap setiap batch.',
+            description: 'Menampilkan seluruh batch yang sedang diproses di Line PN1. Speedometer menunjukkan jumlah batch aktif per tahapan, dan tabel di bawahnya memuat detail tiap batch.',
             details: [
-              'Speedometer: Jumlah batch aktif di setiap tahapan (Timbang, Proses, Kemas, QC, dll)',
-              'Warna speedometer: Hijau (lancar), Kuning (perhatian), Merah (bottleneck)',
-              'Tabel Batch: Detail setiap batch termasuk nama produk, status, dan durasi',
-              'Klik batch untuk melihat timeline detail proses produksi',
-              'Durasi menunjukkan berapa lama batch sudah dalam proses'
+              'Speedometer: jumlah batch aktif di tiap tahapan (Timbang, Proses, Kemas Primer, Kemas Sekunder, QC, Mikro, QA)',
+              'Tabel Batch: nama produk, tahapan saat ini, dan durasi tiap batch',
+              'Klik batch untuk melihat timeline detail prosesnya',
+              'Sebuah batch bisa berada di beberapa tahap sekaligus karena jendela tahap dapat tumpang tindih'
+            ]
+          },
+          {
+            subtitle: 'Bagaimana Cara Menghitungnya?',
+            description: 'Sistem mengambil batch aktif Line PN1, menentukan tahap tiap batch dari langkah proses yang sudah/belum berjalan, lalu menghitung lama di tahap = hari kalender sejak tahap dimulai hingga hari ini.',
+            details: [
+              'Batch aktif = batch berstatus "Open" yang belum menyelesaikan "Tempel Label Realese"',
+              'Awal & akhir tiap tahap ditentukan dari langkah proses spesifik (mis. Proses dimulai saat "Terima Bahan Baku")',
+              'Durasi di tahap = jumlah hari kalender dari tahap dimulai sampai hari ini',
+              '"Menunggu" vs "Berjalan": jendela tahap terbuka tetapi langkahnya belum dimulai = Menunggu; sudah dimulai = Berjalan',
+              'Hanya batch milik Line PN1'
+            ]
+          },
+          {
+            subtitle: 'Batas Tiap Tahap (Kapan Mulai & Selesai)',
+            description: 'Setiap tahap punya titik mulai dan selesai yang jelas, ditentukan dari langkah proses tertentu:',
+            details: [
+              'Timbang: mulai "Penyiapan BB" → selesai "Pengiriman Bahan Baku"',
+              'Proses: mulai "Terima Bahan Baku" → selesai tepat saat Kemas Primer dimulai',
+              'Kemas Primer: mulai saat semua prasyarat pengemasan primer selesai → selesai saat proses pengemasan primer selesai',
+              'Kemas Sekunder: mulai saat prasyarat pengemasan sekunder selesai → selesai "Pengiriman Obat Jadi"',
+              'QC: mulai "Pickup Sample QC" → selesai "Penyerahan Hasil Uji QC"',
+              'Mikro: dari uji pertama hingga uji terakhir ("Pengujian MC" / "Pengujian Sterilitas MC")',
+              'QA: mulai "Penyerahan PPI ke QA" / "Penyerahan Hasil Uji QC" → selesai "Tempel Label Realese"'
             ]
           },
           {
             subtitle: 'Sumber Data',
-            description: 'Data realtime dari sistem WIP yang melacak pergerakan setiap batch dari tahap ke tahap. Timeline detail diambil dari sistem task management produksi.'
+            description: 'Data real-time berasal dari pelacakan langkah proses dan daftar batch aktif.',
+            details: [
+              'Pelacakan Proses Produksi (t_alur_proses): langkah & waktu mulai/selesai tiap batch',
+              'Kartu Batch (t_rfid_batch_card): daftar batch aktif beserta statusnya (Open/Close)',
+              'Master Kelompok Tahapan (m_tahapan_group): pemetaan langkah ke kelompok tahapan',
+              'Pemetaan Produk ke Departemen (m_product_pn_group): memfilter batch milik Line PN1',
+              'Dikecualikan: batch yang sudah dilulus (t_dnc_product), dibatalkan (t_wip_batal), dan produk "Granulat"'
+            ]
           }
         ]
       },
@@ -461,17 +654,30 @@ export const helpContent = {
         pages: [
           {
             subtitle: 'Apa itu WIP Summary?',
-            description: 'Donut chart yang menampilkan distribusi batch aktif Line PN1 berdasarkan tahapan produksi. Grafik ini HANYA muncul saat sidebar disembunyikan untuk memberikan overview cepat.',
+            description: 'Donut chart yang menampilkan sebaran batch aktif Line PN1 per tahapan produksi. Hanya muncul saat sidebar disembunyikan, untuk overview cepat.',
             details: [
-              'Menampilkan jumlah batch di setiap tahapan (Timbang, Proses, Kemas, dll)',
-              'Proporsi visual membantu identifikasi bottleneck',
-              'Warna berbeda untuk setiap tahapan produksi',
+              'Menampilkan jumlah batch di tiap tahapan (Timbang, Proses, Kemas Primer, Kemas Sekunder, QC, Mikro, QA)',
+              'Membantu melihat di tahap mana batch paling banyak berada',
               '💡 Grafik ini hanya terlihat saat sidebar disembunyikan'
             ]
           },
           {
+            subtitle: 'Bagaimana Cara Menghitungnya?',
+            description: 'Menggunakan data WIP yang sama dengan tabel batch; tiap batch aktif dihitung ke tahapan tempat ia sedang berada.',
+            details: [
+              'Sumber & aturan penentuan tahapan sama persis dengan bagian WIP di atas',
+              'Satu batch dapat terhitung di lebih dari satu tahap bila jendela tahapnya tumpang tindih',
+              'Hanya batch aktif milik Line PN1'
+            ]
+          },
+          {
             subtitle: 'Sumber Data',
-            description: 'Data dari sistem WIP Line PN1 yang melacak posisi setiap batch dalam alur produksi.'
+            description: 'Sama dengan bagian WIP: pelacakan langkah proses per batch.',
+            details: [
+              'Pelacakan Proses Produksi (t_alur_proses): langkah & waktu tiap batch',
+              'Kartu Batch (t_rfid_batch_card): daftar batch aktif',
+              'Master Kelompok Tahapan (m_tahapan_group): pemetaan langkah ke tahapan'
+            ]
           }
         ]
       }
@@ -511,17 +717,32 @@ export const helpContent = {
         pages: [
           {
             subtitle: 'Apa itu Output Chart?',
-            description: 'Grafik ini menampilkan output produksi Line PN2. Grafik akan otomatis berganti antara tampilan bulanan (Monthly) dan harian (Daily) setiap beberapa detik untuk memberikan perspektif yang lengkap.',
+            description: 'Menampilkan output produksi Line PN2. Grafik berganti otomatis antara tampilan Bulanan (Monthly) dan Harian (Daily) untuk memberi gambaran yang lengkap.',
             details: [
-              'Monthly Output: Total produksi per bulan dalam setahun',
-              'Daily Output: Produksi harian dalam bulan berjalan',
-              'Auto-rotate: Grafik berganti otomatis antara Monthly dan Daily',
-              'Bar chart (Monthly) dan Line chart (Daily) untuk visualisasi yang optimal'
+              'Monthly Output: total produksi per bulan selama 12 bulan terakhir, dibandingkan target',
+              'Daily Output: jumlah produksi per hari pada bulan berjalan',
+              'Auto-rotate: Bar chart (Monthly) & Line chart (Daily) bergantian otomatis',
+              'Hanya produk milik Line PN2 yang dihitung'
+            ]
+          },
+          {
+            subtitle: 'Bagaimana Cara Menghitungnya?',
+            description: 'Output harian dihitung dari jumlah hasil produksi yang sudah disetujui pada hari itu; output bulanan adalah akumulasinya. Target memakai rumus berbasis forecast.',
+            details: [
+              'Output harian = jumlah hasil produksi seluruh produk Line PN2 yang sudah disetujui pada tanggal tersebut',
+              'Hanya laporan produksi yang sudah di-approve (bukan yang ditolak) yang dihitung',
+              'Output bulanan = total output seluruh hari dalam bulan itu',
+              'Target bulan = jumlah (Forecast × 1,3 − stok awal bulan) tiap produk; nilai negatif dianggap 0'
             ]
           },
           {
             subtitle: 'Sumber Data',
-            description: 'Data diambil dari sistem produksi Line PN2 yang mencatat output harian. Data bulanan adalah agregasi dari output harian per bulan.'
+            description: 'Data berasal dari laporan hasil produksi yang sudah disetujui, digabung dengan rencana produksi.',
+            details: [
+              'Laporan Hasil Produksi / BPHP (t_bphp_detail, t_bphp_header, t_bphp_status): jumlah produksi harian yang sudah disetujui',
+              'Laporan Perencanaan & Output Produksi (sp_Dashboard_DataReportManHours): Forecast & stok awal bulan untuk target',
+              'Pemetaan Produk ke Departemen (m_product_pn_group): menentukan produk milik Line PN2'
+            ]
           }
         ]
       },
@@ -534,17 +755,32 @@ export const helpContent = {
         pages: [
           {
             subtitle: 'Apa itu Daily OF1?',
-            description: 'Menampilkan status pemenuhan order (Order Fulfillment) untuk batch-batch bulan ini di Line PN2. Grafik menunjukkan perkembangan harian dari Released, Quarantined, dan WIP.',
+            description: 'Menampilkan status pemenuhan order (Order Fulfillment) batch bulan ini di Line PN2: berapa yang sudah Released, masih Quarantined, dan masih WIP, per hari.',
             details: [
-              'Released (hijau): Batch yang sudah selesai dan siap dikirim',
-              'Quarantined (kuning): Batch dalam pemeriksaan Quality Control',
-              'WIP (biru): Batch yang masih dalam proses produksi',
-              'Line chart menunjukkan tren pemenuhan order dari hari ke hari'
+              'Released (hijau): batch sudah lulus & siap dikirim',
+              'Quarantined (kuning): batch dalam karantina/pemeriksaan Quality Control',
+              'WIP (biru): batch masih dalam proses produksi',
+              'Line chart menunjukkan tren pemenuhan order dari hari ke hari terhadap target'
+            ]
+          },
+          {
+            subtitle: 'Bagaimana Cara Menghitungnya?',
+            description: 'Sistem membandingkan jumlah batch yang ditargetkan bulan ini dengan yang sudah dilulus; sisanya dikelompokkan sebagai karantina atau WIP per tanggal.',
+            details: [
+              'Target batch bulan ini berasal dari daftar target OF1 per produk',
+              'Released = batch berstatus "DILULUSKAN" pada bulan berjalan, dihitung akumulatif per hari',
+              'Sisa target yang belum lulus dipetakan ke Quarantined (sudah di QC) atau WIP (masih diproses)',
+              'Hanya batch milik Line PN2'
             ]
           },
           {
             subtitle: 'Sumber Data',
-            description: 'Data realtime dari sistem order fulfillment Line PN2 yang melacak status setiap batch per hari.'
+            description: 'Data real-time dari sistem order fulfillment yang melacak status setiap batch per hari.',
+            details: [
+              'Target Order Fulfillment (r_target_of1_dashboard): target & release per produk per periode',
+              'Ringkasan Order Fulfillment (sp_Dashboard_OF1): daftar batch target bulan berjalan',
+              'Catatan Pelulusan Batch (t_dnc_product): batch berstatus "DILULUSKAN"'
+            ]
           }
         ]
       },
@@ -557,18 +793,48 @@ export const helpContent = {
         pages: [
           {
             subtitle: 'Apa itu WIP Section?',
-            description: 'Bagian ini menampilkan detail semua batch yang sedang dalam proses produksi di Line PN2. Speedometer menunjukkan jumlah batch per tahapan, dan tabel di bawahnya menampilkan informasi lengkap setiap batch.',
+            description: 'Menampilkan seluruh batch yang sedang diproses di Line PN2. Speedometer menunjukkan jumlah batch aktif per tahapan, dan tabel di bawahnya memuat detail tiap batch.',
             details: [
-              'Speedometer: Jumlah batch aktif di setiap tahapan (Timbang, Proses, Kemas, QC, dll)',
-              'Warna speedometer: Hijau (lancar), Kuning (perhatian), Merah (bottleneck)',
-              'Tabel Batch: Detail setiap batch termasuk nama produk, status, dan durasi',
-              'Klik batch untuk melihat timeline detail proses produksi',
-              'Durasi menunjukkan berapa lama batch sudah dalam proses'
+              'Speedometer: jumlah batch aktif di tiap tahapan (Timbang, Proses, Kemas Primer, Kemas Sekunder, QC, Mikro, QA)',
+              'Tabel Batch: nama produk, tahapan saat ini, dan durasi tiap batch',
+              'Klik batch untuk melihat timeline detail prosesnya',
+              'Sebuah batch bisa berada di beberapa tahap sekaligus karena jendela tahap dapat tumpang tindih'
+            ]
+          },
+          {
+            subtitle: 'Bagaimana Cara Menghitungnya?',
+            description: 'Sistem mengambil batch aktif Line PN2, menentukan tahap tiap batch dari langkah proses yang sudah/belum berjalan, lalu menghitung lama di tahap = hari kalender sejak tahap dimulai hingga hari ini.',
+            details: [
+              'Batch aktif = batch berstatus "Open" yang belum menyelesaikan "Tempel Label Realese"',
+              'Awal & akhir tiap tahap ditentukan dari langkah proses spesifik (mis. Proses dimulai saat "Terima Bahan Baku")',
+              'Durasi di tahap = jumlah hari kalender dari tahap dimulai sampai hari ini',
+              '"Menunggu" vs "Berjalan": jendela tahap terbuka tetapi langkahnya belum dimulai = Menunggu; sudah dimulai = Berjalan',
+              'Hanya batch milik Line PN2'
+            ]
+          },
+          {
+            subtitle: 'Batas Tiap Tahap (Kapan Mulai & Selesai)',
+            description: 'Setiap tahap punya titik mulai dan selesai yang jelas, ditentukan dari langkah proses tertentu:',
+            details: [
+              'Timbang: mulai "Penyiapan BB" → selesai "Pengiriman Bahan Baku"',
+              'Proses: mulai "Terima Bahan Baku" → selesai tepat saat Kemas Primer dimulai',
+              'Kemas Primer: mulai saat semua prasyarat pengemasan primer selesai → selesai saat proses pengemasan primer selesai',
+              'Kemas Sekunder: mulai saat prasyarat pengemasan sekunder selesai → selesai "Pengiriman Obat Jadi"',
+              'QC: mulai "Pickup Sample QC" → selesai "Penyerahan Hasil Uji QC"',
+              'Mikro: dari uji pertama hingga uji terakhir ("Pengujian MC" / "Pengujian Sterilitas MC")',
+              'QA: mulai "Penyerahan PPI ke QA" / "Penyerahan Hasil Uji QC" → selesai "Tempel Label Realese"'
             ]
           },
           {
             subtitle: 'Sumber Data',
-            description: 'Data realtime dari sistem WIP yang melacak pergerakan setiap batch dari tahap ke tahap. Timeline detail diambil dari sistem task management produksi.'
+            description: 'Data real-time berasal dari pelacakan langkah proses dan daftar batch aktif.',
+            details: [
+              'Pelacakan Proses Produksi (t_alur_proses): langkah & waktu mulai/selesai tiap batch',
+              'Kartu Batch (t_rfid_batch_card): daftar batch aktif beserta statusnya (Open/Close)',
+              'Master Kelompok Tahapan (m_tahapan_group): pemetaan langkah ke kelompok tahapan',
+              'Pemetaan Produk ke Departemen (m_product_pn_group): memfilter batch milik Line PN2',
+              'Dikecualikan: batch yang sudah dilulus (t_dnc_product), dibatalkan (t_wip_batal), dan produk "Granulat"'
+            ]
           }
         ]
       },
@@ -581,17 +847,30 @@ export const helpContent = {
         pages: [
           {
             subtitle: 'Apa itu WIP Summary?',
-            description: 'Donut chart yang menampilkan distribusi batch aktif Line PN2 berdasarkan tahapan produksi. Grafik ini HANYA muncul saat sidebar disembunyikan untuk memberikan overview cepat.',
+            description: 'Donut chart yang menampilkan sebaran batch aktif Line PN2 per tahapan produksi. Hanya muncul saat sidebar disembunyikan, untuk overview cepat.',
             details: [
-              'Menampilkan jumlah batch di setiap tahapan (Timbang, Proses, Kemas, dll)',
-              'Proporsi visual membantu identifikasi bottleneck',
-              'Warna berbeda untuk setiap tahapan produksi',
+              'Menampilkan jumlah batch di tiap tahapan (Timbang, Proses, Kemas Primer, Kemas Sekunder, QC, Mikro, QA)',
+              'Membantu melihat di tahap mana batch paling banyak berada',
               '💡 Grafik ini hanya terlihat saat sidebar disembunyikan'
             ]
           },
           {
+            subtitle: 'Bagaimana Cara Menghitungnya?',
+            description: 'Menggunakan data WIP yang sama dengan tabel batch; tiap batch aktif dihitung ke tahapan tempat ia sedang berada.',
+            details: [
+              'Sumber & aturan penentuan tahapan sama persis dengan bagian WIP di atas',
+              'Satu batch dapat terhitung di lebih dari satu tahap bila jendela tahapnya tumpang tindih',
+              'Hanya batch aktif milik Line PN2'
+            ]
+          },
+          {
             subtitle: 'Sumber Data',
-            description: 'Data dari sistem WIP Line PN2 yang melacak posisi setiap batch dalam alur produksi.'
+            description: 'Sama dengan bagian WIP: pelacakan langkah proses per batch.',
+            details: [
+              'Pelacakan Proses Produksi (t_alur_proses): langkah & waktu tiap batch',
+              'Kartu Batch (t_rfid_batch_card): daftar batch aktif',
+              'Master Kelompok Tahapan (m_tahapan_group): pemetaan langkah ke tahapan'
+            ]
           }
         ]
       }
@@ -631,18 +910,30 @@ export const helpContent = {
         pages: [
           {
             subtitle: 'Apa itu Released Chart?',
-            description: 'Grafik ini menampilkan jumlah batch yang telah di-release (lulus QC) dari Quality Dashboard. Grafik akan otomatis berganti antara tampilan bulanan (Monthly) dan harian (Daily) setiap beberapa detik.',
+            description: 'Menampilkan jumlah batch yang telah di-release (lulus QC). Grafik berganti otomatis antara tampilan Bulanan (Monthly) dan Harian (Daily).',
             details: [
-              'Monthly Released: Total batch yang di-release per bulan dalam setahun',
-              'Daily Released: Batch yang di-release harian dalam bulan berjalan (MTD)',
-              'Auto-rotate: Grafik berganti otomatis antara Monthly dan Daily',
-              'Bar chart (Monthly) dan Line chart (Daily) untuk visualisasi optimal',
-              'Released = batch yang sudah lulus Quality Control dan siap dikirim'
+              'Monthly Released: total batch yang di-release per bulan sepanjang tahun berjalan (YTD)',
+              'Daily Released: batch yang di-release per hari pada bulan berjalan (MTD)',
+              'Released = batch yang sudah lulus Quality Control dan siap dikirim',
+              'Auto-rotate: Bar chart (Monthly) & Line chart (Daily) bergantian otomatis'
+            ]
+          },
+          {
+            subtitle: 'Bagaimana Cara Menghitungnya?',
+            description: 'Dihitung dari jumlah batch yang berstatus "DILULUSKAN", berdasarkan tanggal pelulusannya.',
+            details: [
+              'Released = batch dengan status "DILULUSKAN" (lulus QC)',
+              'Daily = jumlah batch dilulus per tanggal pada bulan berjalan',
+              'Monthly = jumlah batch dilulus per bulan sepanjang tahun berjalan',
+              'Tanggal acuan adalah tanggal proses pelulusan'
             ]
           },
           {
             subtitle: 'Sumber Data',
-            description: 'Data diambil dari sistem Quality Control yang mencatat batch yang sudah di-release. Data bulanan adalah agregasi dari release harian per bulan.'
+            description: 'Data berasal dari catatan pelulusan batch oleh Quality Control.',
+            details: [
+              'Catatan Pelulusan Batch (t_dnc_product): batch berstatus "DILULUSKAN" beserta tanggal pelulusannya'
+            ]
           }
         ]
       },
@@ -655,18 +946,32 @@ export const helpContent = {
         pages: [
           {
             subtitle: 'Apa itu Lead Time?',
-            description: 'Lead Time menunjukkan rata-rata waktu (dalam hari) yang dibutuhkan untuk proses Quality Control (QC) atau Mikrobiologi (Mikro) per hari. Grafik akan otomatis berganti antara QC dan Mikro untuk memberikan pandangan lengkap.',
+            description: 'Rata-rata waktu (dalam hari) yang dibutuhkan untuk menyelesaikan proses Quality Control (QC) atau Mikrobiologi (Mikro). Grafik berganti otomatis antara QC dan Mikro.',
             details: [
-              'Lead Time QC: Waktu yang dibutuhkan untuk pemeriksaan Quality Control',
-              'Lead Time Mikro: Waktu yang dibutuhkan untuk uji mikrobiologi',
-              'Auto-rotate: Grafik berganti otomatis antara QC dan Mikro',
-              'Line chart menunjukkan tren harian lead time',
-              'Semakin rendah lead time, semakin cepat batch bisa di-release'
+              'Lead Time QC: lama pemeriksaan Quality Control per batch',
+              'Lead Time Mikro: lama pengujian mikrobiologi per batch',
+              'Line chart menampilkan tren lead time dari hari ke hari',
+              'Makin rendah lead time, makin cepat batch bisa di-release'
+            ]
+          },
+          {
+            subtitle: 'Bagaimana Cara Menghitungnya?',
+            description: 'Untuk tiap batch, lead time sebuah tahap = selisih hari kalender dari langkah pertama mulai hingga langkah terakhir tahap itu selesai. Hanya batch yang seluruh langkah tahapnya sudah selesai yang dihitung, lalu dirata-ratakan per tanggal penyelesaian.',
+            details: [
+              'Lead time = hari kalender dari awal tahap (langkah pertama mulai) sampai tahap selesai (langkah terakhir selesai)',
+              'QC mencakup seluruh langkah kelompok QC; Mikro mencakup seluruh langkah kelompok Mikro',
+              'Hanya dihitung bila SEMUA langkah pada tahap tersebut sudah selesai',
+              'Dikelompokkan berdasarkan tanggal penyelesaian; periode MTD (bulan ini) atau YTD (tahun ini)'
             ]
           },
           {
             subtitle: 'Sumber Data',
-            description: 'Data diambil dari sistem WIP yang melacak timestamp batch masuk dan keluar dari tahapan QC dan Mikro. Lead time dihitung dari selisih waktu proses.'
+            description: 'Data berasal dari pelacakan langkah proses QC & Mikro per batch.',
+            details: [
+              'Pelacakan Proses Produksi (t_alur_proses): waktu mulai & selesai tiap langkah QC/Mikro',
+              'Master Kelompok Tahapan (m_tahapan_group): menandai langkah sebagai QC atau Mikro',
+              'Master Produk (m_Product): nama & informasi produk'
+            ]
           }
         ]
       },
@@ -679,18 +984,31 @@ export const helpContent = {
         pages: [
           {
             subtitle: 'Apa itu Daily OF1?',
-            description: 'Menampilkan status pemenuhan order (Order Fulfillment) untuk batch-batch bulan ini di Quality Dashboard. Grafik ini HANYA muncul saat sidebar disembunyikan. Menunjukkan perkembangan harian dari Released, Quarantined, dan WIP.',
+            description: 'Menampilkan status pemenuhan order (Order Fulfillment) batch bulan ini dari sisi Quality: Released, Quarantined, dan WIP per hari. Hanya muncul saat sidebar disembunyikan.',
             details: [
-              'Released (hijau): Batch yang sudah selesai QC dan siap dikirim',
-              'Quarantined (kuning): Batch dalam pemeriksaan Quality Control',
-              'WIP (biru): Batch yang masih dalam proses produksi',
-              'Line chart menunjukkan tren pemenuhan order dari hari ke hari',
+              'Released (hijau): batch sudah lulus QC & siap dikirim',
+              'Quarantined (kuning): batch dalam karantina/pemeriksaan Quality Control',
+              'WIP (biru): batch masih dalam proses produksi',
               '💡 Grafik ini hanya terlihat saat sidebar disembunyikan'
             ]
           },
           {
+            subtitle: 'Bagaimana Cara Menghitungnya?',
+            description: 'Sistem membandingkan jumlah batch yang ditargetkan bulan ini dengan yang sudah dilulus; sisanya dikelompokkan sebagai karantina atau WIP per tanggal.',
+            details: [
+              'Target batch bulan ini berasal dari daftar target OF1 per produk',
+              'Released = batch berstatus "DILULUSKAN" pada bulan berjalan, dihitung akumulatif per hari',
+              'Sisa target yang belum lulus dipetakan ke Quarantined (sudah di QC) atau WIP (masih diproses)'
+            ]
+          },
+          {
             subtitle: 'Sumber Data',
-            description: 'Data realtime dari sistem order fulfillment Quality yang melacak status setiap batch per hari.'
+            description: 'Data real-time dari sistem order fulfillment yang melacak status setiap batch per hari.',
+            details: [
+              'Target Order Fulfillment (r_target_of1_dashboard): target & release per produk per periode',
+              'Ringkasan Order Fulfillment (sp_Dashboard_OF1): daftar batch target bulan berjalan',
+              'Catatan Pelulusan Batch (t_dnc_product): batch berstatus "DILULUSKAN"'
+            ]
           }
         ]
       },
@@ -703,18 +1021,270 @@ export const helpContent = {
         pages: [
           {
             subtitle: 'Apa itu WIP Section?',
-            description: 'Bagian ini menampilkan detail semua batch yang sedang dalam proses Quality Control. Speedometer menunjukkan jumlah batch per tahapan QC, dan tabel di bawahnya menampilkan informasi lengkap setiap batch.',
+            description: 'Menampilkan seluruh batch yang sedang dalam proses, dilihat dari sisi Quality. Speedometer menampilkan jumlah batch aktif per tahapan, dan tabel di bawahnya memuat detail tiap batch.',
             details: [
-              'Speedometer: Jumlah batch aktif di setiap tahapan (Inspeksi, QC, Mikro, QA, dll)',
-              'Warna speedometer: Hijau (lancar), Kuning (perhatian), Merah (bottleneck)',
-              'Tabel Batch: Detail setiap batch termasuk nama produk, status QC, dan durasi',
-              'Klik batch untuk melihat timeline detail proses Quality Control',
-              'Durasi menunjukkan berapa lama batch sudah dalam proses QC'
+              'Speedometer: jumlah batch aktif per tahapan (dengan fokus pada QC, Mikro, dan QA)',
+              'Tabel Batch: nama produk, tahapan saat ini, dan durasi tiap batch',
+              'Klik batch untuk melihat timeline detail prosesnya',
+              'Sebuah batch bisa berada di beberapa tahap sekaligus karena jendela tahap dapat tumpang tindih'
+            ]
+          },
+          {
+            subtitle: 'Bagaimana Cara Menghitungnya?',
+            description: 'Sistem mengambil batch aktif, menentukan tahap tiap batch dari langkah proses yang sudah/belum berjalan, lalu menghitung lama di tahap = hari kalender sejak tahap dimulai hingga hari ini.',
+            details: [
+              'Batch aktif = batch berstatus "Open" yang belum menyelesaikan "Tempel Label Realese"',
+              'Awal & akhir tiap tahap ditentukan dari langkah proses spesifik (mis. QC dimulai saat "Pickup Sample QC")',
+              'Durasi di tahap = jumlah hari kalender dari tahap dimulai sampai hari ini',
+              '"Menunggu" vs "Berjalan": jendela tahap terbuka tetapi langkahnya belum dimulai = Menunggu; sudah dimulai = Berjalan'
+            ]
+          },
+          {
+            subtitle: 'Batas Tiap Tahap (Kapan Mulai & Selesai)',
+            description: 'Setiap tahap punya titik mulai dan selesai yang jelas, ditentukan dari langkah proses tertentu:',
+            details: [
+              'Timbang: mulai "Penyiapan BB" → selesai "Pengiriman Bahan Baku"',
+              'Proses: mulai "Terima Bahan Baku" → selesai tepat saat Kemas Primer dimulai',
+              'Kemas Primer: mulai saat semua prasyarat pengemasan primer selesai → selesai saat proses pengemasan primer selesai',
+              'Kemas Sekunder: mulai saat prasyarat pengemasan sekunder selesai → selesai "Pengiriman Obat Jadi"',
+              'QC: mulai "Pickup Sample QC" → selesai "Penyerahan Hasil Uji QC"',
+              'Mikro: dari uji pertama hingga uji terakhir ("Pengujian MC" / "Pengujian Sterilitas MC")',
+              'QA: mulai "Penyerahan PPI ke QA" / "Penyerahan Hasil Uji QC" → selesai "Tempel Label Realese"'
             ]
           },
           {
             subtitle: 'Sumber Data',
-            description: 'Data realtime dari sistem WIP Quality yang melacak pergerakan setiap batch dari tahap ke tahap dalam Quality Control. Timeline detail diambil dari sistem task management QC.'
+            description: 'Data real-time berasal dari pelacakan langkah proses dan daftar batch aktif.',
+            details: [
+              'Pelacakan Proses Produksi (t_alur_proses): langkah & waktu mulai/selesai tiap batch',
+              'Kartu Batch (t_rfid_batch_card): daftar batch aktif beserta statusnya (Open/Close)',
+              'Master Kelompok Tahapan (m_tahapan_group): pemetaan langkah ke kelompok tahapan',
+              'Master Produk (m_Product): nama & informasi produk',
+              'Dikecualikan: batch yang sudah dilulus (t_dnc_product), dibatalkan (t_wip_batal), dan produk "Granulat"'
+            ]
+          }
+        ]
+      }
+    }
+  },
+
+  // ====================================
+  // QUALITY - MATERIALS (QC) DASHBOARD
+  // ====================================
+  qc: {
+    dashboardTitle: 'Quality - Materials Dashboard',
+    topics: {
+      kpi: {
+        id: 'kpi',
+        title: 'Ringkasan QC (BB & BK)',
+        icon: 'Target',
+        description: 'Kartu ringkasan QC material',
+        pages: [
+          {
+            subtitle: 'Apa itu Kartu Ringkasan QC?',
+            description: 'Delapan kartu di atas merangkum kondisi QC material, dipisah antara Bahan Baku (BB) dan Bahan Kemas (BK).',
+            details: [
+              'In Progress: jumlah material yang masih dalam proses QC (belum selesai)',
+              'Leadtime: rata-rata lama proses QC (hari) untuk periode terpilih',
+              'Released: jumlah material yang selesai/diluluskan pada periode',
+              'Reject Rate: persentase jumlah yang ditolak',
+              'Klik kartu untuk melihat rincian datanya'
+            ]
+          },
+          {
+            subtitle: 'Bagaimana Cara Menghitungnya?',
+            description: 'Angka dihitung dari catatan QC material pada periode terpilih, dipisah per tipe (BB/BK).',
+            details: [
+              'In Progress = material yang tanggal selesainya masih kosong (belum dilabeli/dilulus)',
+              'Leadtime = rata-rata selisih hari dari tanggal masuk QC hingga tanggal selesai',
+              'Released = jumlah material yang selesai pada periode',
+              'Reject Rate = jumlah reject ÷ (jumlah release + reject) × 100%'
+            ]
+          },
+          {
+            subtitle: 'Sumber Data',
+            description: 'Data berasal dari catatan QC material.',
+            details: [
+              'Catatan QC Material (t_dnc_manufacturing): tanggal masuk QC, tanggal selesai, qty release & reject per item',
+              'Master Item Material (m_item_manufacturing): tipe material (BB/BK) dan nama item'
+            ]
+          }
+        ]
+      },
+
+      leadtime: {
+        id: 'leadtime',
+        title: 'Leadtime 12 Bulan',
+        icon: 'Clock',
+        description: 'Rata-rata turnaround QC per bulan',
+        pages: [
+          {
+            subtitle: 'Apa itu Leadtime 12 Months?',
+            description: 'Menampilkan rata-rata waktu proses QC (turnaround) per bulan selama 12 bulan terakhir, membandingkan BB dan BK.',
+            details: [
+              'Sumbu tegak = rata-rata hari QC; batang per bulan',
+              'BB dan BK ditampilkan berdampingan',
+              'Makin rendah makin cepat material lolos QC'
+            ]
+          },
+          {
+            subtitle: 'Bagaimana Cara Menghitungnya?',
+            description: 'Untuk tiap material yang selesai, dihitung lama QC-nya, lalu dirata-rata per bulan penyelesaian dan per tipe.',
+            details: [
+              'Leadtime per material = selisih hari dari tanggal masuk QC sampai tanggal selesai',
+              'Angka bulanan = rata-rata leadtime seluruh material yang selesai pada bulan itu',
+              'Dikelompokkan berdasarkan bulan penyelesaian dan tipe (BB/BK)'
+            ]
+          },
+          {
+            subtitle: 'Sumber Data',
+            description: 'Data berasal dari catatan QC material.',
+            details: [
+              'Catatan QC Material (t_dnc_manufacturing): tanggal masuk & tanggal selesai QC',
+              'Master Item Material (m_item_manufacturing): tipe material (BB/BK)'
+            ]
+          }
+        ]
+      },
+
+      dailyflow: {
+        id: 'dailyflow',
+        title: 'Daily QC Flow',
+        icon: 'Box',
+        description: 'Material masuk vs selesai per hari',
+        pages: [
+          {
+            subtitle: 'Apa itu Daily QC Flow?',
+            description: 'Membandingkan jumlah material yang MASUK QC dengan yang SELESAI QC per hari pada periode terpilih. Grafik dapat berganti otomatis (Auto) atau manual antara BB dan BK.',
+            details: [
+              'Masuk: material yang mulai QC pada hari itu',
+              'Selesai: material yang lolos/selesai QC pada hari itu',
+              'Tab BB/BK untuk memilih tipe; mode Auto memutar otomatis'
+            ]
+          },
+          {
+            subtitle: 'Bagaimana Cara Menghitungnya?',
+            description: 'Dihitung dari jumlah catatan QC per hari, dipisah masuk dan selesai, untuk periode terpilih.',
+            details: [
+              'Masuk = jumlah material dengan tanggal masuk QC pada hari tersebut',
+              'Selesai = jumlah material dengan tanggal selesai pada hari tersebut',
+              'Dihitung terpisah untuk BB dan BK'
+            ]
+          },
+          {
+            subtitle: 'Sumber Data',
+            description: 'Data berasal dari catatan QC material.',
+            details: [
+              'Catatan QC Material (t_dnc_manufacturing): tanggal masuk & tanggal selesai QC per item',
+              'Master Item Material (m_item_manufacturing): tipe material (BB/BK)'
+            ]
+          }
+        ]
+      },
+
+      monthly: {
+        id: 'monthly',
+        title: 'Monthly QC Trend',
+        icon: 'Archive',
+        description: 'Tren volume, rilis & reject 13 bulan',
+        pages: [
+          {
+            subtitle: 'Apa itu Monthly QC Trend?',
+            description: 'Tren 13 bulan terakhir untuk volume material, jumlah rilis, dan reject rate — dapat difilter All / BB / BK.',
+            details: [
+              'Volume: total material yang masuk QC per bulan',
+              'Release: jumlah yang diluluskan',
+              'Reject rate: persentase penolakan per bulan'
+            ]
+          },
+          {
+            subtitle: 'Bagaimana Cara Menghitungnya?',
+            description: 'Data dikelompokkan per bulan masuk QC selama 13 bulan terakhir, dipisah tipe bila difilter.',
+            details: [
+              'Volume = jumlah material yang masuk QC pada bulan itu',
+              'Reject rate = jumlah reject ÷ (release + reject) × 100%',
+              'Filter All / BB / BK memilih tipe material yang ditampilkan'
+            ]
+          },
+          {
+            subtitle: 'Sumber Data',
+            description: 'Data berasal dari catatan QC material.',
+            details: [
+              'Catatan QC Material (t_dnc_manufacturing): tanggal masuk, qty release & reject',
+              'Master Item Material (m_item_manufacturing): tipe material (BB/BK)'
+            ]
+          }
+        ]
+      },
+
+      aging: {
+        id: 'aging',
+        title: 'QC Aging Distribution',
+        icon: 'AlertCircle',
+        description: 'Sebaran umur proses QC',
+        pages: [
+          {
+            subtitle: 'Apa itu QC Aging Distribution?',
+            description: 'Menunjukkan sebaran umur proses QC (berapa lama material berada di QC), dipisah BB dan BK, dalam kelompok 0-3, 4-7, 8-14, 15-30, dan 30+ hari.',
+            details: [
+              'Tiap donut menampilkan proporsi material per rentang umur',
+              'Mode Month: material yang selesai pada bulan terpilih',
+              'Mode YTD: 13 bulan terakhir',
+              'Makin banyak di 30+ hari, makin banyak yang lama di QC'
+            ]
+          },
+          {
+            subtitle: 'Bagaimana Cara Menghitungnya?',
+            description: 'Umur QC tiap material dihitung dalam hari, lalu dikelompokkan ke rentang umur.',
+            details: [
+              'Umur QC = selisih hari dari tanggal masuk QC sampai tanggal selesai',
+              'Dikelompokkan: 0-3, 4-7, 8-14, 15-30, dan 30+ hari',
+              'Month = material selesai pada bulan terpilih; YTD = 13 bulan terakhir',
+              'Dipisah per tipe (BB/BK)'
+            ]
+          },
+          {
+            subtitle: 'Sumber Data',
+            description: 'Data berasal dari catatan QC material.',
+            details: [
+              'Catatan QC Material (t_dnc_manufacturing): tanggal masuk & tanggal selesai QC',
+              'Master Item Material (m_item_manufacturing): tipe material (BB/BK)'
+            ]
+          }
+        ]
+      },
+
+      tables: {
+        id: 'tables',
+        title: 'Tabel Detail QC',
+        icon: 'Package',
+        description: 'Daftar rinci material QC',
+        pages: [
+          {
+            subtitle: 'Apa itu Tabel Detail?',
+            description: 'Menampilkan daftar rinci material QC. Tab "In Process" = yang masih di QC; tab "Period" = yang masuk QC pada periode terpilih. Dapat difilter All / BB / BK.',
+            details: [
+              'In Process: material yang belum selesai QC, dengan lama hari di QC',
+              'Period: seluruh material yang masuk QC pada bulan terpilih, dengan turnaround',
+              'Klik baris untuk melihat detail; kolom bisa diurutkan'
+            ]
+          },
+          {
+            subtitle: 'Bagaimana Cara Menghitungnya?',
+            description: 'Data diambil langsung dari catatan QC, disaring berdasarkan status dan periode.',
+            details: [
+              'In Process = material dengan tanggal selesai masih kosong; "Days In QC" = hari dari masuk sampai hari ini',
+              'Period = material dengan tanggal masuk pada bulan terpilih; "Turnaround" = hari dari masuk sampai selesai',
+              'Filter BB/BK menyaring berdasarkan tipe material'
+            ]
+          },
+          {
+            subtitle: 'Sumber Data',
+            description: 'Data berasal dari catatan QC material.',
+            details: [
+              'Material sedang QC & per periode (getQCInProcess / getQCByPeriod), dari Catatan QC Material (t_dnc_manufacturing)',
+              'Master Item Material (m_item_manufacturing): nama & tipe item'
+            ]
           }
         ]
       }

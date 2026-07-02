@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Chart as ChartJS, ArcElement, BarElement, CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend } from 'chart.js';
 import ChartDataLabels from 'chartjs-plugin-datalabels';
 import { Doughnut, Bar, Line } from 'react-chartjs-2';
@@ -1459,9 +1459,10 @@ const ProductionDashboard = () => {
     setIsExpanded(prev => !prev);
   };
 
-  // Handle Unknown department header click - show list of unregistered products
-  const handleUnknownHeaderClick = () => {
-    // Get all unique batches from Unknown department
+  // Products currently in WIP that are not registered in the PN Group master
+  // (Group_Dept resolves to 'Unknown'). Drives the header "PN Group Missing!" alert
+  // and the unregistered-products modal.
+  const unknownPNGroupProducts = useMemo(() => {
     const batchesWithTempelLabelRelease = new Set();
     rawWipData.forEach(entry => {
       if (entry.nama_tahapan === 'Tempel Label Realese' && entry.EndDate) {
@@ -1490,13 +1491,16 @@ const ProductionDashboard = () => {
     });
 
     // Convert to array and sort by product ID
-    const unknownProducts = Object.values(productMap).map(product => ({
+    return Object.values(productMap).map(product => ({
       ...product,
       batches: Array.from(product.batches),
       batchCount: product.batches.size,
     })).sort((a, b) => a.productId.localeCompare(b.productId));
+  }, [rawWipData]);
 
-    setUnknownBatchesData(unknownProducts);
+  // Show the list of products not yet registered in PN Group.
+  const handleUnknownHeaderClick = () => {
+    setUnknownBatchesData(unknownPNGroupProducts);
     setUnknownModalOpen(true);
   };
 
@@ -4061,6 +4065,41 @@ const ProductionDashboard = () => {
               </button>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              {/* PN Group Missing alert - shown when WIP products are not registered in PN Group */}
+              {unknownPNGroupProducts.length > 0 && (
+                <button
+                  onClick={handleUnknownHeaderClick}
+                  title="Ada produk WIP yang belum terdaftar di PN Group. Klik untuk melihat daftar."
+                  style={{
+                    padding: '8px 16px',
+                    backgroundColor: '#ef4444',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '0.85rem',
+                    fontWeight: '600',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    position: 'relative',
+                    animation: 'pulse 1.5s ease-in-out infinite',
+                  }}
+                >
+                  <span>⚠️</span>
+                  PN Group Missing!
+                  <span style={{
+                    backgroundColor: 'rgba(255,255,255,0.3)',
+                    borderRadius: '10px',
+                    padding: '0 6px',
+                    fontSize: '0.75rem',
+                    fontWeight: '700',
+                  }}>
+                    {unknownPNGroupProducts.length}
+                  </span>
+                </button>
+              )}
+
               {/* Product Type Management Button - NT Department Only */}
               {isNTDepartment && (
                 <button
@@ -4364,7 +4403,7 @@ const ProductionDashboard = () => {
         {/* WIP Section */}
         <section ref={wipRef} className="production-section">
           
-          {overallDeptData.length === 0 ? (
+          {overallDeptData.filter(deptData => deptData.dept !== 'Unknown').length === 0 ? (
             <div className="no-data-message" style={{
               backgroundColor: '#f9fafb',
               border: '1px solid #e5e7eb',
@@ -4380,7 +4419,7 @@ const ProductionDashboard = () => {
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
               {/* Overall Department Steppers */}
-              {overallDeptData.map(deptData => {
+              {overallDeptData.filter(deptData => deptData.dept !== 'Unknown').map(deptData => {
                 const deptColor = deptColors[deptData.dept] || '#4f8cff';
                 const totalQueues = deptData.stageCounts.reduce((sum, val) => sum + val, 0);
                 const deptDetailData = processedWipData.filter(item => item.dept === deptData.dept);
