@@ -79,6 +79,10 @@ const STEP = {
   PENGUJIAN_MC: 'Pengujian MC',
   PENGUJIAN_STERILITAS_MC: 'Pengujian Sterilitas MC',
   PENYERAHAN_PPI_KE_QA: 'Penyerahan PPI ke QA',
+  // The PPI-handoff step is misspelled "Penyerahaan PPI ke QA" (double-a) in the source
+  // data. Match both spellings so QA's window opens for batches that only carry the typo'd
+  // variant (e.g. routes with no "Penyerahan Hasil Uji QC" step).
+  PENYERAHAN_PPI_KE_QA_TYPO: 'Penyerahaan PPI ke QA',
   TEMPEL_LABEL_REALESE: 'Tempel Label Realese',
   PENGIRIMAN_OBAT_JADI: 'Pengiriman Obat Jadi',
 };
@@ -341,7 +345,7 @@ export const computeStageBoundaries = (batchEntries) => {
       end: maxDate(endsOf(entries, [STEP.PENGUJIAN_MC, STEP.PENGUJIAN_STERILITAS_MC])),
     },
     'QA': {
-      start: minDate(startsOf(entries, [STEP.PENYERAHAN_PPI_KE_QA, STEP.PENYERAHAN_HASIL_UJI_QC])),
+      start: minDate(startsOf(entries, [STEP.PENYERAHAN_PPI_KE_QA, STEP.PENYERAHAN_PPI_KE_QA_TYPO, STEP.PENYERAHAN_HASIL_UJI_QC])),
       end: maxDate(endsOf(entries, [STEP.TEMPEL_LABEL_REALESE])),
     },
   };
@@ -366,6 +370,14 @@ const displayGroupHasStartedStep = (entries, group, ref) => {
   // Kemas Sekunder "started" = the secondary packing step ("Kemas Sekunder ...") has started,
   // not merely the Terima Bahan / Persiapan admin steps that open its window.
   if (group === 'Kemas Sekunder') return kemasSekunderStarted(entries, ref);
+  // QA is a document-review stage: its steps ("Cek Dokumen ... oleh QA", "Approve Realese",
+  // "Tempel Label Realese") NEVER record a StartDate — they are tracked via Display=1 /
+  // IdleStartDate once QC/MC results are handed to QA. A StartDate-based check therefore never
+  // fires for QA and wrongly parks every batch in "waiting" (in-progress count = 0). A batch is
+  // genuinely "in QA" as soon as its QA window is open (Penyerahan Hasil Uji QC / PPI ke QA
+  // started), which getStageMembership has already verified before calling this — so report it
+  // as started.
+  if (group === 'QA') return true;
   return entries.some((e) =>
     TAHAPAN_GROUP_TO_DISPLAY[e.tahapan_group] === group &&
     e.StartDate &&

@@ -591,9 +591,9 @@ async function getPCTBreakdownV2(period = 'MTD') {
         MIN(CASE WHEN fa.nama_trim IN ('Pengujian MC', 'Pengujian Sterilitas MC') THEN fa.StartDate END),
         MAX(CASE WHEN fa.nama_trim IN ('Pengujian MC', 'Pengujian Sterilitas MC') THEN fa.EndDate END)
       ) AS Mikro_Days,
-      -- QA: MIN start of (Penyerahan PPI ke QA, Penyerahan Hasil Uji QC) -> Tempel Label Realese end
+      -- QA: MIN start of (Penyerahan PPI ke QA [also matches the misspelled "Penyerahaan PPI ke QA"], Penyerahan Hasil Uji QC) -> Tempel Label Realese end
       DATEDIFF(DAY,
-        MIN(CASE WHEN fa.nama_trim IN ('Penyerahan PPI ke QA', 'Penyerahan Hasil Uji QC') THEN fa.StartDate END),
+        MIN(CASE WHEN fa.nama_trim IN ('Penyerahan PPI ke QA', 'Penyerahaan PPI ke QA', 'Penyerahan Hasil Uji QC') THEN fa.StartDate END),
         MAX(CASE WHEN fa.nama_trim = 'Tempel Label Realese' THEN fa.EndDate END)
       ) AS QA_Days
     FROM FilteredAlur fa
@@ -613,7 +613,7 @@ async function getPCTBreakdownV2(period = 'MTD') {
         MIN(CASE WHEN fa.nama_trim IN ('Pengujian MC', 'Pengujian Sterilitas MC') THEN fa.StartDate END),
         MAX(CASE WHEN fa.nama_trim IN ('Pengujian MC', 'Pengujian Sterilitas MC') THEN fa.EndDate END)) IS NOT NULL
       OR DATEDIFF(DAY,
-        MIN(CASE WHEN fa.nama_trim IN ('Penyerahan PPI ke QA', 'Penyerahan Hasil Uji QC') THEN fa.StartDate END),
+        MIN(CASE WHEN fa.nama_trim IN ('Penyerahan PPI ke QA', 'Penyerahaan PPI ke QA', 'Penyerahan Hasil Uji QC') THEN fa.StartDate END),
         MAX(CASE WHEN fa.nama_trim = 'Tempel Label Realese' THEN fa.EndDate END)) IS NOT NULL
     )
     ORDER BY fa.Batch_No
