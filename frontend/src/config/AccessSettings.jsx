@@ -248,6 +248,17 @@ export const PAGE_ACCESS = {
     specificCombinations: [],
   },
 
+  // Konfigurasi Alur Proses Group (tahapan group configuration page)
+  // Restricted to PL, MS, and NT departments (all job levels within those departments).
+  // To change who can access this page, edit allowedDepartments / specificCombinations below.
+  'alur-config': {
+    requireAuth: true,
+    allowedDepartments: ['PL', 'MS', 'NT'], // Only these departments may configure process groups
+    allowedUserIds: ['HWA'], // Super-admin override (consistent with other pages)
+    allowedJobLevels: [], // No general job level restriction within allowed departments
+    specificCombinations: [],
+  },
+
   // Reports Page
   'reports': {
     requireAuth: true,

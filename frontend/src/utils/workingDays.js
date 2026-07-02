@@ -218,19 +218,33 @@ export const calculateCalendarDays = (dateFrom, dateTo) => {
 };
 
 /**
+ * Calculate calendar days from a start date to a reference date.
+ * Used by the "view previous months" simulation: pass the selected month-end as
+ * `referenceDate` so day-counts measure from that date instead of the real today.
+ *
+ * @param {string|Date} startDate - Start date
+ * @param {string|Date} [referenceDate] - Reference "now" (defaults to today)
+ * @returns {number} Number of calendar days from startDate to referenceDate
+ */
+export const calculateCalendarDaysTo = (startDate, referenceDate) => {
+  if (!startDate) return 0;
+
+  const ref = referenceDate ? new Date(referenceDate) : new Date();
+  if (isNaN(ref.getTime())) return 0;
+  ref.setHours(0, 0, 0, 0);
+
+  return calculateCalendarDays(startDate, ref);
+};
+
+/**
  * Calculate working days from a start date to today
  * Using calendar days (original behavior)
- * 
+ *
  * @param {string|Date} startDate - Start date
  * @returns {number} Number of calendar days from startDate to today
  */
 export const calculateCalendarDaysToToday = (startDate) => {
-  if (!startDate) return 0;
-  
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  
-  return calculateCalendarDays(startDate, today);
+  return calculateCalendarDaysTo(startDate, new Date());
 };
 
 // Default export with all functions
@@ -243,5 +257,6 @@ export default {
   calculateWorkingDays,
   calculateWorkingDaysToToday,
   calculateCalendarDays,
+  calculateCalendarDaysTo,
   calculateCalendarDaysToToday
 };

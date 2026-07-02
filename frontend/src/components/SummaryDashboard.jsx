@@ -4681,6 +4681,7 @@ function SummaryDashboard() {
         const otaCols = [
           { key: 'item_type', header: 'Item Type', width: 12 },
           { key: 'PO_No', header: 'PO Number', width: 18 },
+          { key: 'PO_ItemID', header: 'Item Code', width: 16 },
           { key: 'Item_Name', header: 'Item Name', width: 30 },
           { key: 'TTBA_QTY', header: 'Quantity', width: 12, format: 'number' },
           { key: 'Status', header: 'Status', width: 14 },

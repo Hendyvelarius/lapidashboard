@@ -9,6 +9,7 @@ import { useHelp } from '../context/HelpContext';
 import { useAuth } from '../context/AuthContext';
 import { loadLinePN1Cache, saveLinePN1Cache, clearLinePN1Cache, isLinePN1CacheValid } from '../utils/dashboardCache';
 import { calculateCalendarDaysToToday, setHolidays } from '../utils/workingDays';
+import { USE_NEW_STAGE_LOGIC, GROUP_ORDER, groupStartFor, getStageMembership, computeDaysInStageForGroup } from '../utils/stageBoundaries';
 import { apiUrl, apiUrlWithRefresh } from '../api';
 import './LinePN1Dashboard.css';
 
@@ -829,10 +830,18 @@ const LinePN1Dashboard = () => {
       }
     });
 
-    const pn1ActiveBatches = rawData.filter(entry => 
-      entry.Group_Dept === 'PN1' && 
+    const pn1ActiveBatches = rawData.filter(entry =>
+      entry.Group_Dept === 'PN1' &&
       !batchesWithTempelLabelRelease.has(entry.Batch_No)
     );
+
+    // Full per-batch entries (all steps) for the new stage-boundary logic.
+    const fullEntriesByBatch = {};
+    pn1ActiveBatches.forEach(entry => {
+      const bn = entry.Batch_No;
+      if (!fullEntriesByBatch[bn]) fullEntriesByBatch[bn] = [];
+      fullEntriesByBatch[bn].push(entry);
+    });
 
     // Define the Proses sub-stages we want to track
     const prosesStages = [
@@ -881,17 +890,27 @@ const LinePN1Dashboard = () => {
     // Also separate into In Progress and Waiting
     prosesStages.forEach(stageName => {
       stageData[stageName].batches.forEach((batch, batchNo) => {
-        // Check if batch is in progress for this stage
+        const fullEntries = fullEntriesByBatch[batchNo] || batch.entries;
+
+        if (USE_NEW_STAGE_LOGIC && GROUP_ORDER.includes(stageName)) {
+          // New logic: membership + waiting are defined by the group's window.
+          const status = getStageMembership(fullEntries, stageName);
+          if (!status) {
+            stageData[stageName].batches.delete(batchNo);
+            return;
+          }
+          batch.isWaiting = status === 'waiting';
+          batch.daysInStage = computeDaysInStageForGroup(fullEntries, stageName) || 0;
+          return;
+        }
+
+        // Legacy membership/waiting for substages not covered by the new definitions.
         const hasStartDate = batch.entries.some(e => e.StartDate);
         const hasMissingEndDate = batch.entries.some(e => !e.EndDate);
         const hasDisplayFlag = batch.entries.some(e => e.Display === '1' || e.Display === 1);
-
-        // Check if batch is in waiting status
         const isWaiting = isBatchWaiting(batch.entries);
 
         if (isWaiting || (hasStartDate && hasMissingEndDate) || hasDisplayFlag) {
-          // Calculate days in stage using EARLIEST IdleStartDate from all entries
-          // This matches Production Dashboard's calculateDaysInStage function
           let earliestIdleDate = null;
           batch.entries.forEach(entry => {
             if (entry.IdleStartDate) {
@@ -903,15 +922,7 @@ const LinePN1Dashboard = () => {
               }
             }
           });
-
-          let daysInStage = 0;
-          if (earliestIdleDate) {
-            // Use working days calculation (excludes weekends and holidays)
-            daysInStage = calculateCalendarDaysToToday(earliestIdleDate);
-          }
-
-          // Update the batch with calculated days and waiting status
-          batch.daysInStage = daysInStage;
+          batch.daysInStage = earliestIdleDate ? calculateCalendarDaysToToday(earliestIdleDate) : 0;
           batch.isWaiting = isWaiting;
         } else {
           // Batch not in progress or waiting, remove it
@@ -1756,10 +1767,18 @@ const LinePN1Dashboard = () => {
     const stageEntries = wipData.filter(entry => {
       const entryDept = entry.Group_Dept || 'Unknown';
       const entryTahapanGroup = entry.tahapan_group || 'Other';
-      
-      return entryDept === 'PN1' 
+
+      return entryDept === 'PN1'
         && entryTahapanGroup === stageName
         && !batchesWithTempelLabelRelease.has(entry.Batch_No);
+    });
+
+    // Full per-batch entries (all steps) for the new stage-boundary logic.
+    const fullEntriesByBatch = {};
+    wipData.forEach(entry => {
+      const bn = entry.Batch_No;
+      if (!fullEntriesByBatch[bn]) fullEntriesByBatch[bn] = [];
+      fullEntriesByBatch[bn].push(entry);
     });
 
     // Group by Batch_No
@@ -1795,54 +1814,42 @@ const LinePN1Dashboard = () => {
       }
     });
 
-    // Filter to only show batches in progress or waiting
+    // Determine membership + days/start for each batch, keeping only this stage's members.
     const activeBatches = Object.values(batchDetails).filter(batch => {
-      if (!batch.hasMissingEndDate && !batch.hasDisplayFlag) {
-        return false;
+      const fullEntries = fullEntriesByBatch[batch.batchNo] || batch.entries;
+      if (USE_NEW_STAGE_LOGIC && GROUP_ORDER.includes(stageName)) {
+        // New logic: membership + waiting defined by the group's window.
+        const status = getStageMembership(fullEntries, stageName);
+        if (!status) return false;
+        const start = groupStartFor(fullEntries, stageName);
+        batch.daysInStage = computeDaysInStageForGroup(fullEntries, stageName) || 0;
+        batch.stageStart = start ? new Date(start).toLocaleDateString('en-GB') : 'N/A';
+        batch.isWaiting = status === 'waiting';
+        return true;
       }
+      // Legacy membership/waiting for substages not covered by the new definitions.
+      if (!batch.hasMissingEndDate && !batch.hasDisplayFlag) return false;
       const isWaiting = isBatchWaiting(batch.entries);
       const isInProgress = (batch.hasStartDate && batch.hasMissingEndDate) || batch.hasDisplayFlag;
-      return isInProgress || isWaiting;
-    });
-
-    // Separate batches into In Progress and Waiting
-    const inProgressBatches = [];
-    const waitingBatches = [];
-
-    // Calculate days in stage for each batch and categorize
-    activeBatches.forEach(batch => {
-      // Find earliest IdleStartDate
+      if (!(isInProgress || isWaiting)) return false;
       let earliestIdleDate = null;
       batch.entries.forEach(entry => {
         if (entry.IdleStartDate) {
           const idleDate = new Date(entry.IdleStartDate);
-          if (!isNaN(idleDate.getTime())) {
-            if (!earliestIdleDate || idleDate < earliestIdleDate) {
-              earliestIdleDate = idleDate;
-            }
+          if (!isNaN(idleDate.getTime()) && (!earliestIdleDate || idleDate < earliestIdleDate)) {
+            earliestIdleDate = idleDate;
           }
         }
       });
-
-      if (earliestIdleDate) {
-        // Use calendar days calculation (no exclusions)
-        batch.daysInStage = calculateCalendarDaysToToday(earliestIdleDate);
-        batch.stageStart = earliestIdleDate.toLocaleDateString('en-GB');
-      } else {
-        batch.daysInStage = 0;
-        batch.stageStart = 'N/A';
-      }
-
-      // Check if batch is waiting
-      const isWaiting = isBatchWaiting(batch.entries);
+      batch.daysInStage = earliestIdleDate ? calculateCalendarDaysToToday(earliestIdleDate) : 0;
+      batch.stageStart = earliestIdleDate ? earliestIdleDate.toLocaleDateString('en-GB') : 'N/A';
       batch.isWaiting = isWaiting;
-
-      if (isWaiting) {
-        waitingBatches.push(batch);
-      } else {
-        inProgressBatches.push(batch);
-      }
+      return true;
     });
+
+    // Separate batches into In Progress and Waiting
+    const inProgressBatches = activeBatches.filter(b => !b.isWaiting);
+    const waitingBatches = activeBatches.filter(b => b.isWaiting);
 
     // Sort in-progress batches by longest duration first
     inProgressBatches.sort((a, b) => b.daysInStage - a.daysInStage);
@@ -1907,11 +1914,50 @@ const LinePN1Dashboard = () => {
     const stageEntries = wipData.filter(entry => {
       const entryDept = entry.Group_Dept || 'Unknown';
       const entryTahapanGroup = entry.tahapan_group || 'Other';
-      
-      return entryDept === 'PN1' 
+
+      return entryDept === 'PN1'
         && entryTahapanGroup === stageName
         && !batchesWithTempelLabelRelease.has(entry.Batch_No);
     });
+
+    // Full per-batch entries (all steps) for the new stage-boundary logic.
+    const fullEntriesByBatch = {};
+    wipData.forEach(entry => {
+      const bn = entry.Batch_No;
+      if (!fullEntriesByBatch[bn]) fullEntriesByBatch[bn] = [];
+      fullEntriesByBatch[bn].push(entry);
+    });
+    // Compute { daysInStage, stageStart, isWaiting, isMember } for a batch, honoring the flag.
+    const daysAndStart = (batch) => {
+      const fullEntries = fullEntriesByBatch[batch.batchNo] || batch.entries;
+      if (USE_NEW_STAGE_LOGIC && GROUP_ORDER.includes(stageName)) {
+        const start = groupStartFor(fullEntries, stageName);
+        const status = getStageMembership(fullEntries, stageName);
+        return {
+          daysInStage: computeDaysInStageForGroup(fullEntries, stageName) || 0,
+          stageStart: start ? new Date(start).toLocaleDateString('en-GB') : 'N/A',
+          isWaiting: status === 'waiting',
+          isMember: status !== null,
+        };
+      }
+      let earliestIdleDate = null;
+      batch.entries.forEach(entry => {
+        if (entry.IdleStartDate) {
+          const idleDate = new Date(entry.IdleStartDate);
+          if (!isNaN(idleDate.getTime()) && (!earliestIdleDate || idleDate < earliestIdleDate)) {
+            earliestIdleDate = idleDate;
+          }
+        }
+      });
+      const isWaiting = isBatchWaiting(batch.entries);
+      const isInProgress = (batch.hasStartDate && batch.hasMissingEndDate) || batch.hasDisplayFlag;
+      return {
+        daysInStage: earliestIdleDate ? calculateCalendarDaysToToday(earliestIdleDate) : 0,
+        stageStart: earliestIdleDate ? earliestIdleDate.toLocaleDateString('en-GB') : 'N/A',
+        isWaiting,
+        isMember: (batch.hasMissingEndDate || batch.hasDisplayFlag) && (isInProgress || isWaiting),
+      };
+    };
 
     // Group by Batch_No and build full batch details
     const batchDetails = {};
@@ -1955,65 +2001,14 @@ const LinePN1Dashboard = () => {
     }
 
     // Calculate days in stage and stage start
-    let earliestIdleDate = null;
-    fullBatchData.entries.forEach(entry => {
-      if (entry.IdleStartDate) {
-        const idleDate = new Date(entry.IdleStartDate);
-        if (!isNaN(idleDate.getTime())) {
-          if (!earliestIdleDate || idleDate < earliestIdleDate) {
-            earliestIdleDate = idleDate;
-          }
-        }
-      }
-    });
+    const clickedResult = daysAndStart(fullBatchData);
+    fullBatchData.daysInStage = clickedResult.daysInStage;
+    fullBatchData.stageStart = clickedResult.stageStart;
 
-    if (earliestIdleDate) {
-      // Use working days calculation (excludes weekends and holidays)
-      fullBatchData.daysInStage = calculateCalendarDaysToToday(earliestIdleDate);
-      fullBatchData.stageStart = earliestIdleDate.toLocaleDateString('en-GB');
-    } else {
-      fullBatchData.daysInStage = 0;
-      fullBatchData.stageStart = 'N/A';
-    }
-
-    // Get all active batches for the stage modal
-    const activeBatches = Object.values(batchDetails).filter(batch => {
-      if (!batch.hasMissingEndDate && !batch.hasDisplayFlag) {
-        return false;
-      }
-      const isInProgress = (batch.hasStartDate && batch.hasMissingEndDate) || batch.hasDisplayFlag;
-      return isInProgress;
-    });
-
-    // Calculate days for all batches
-    activeBatches.forEach(batch => {
-      if (batch.batchNo === fullBatchData.batchNo) {
-        // Already calculated for the clicked batch
-        batch.daysInStage = fullBatchData.daysInStage;
-        batch.stageStart = fullBatchData.stageStart;
-      } else {
-        let earliestIdleDate = null;
-        batch.entries.forEach(entry => {
-          if (entry.IdleStartDate) {
-            const idleDate = new Date(entry.IdleStartDate);
-            if (!isNaN(idleDate.getTime())) {
-              if (!earliestIdleDate || idleDate < earliestIdleDate) {
-                earliestIdleDate = idleDate;
-              }
-            }
-          }
-        });
-
-        if (earliestIdleDate) {
-          // Use working days calculation (excludes weekends and holidays)
-          batch.daysInStage = calculateCalendarDaysToToday(earliestIdleDate);
-          batch.stageStart = earliestIdleDate.toLocaleDateString('en-GB');
-        } else {
-          batch.daysInStage = 0;
-          batch.stageStart = 'N/A';
-        }
-      }
-    });
+    // Compute days/start/membership for all batches, then keep this stage's members.
+    const activeBatches = Object.values(batchDetails)
+      .map(batch => { Object.assign(batch, daysAndStart(batch)); return batch; })
+      .filter(batch => batch.isMember);
 
     // Sort by longest duration first
     activeBatches.sort((a, b) => b.daysInStage - a.daysInStage);

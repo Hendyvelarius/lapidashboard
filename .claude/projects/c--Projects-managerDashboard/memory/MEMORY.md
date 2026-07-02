@@ -1,0 +1,1 @@
+- [Quality/PN1/PN2 historical month approach](quality-historical-month-approach.md) — date-simulation (pin "today" to month-end, null future events), NOT stored snapshots

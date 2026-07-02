@@ -6,6 +6,13 @@ import * as XLSX from 'xlsx';
 import pptxgen from 'pptxgenjs';
 import { loadDashboardCache, saveDashboardCache, clearDashboardCache, isCacheValid } from '../utils/dashboardCache';
 import { calculateCalendarDaysToToday, setHolidays } from '../utils/workingDays';
+import {
+  USE_NEW_STAGE_LOGIC,
+  GROUP_ORDER,
+  groupStartFor,
+  getStageMembership,
+  computeDaysInStageForGroup,
+} from '../utils/stageBoundaries';
 import DashboardLoading from './DashboardLoading';
 import Sidebar from './Sidebar';
 import Modal from './Modal';
@@ -17,6 +24,13 @@ import './ProductionDashboard.css';
 
 // Don't register ChartDataLabels globally - it will be added per-chart basis
 ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend);
+
+// PCT breakdown stages. New logic collapses Proses + Kemas Primer + Kemas Sekunder
+// into a single "Produksi" group; legacy keeps "Proses". Backend returns the matching
+// *_Days key (Produksi_Days vs Proses_Days) based on the same rollback flag.
+const PCT_MID_STAGE = USE_NEW_STAGE_LOGIC ? 'Produksi' : 'Proses';
+const PCT_MID_KEY = `${PCT_MID_STAGE}_Days`;
+const PCT_STAGES = ['Timbang', PCT_MID_STAGE, 'QC', 'Mikro', 'QA'];
 
 // Animated Donut Chart with Callout Labels Component
 const AnimatedDonutWithCallouts = ({ data, onSliceClick, batchCount, averageTotalDays }) => {
@@ -466,9 +480,17 @@ const isBatchWaiting = (entries) => {
 
 // Helper function to calculate calendar days in stage from batch date
 // Uses calculateCalendarDaysToToday for full calendar days (no holiday exclusions)
-const calculateDaysInStage = (entries, stageName = '') => {
+const calculateDaysInStage = (entries, stageName = '', allBatchEntries = null) => {
   if (!entries || entries.length === 0) return 0;
-  
+
+  // New stage-grouping logic: measure days from the group's redefined start
+  // (needs the full batch entries to resolve Kemas prevSteps / QA start step).
+  if (USE_NEW_STAGE_LOGIC && allBatchEntries && GROUP_ORDER.includes(stageName)) {
+    const start = groupStartFor(allBatchEntries, stageName);
+    if (!start) return stageName === 'QA' ? null : 0;
+    return calculateCalendarDaysToToday(start);
+  }
+
   // Special logic for QA stage
   if (stageName === 'QA') {
     const requiredQASteps = [
@@ -530,9 +552,15 @@ const calculateDaysInStage = (entries, stageName = '') => {
 };
 
 // Get earliest IdleStartDate from entries and format it
-const getEarliestIdleStartDate = (entries) => {
+const getEarliestIdleStartDate = (entries, stageName = '', allBatchEntries = null) => {
   if (!entries || entries.length === 0) return '';
-  
+
+  // New logic: the group's redefined start date (from full batch entries).
+  if (USE_NEW_STAGE_LOGIC && allBatchEntries && GROUP_ORDER.includes(stageName)) {
+    const start = groupStartFor(allBatchEntries, stageName);
+    return start ? new Date(start).toLocaleDateString('en-GB') : '';
+  }
+
   let earliestIdleDate = null;
   entries.forEach(entry => {
     if (entry.IdleStartDate) {
@@ -896,6 +924,14 @@ const ProductionDashboard = () => {
   const processWIPData = (rawData) => {
     if (!rawData || rawData.length === 0) return [];
 
+    // Full per-batch entries (all steps) for the new stage-boundary logic.
+    const fullEntriesByBatch = {};
+    rawData.forEach(entry => {
+      const bn = entry.Batch_No;
+      if (!fullEntriesByBatch[bn]) fullEntriesByBatch[bn] = [];
+      fullEntriesByBatch[bn].push(entry);
+    });
+
     // Step 1: Filter out batches that have completed "Tempel Label Realese"
     const batchesWithTempelLabelRelease = new Set();
     rawData.forEach(entry => {
@@ -964,9 +1000,23 @@ const ProductionDashboard = () => {
         const batchDurations = []; // Store duration for each batch in progress
         const currentDate = new Date();
 
-        // Check each batch: has at least one StartDate AND at least one missing EndDate
+        // Check each batch: membership determines the "in progress" count + duration.
         Object.keys(batchEntries).forEach(batchNo => {
           const entries = batchEntries[batchNo];
+
+          if (USE_NEW_STAGE_LOGIC && GROUP_ORDER.includes(stageName)) {
+            // New logic: this per-jenisSediaan view counts in-progress members only.
+            const status = getStageMembership(fullEntriesByBatch[batchNo], stageName);
+            if (status !== 'in_progress') return;
+            stage.batchesInProgress.add(batchNo);
+            const durationInDays = computeDaysInStageForGroup(fullEntriesByBatch[batchNo], stageName);
+            if (durationInDays !== null && durationInDays !== undefined) {
+              batchDurations.push(durationInDays);
+            }
+            return;
+          }
+
+          // Legacy membership for substages not covered by the new definitions.
           const hasStartDate = entries.some(e => e.StartDate);
           const hasMissingEndDate = entries.some(e => !e.EndDate);
 
@@ -978,17 +1028,12 @@ const ProductionDashboard = () => {
               'Cek Dokumen MC oleh QA',
               'Cek Dokumen QC oleh QA'
             ];
-            
-            // Check if all 4 required steps have IdleStartDate
-            const qaStepsWithIdleDate = entries.filter(entry => 
+            const qaStepsWithIdleDate = entries.filter(entry =>
               requiredQASteps.includes(entry.nama_tahapan) && entry.IdleStartDate
             );
-            
             const allRequiredStepsStarted = requiredQASteps.every(stepName =>
               qaStepsWithIdleDate.some(entry => entry.nama_tahapan === stepName)
             );
-            
-            // Only include in QA stage if all 4 steps have started
             if (!allRequiredStepsStarted) {
               return; // Skip this batch for QA count
             }
@@ -996,18 +1041,12 @@ const ProductionDashboard = () => {
 
           if (hasStartDate && hasMissingEndDate) {
             stage.batchesInProgress.add(batchNo);
-            
-            // Find the oldest StartDate for this batch in this stage
             const startDates = entries
               .filter(e => e.StartDate)
               .map(e => parseSQLDateTime(e.StartDate))
               .filter(date => date !== null);
-            
             if (startDates.length > 0) {
-              const oldestStartDate = new Date(Math.min(...startDates));
-              // Use calendar days calculation (no exclusions)
-              const durationInDays = calculateCalendarDaysToToday(oldestStartDate);
-              batchDurations.push(durationInDays);
+              batchDurations.push(calculateCalendarDaysToToday(new Date(Math.min(...startDates))));
             }
           }
         });
@@ -1066,6 +1105,14 @@ const ProductionDashboard = () => {
   // Process overall department-level data with condensed stages
   const processOverallDeptData = (rawData) => {
     if (!rawData || rawData.length === 0) return [];
+
+    // Full per-batch entries (all steps) for the new stage-boundary logic.
+    const fullEntriesByBatch = {};
+    rawData.forEach(entry => {
+      const bn = entry.Batch_No;
+      if (!fullEntriesByBatch[bn]) fullEntriesByBatch[bn] = [];
+      fullEntriesByBatch[bn].push(entry);
+    });
 
     // Define condensed stage mappings
     const stageMapping = {
@@ -1158,14 +1205,30 @@ const ProductionDashboard = () => {
         // Check each batch
         Object.keys(batchEntries).forEach(batchNo => {
           const entries = batchEntries[batchNo];
+
+          // New logic: membership + waiting + duration all follow the group's window.
+          if (USE_NEW_STAGE_LOGIC && GROUP_ORDER.includes(stageName)) {
+            const fullEntries = fullEntriesByBatch[batchNo] || entries;
+            const status = getStageMembership(fullEntries, stageName);
+            if (!status) return; // not in this stage
+            if (status === 'waiting') {
+              stage.batchesWaiting.add(batchNo);
+            } else {
+              stage.batchesInProgress.add(batchNo);
+              const durationInDays = computeDaysInStageForGroup(fullEntries, stageName);
+              if (durationInDays !== null && durationInDays !== undefined) {
+                batchDurations.push(durationInDays);
+              }
+            }
+            return;
+          }
+
+          // Legacy classification (kept for rollback).
           const hasStartDate = entries.some(e => e.StartDate);
           const hasMissingEndDate = entries.some(e => !e.EndDate);
           const hasDisplayFlag = entries.some(e => e.Display === '1' || e.Display === 1);
-          
-          // Check if batch is in "Waiting" status
           const isWaiting = isBatchWaiting(entries);
 
-          // Special check for QA stage - only include if all 4 required steps have started
           if (stageName === 'QA') {
             const requiredQASteps = [
               'Cek Dokumen PC oleh QA',
@@ -1173,46 +1236,30 @@ const ProductionDashboard = () => {
               'Cek Dokumen MC oleh QA',
               'Cek Dokumen QC oleh QA'
             ];
-            
-            // Check if all 4 required steps have IdleStartDate
-            const qaStepsWithIdleDate = entries.filter(entry => 
+            const qaStepsWithIdleDate = entries.filter(entry =>
               requiredQASteps.includes(entry.nama_tahapan) && entry.IdleStartDate
             );
-            
             const allRequiredStepsStarted = requiredQASteps.every(stepName =>
               qaStepsWithIdleDate.some(entry => entry.nama_tahapan === stepName)
             );
-            
-            // Only include in QA stage if all 4 steps have started
             if (!allRequiredStepsStarted) {
-              return; // Skip this batch for QA count
+              return;
             }
           }
 
-          // Categorize batch as Waiting or In Progress
           if (isWaiting) {
-            // Batch is waiting for idle time assignment
             stage.batchesWaiting.add(batchNo);
           } else if ((hasStartDate && hasMissingEndDate) || hasDisplayFlag) {
-            // Batch is actively in progress
             stage.batchesInProgress.add(batchNo);
-            
-            // Only calculate duration if there's an actual StartDate
             if (hasStartDate) {
               const startDates = entries
                 .filter(e => e.StartDate)
                 .map(e => parseSQLDateTime(e.StartDate))
                 .filter(date => date !== null);
-              
               if (startDates.length > 0) {
-                const oldestStartDate = new Date(Math.min(...startDates));
-                // Use calendar days calculation (no exclusions)
-                const durationInDays = calculateCalendarDaysToToday(oldestStartDate);
-                batchDurations.push(durationInDays);
+                batchDurations.push(calculateCalendarDaysToToday(new Date(Math.min(...startDates))));
               }
             }
-            // If Display = '1' but no StartDate, we don't add to batchDurations
-            // This will show "Not Started" in the UI
           }
         });
 
@@ -1326,21 +1373,40 @@ const ProductionDashboard = () => {
       }
     });
 
-    // Filter to only show batches in progress or waiting, or scheduled (Display = '1')
-    // Exclude batches where ALL tasks are complete (no missing EndDate)
-    const activeBatches = Object.values(batchDetails).filter(batch => {
-      // If all tasks are complete, don't show this batch in this stage
-      if (!batch.hasMissingEndDate && !batch.hasDisplayFlag) {
-        return false;
+    // Full per-batch entries (all steps) needed by the new stage-boundary logic.
+    const fullEntriesByBatch = {};
+    rawWipData.forEach(entry => {
+      const bn = entry.Batch_No;
+      if (!fullEntriesByBatch[bn]) fullEntriesByBatch[bn] = [];
+      fullEntriesByBatch[bn].push(entry);
+    });
+
+    // Keep only batches that are in this stage; compute days/start/waiting.
+    const inProgressBatches = [];
+    const waitingBatches = [];
+
+    Object.values(batchDetails).forEach(batch => {
+      const fullEntries = fullEntriesByBatch[batch.batchNo] || batch.entries;
+
+      if (USE_NEW_STAGE_LOGIC && GROUP_ORDER.includes(condensedStageName)) {
+        // New logic: membership + waiting from the group's window.
+        const status = getStageMembership(fullEntries, condensedStageName);
+        if (!status) return;
+        const batchWithMetadata = {
+          ...batch,
+          isWaiting: status === 'waiting',
+          daysInStage: calculateDaysInStage(batch.entries, condensedStageName, fullEntries),
+          stageStart: getEarliestIdleStartDate(batch.entries, condensedStageName, fullEntries),
+        };
+        (status === 'waiting' ? waitingBatches : inProgressBatches).push(batchWithMetadata);
+        return;
       }
-      
-      // Basic filter: batch must be in progress, waiting, or scheduled
+
+      // Legacy membership/classification (rollback path).
+      if (!batch.hasMissingEndDate && !batch.hasDisplayFlag) return;
       const isWaiting = isBatchWaiting(batch.entries);
       const isInProgress = (batch.hasStartDate && batch.hasMissingEndDate) || batch.hasDisplayFlag;
-      
-      if (!isInProgress && !isWaiting) return false;
-      
-      // Special check for QA stage - only include if all 4 required steps have started
+      if (!isInProgress && !isWaiting) return;
       if (condensedStageName === 'QA') {
         const requiredQASteps = [
           'Cek Dokumen PC oleh QA',
@@ -1348,41 +1414,21 @@ const ProductionDashboard = () => {
           'Cek Dokumen MC oleh QA',
           'Cek Dokumen QC oleh QA'
         ];
-        
-        // Check if all 4 required steps have IdleStartDate
-        const qaStepsWithIdleDate = batch.entries.filter(entry => 
+        const qaStepsWithIdleDate = batch.entries.filter(entry =>
           requiredQASteps.includes(entry.nama_tahapan) && entry.IdleStartDate
         );
-        
         const allRequiredStepsStarted = requiredQASteps.every(stepName =>
           qaStepsWithIdleDate.some(entry => entry.nama_tahapan === stepName)
         );
-        
-        // Only include in QA if all 4 steps have started
-        return allRequiredStepsStarted;
+        if (!allRequiredStepsStarted) return;
       }
-      
-      return true;
-    });
-
-    // Separate batches into In Progress and Waiting
-    const inProgressBatches = [];
-    const waitingBatches = [];
-    
-    activeBatches.forEach(batch => {
-      const isWaiting = isBatchWaiting(batch.entries);
       const batchWithMetadata = {
         ...batch,
-        isWaiting: isWaiting,
-        daysInStage: calculateDaysInStage(batch.entries, condensedStageName),
-        stageStart: getEarliestIdleStartDate(batch.entries)
+        isWaiting,
+        daysInStage: calculateDaysInStage(batch.entries, condensedStageName, fullEntries),
+        stageStart: getEarliestIdleStartDate(batch.entries, condensedStageName, fullEntries),
       };
-      
-      if (isWaiting) {
-        waitingBatches.push(batchWithMetadata);
-      } else {
-        inProgressBatches.push(batchWithMetadata);
-      }
+      (isWaiting ? waitingBatches : inProgressBatches).push(batchWithMetadata);
     });
 
     // Sort in-progress batches by longest duration first
@@ -1699,7 +1745,7 @@ const ProductionDashboard = () => {
       let pctDeptDataLocal = { departments: {}, totalBatches: 0, avgTotalPct: 0 };
       
       if (pctBatchData.length > 0) {
-        const stages = ['Timbang', 'Proses', 'QC', 'Mikro', 'QA'];
+        const stages = PCT_STAGES;
         
         stages.forEach(stage => {
           const stageKey = `${stage}_Days`;
@@ -1731,10 +1777,10 @@ const ProductionDashboard = () => {
           deptCounts[dept]++;
           totalBatches++;
           
-          const batchTotal = (batch.Timbang_Days || 0) + 
-                           (batch.Proses_Days || 0) + 
-                           (batch.QC_Days || 0) + 
-                           (batch.Mikro_Days || 0) + 
+          const batchTotal = (batch.Timbang_Days || 0) +
+                           (batch[PCT_MID_KEY] || 0) +
+                           (batch.QC_Days || 0) +
+                           (batch.Mikro_Days || 0) +
                            (batch.QA_Days || 0);
           totalPctDays += batchTotal;
         });
@@ -1749,13 +1795,7 @@ const ProductionDashboard = () => {
         
         setPctDeptData(pctDeptDataLocal);
       } else {
-        pctBreakdown = {
-          Timbang: 0,
-          Proses: 0,
-          QC: 0,
-          Mikro: 0,
-          QA: 0,
-        };
+        pctBreakdown = PCT_STAGES.reduce((acc, s) => { acc[s] = 0; return acc; }, {});
         setPctData(pctBreakdown);
         setPctDeptData(pctDeptDataLocal);
       }
@@ -1957,62 +1997,71 @@ const ProductionDashboard = () => {
       }
     });
     
+    // Full per-batch entries (all steps) for the new stage-boundary logic.
+    const fullEntriesByBatch = {};
+    rawWipData.forEach(entry => {
+      const bn = entry.Batch_No;
+      if (!fullEntriesByBatch[bn]) fullEntriesByBatch[bn] = [];
+      fullEntriesByBatch[bn].push(entry);
+    });
+
     // Step 3: Determine which batch-stage combinations are "in progress"
     const batchesInProgress = [];
     const currentDate = new Date();
-    
+
     Object.values(batchStageMap).forEach(batchStage => {
       const { steps, hasDisplayFlag, stage } = batchStage;
-      
-      // Check if at least one step has StartDate
+      const fullEntries = fullEntriesByBatch[batchStage.batchNo] || [];
+      const useNew = USE_NEW_STAGE_LOGIC && GROUP_ORDER.includes(stage);
+
       const hasStartedStep = steps.some(step => step.startDate);
-      
-      // Check if ALL steps have EndDate (all completed)
       const allStepsCompleted = steps.every(step => step.endDate);
-      
-      // Batch is in this stage if:
-      // 1. (at least one step started AND not all steps completed), OR
-      // 2. Has Display = '1'
-      if ((hasStartedStep && !allStepsCompleted) || hasDisplayFlag) {
-        // Convert steps to entries format for isBatchWaiting and calculateDaysInStage
-        const entries = steps.map(step => ({
-          IdleStartDate: step.idleStartDate,
-          EndDate: step.endDate,
-          nama_tahapan: step.nama_tahapan,
-        }));
-        
-        // Check if batch is in waiting status - exclude from Excel export
-        const isWaiting = isBatchWaiting(entries);
-        if (isWaiting) {
-          return; // Skip batches that are "In Waiting"
-        }
-        
-        // Use the calculateDaysInStage function (handles QA special logic)
-        const daysInStage = calculateDaysInStage(entries, stage);
-        
-        // Get the earliest IdleStartDate for start date display
-        let startDateFormatted = '';
+
+      // Convert steps to entries format for isBatchWaiting and calculateDaysInStage
+      const entries = steps.map(step => ({
+        IdleStartDate: step.idleStartDate,
+        EndDate: step.endDate,
+        nama_tahapan: step.nama_tahapan,
+      }));
+
+      if (useNew) {
+        // New logic: export only in-progress members of the 7 groups (waiting excluded).
+        if (getStageMembership(fullEntries, stage) !== 'in_progress') return;
+      } else {
+        // Legacy in-progress gate + waiting exclusion.
+        if (!((hasStartedStep && !allStepsCompleted) || hasDisplayFlag)) return;
+        if (isBatchWaiting(entries)) return;
+      }
+
+      // Use the calculateDaysInStage function (handles QA special logic)
+      const daysInStage = calculateDaysInStage(entries, stage, fullEntries);
+
+      // Get the group start for the start date display
+      let startDateFormatted = '';
+      if (useNew) {
+        startDateFormatted = getEarliestIdleStartDate(entries, stage, fullEntries);
+      } else {
         const idleDates = steps
           .filter(step => step.idleStartDate)
           .map(step => parseSQLDateTime(step.idleStartDate))
           .filter(date => date !== null);
-        
+
         if (idleDates.length > 0) {
           const earliestIdleDate = new Date(Math.min(...idleDates));
           startDateFormatted = earliestIdleDate.toLocaleDateString('en-GB');
         }
-        
-        batchesInProgress.push({
-          batchNo: batchStage.batchNo,
-          productName: batchStage.productName,
-          dept: batchStage.dept,
-          currentStage: batchStage.stage, // This is now the condensed stage (e.g., "Proses")
-          originalStages: Array.from(batchStage.originalStages).join(', '), // Show all substages involved
-          startDate: startDateFormatted,
-          daysInStage: daysInStage,
-          batchDate: batchStage.batchDate,
-        });
       }
+
+      batchesInProgress.push({
+        batchNo: batchStage.batchNo,
+        productName: batchStage.productName,
+        dept: batchStage.dept,
+        currentStage: batchStage.stage, // This is now the condensed stage (e.g., "Proses")
+        originalStages: Array.from(batchStage.originalStages).join(', '), // Show all substages involved
+        startDate: startDateFormatted,
+        daysInStage: daysInStage,
+        batchDate: batchStage.batchDate,
+      });
     });
     
     // Step 4: Filter by line (department)
@@ -2140,12 +2189,13 @@ const ProductionDashboard = () => {
       const dateStr = today.toLocaleDateString('en-GB').replace(/\//g, '-');
       
       // ============ Sheet 1: Fully Processed Data (Stage Averages) ============
-      const stages = ['Timbang', 'Proses', 'QC', 'Mikro', 'QA'];
+      const stages = PCT_STAGES;
       const processedData = stages.map(stage => ({
         'Stage': stage,
         'Average Days': pctData[stage] || 0,
         'Description': stage === 'Timbang' ? 'Weighing raw materials' :
                        stage === 'Proses' ? 'Production process (Mixing, Filling, Granulation, Coating)' :
+                       stage === 'Produksi' ? 'Production process incl. primary & secondary packaging' :
                        stage === 'QC' ? 'Quality Control testing' :
                        stage === 'Mikro' ? 'Microbiology testing' :
                        'Quality Assurance review'
@@ -2180,7 +2230,7 @@ const ProductionDashboard = () => {
         'Batch Date': batch.Batch_Date,
         'Total Days': batch.Total_Days || 0,
         'Timbang Days': batch.Timbang_Days || 0,
-        'Proses Days': batch.Proses_Days || 0,
+        [`${PCT_MID_STAGE} Days`]: batch[PCT_MID_KEY] || 0,
         'QC Days': batch.QC_Days || 0,
         'Mikro Days': batch.Mikro_Days || 0,
         'QA Days': batch.QA_Days || 0,
@@ -2639,17 +2689,29 @@ const ProductionDashboard = () => {
       }
     });
 
-    // Filter to show batches that are in progress OR have Display='1'
-    const activeBatches = Object.values(batchDetails).filter(
-      batch => (batch.hasStartDate && batch.hasMissingEndDate) || batch.hasDisplayFlag
-    );
+    // Full per-batch entries (all steps) for the new stage-boundary logic
+    // (only applied when stageName is one of the 7 groups; sub-stages stay legacy).
+    const fullEntriesByBatch = {};
+    rawWipData.forEach(entry => {
+      const bn = entry.Batch_No;
+      if (!fullEntriesByBatch[bn]) fullEntriesByBatch[bn] = [];
+      fullEntriesByBatch[bn].push(entry);
+    });
+
+    // Filter to this stage's members (new window logic for the 7 groups; legacy otherwise).
+    const activeBatches = Object.values(batchDetails).filter(batch => {
+      if (USE_NEW_STAGE_LOGIC && GROUP_ORDER.includes(stageName)) {
+        return getStageMembership(fullEntriesByBatch[batch.batchNo] || batch.entries, stageName) !== null;
+      }
+      return (batch.hasStartDate && batch.hasMissingEndDate) || batch.hasDisplayFlag;
+    });
 
     // Add daysInStage to each batch and sort by longest duration first
     // For Display='1' batches, days will be calculated from IdleStartDate
     const batchesWithDays = activeBatches.map(batch => ({
       ...batch,
-      daysInStage: calculateDaysInStage(batch.entries, stageName),
-      stageStart: getEarliestIdleStartDate(batch.entries)
+      daysInStage: calculateDaysInStage(batch.entries, stageName, fullEntriesByBatch[batch.batchNo]),
+      stageStart: getEarliestIdleStartDate(batch.entries, stageName, fullEntriesByBatch[batch.batchNo])
     })).sort((a, b) => {
       // Handle null values (Not Started) - sort them to the end
       if (a.daysInStage === null && b.daysInStage === null) return 0;
@@ -3216,7 +3278,7 @@ const ProductionDashboard = () => {
         
         // Calculate averages for the chart AND department distribution
         if (pctBatchData.length > 0) {
-          const stages = ['Timbang', 'Proses', 'QC', 'Mikro', 'QA'];
+          const stages = PCT_STAGES;
           const pctBreakdown = {};
           
           stages.forEach(stage => {
@@ -3251,10 +3313,10 @@ const ProductionDashboard = () => {
             totalBatches++;
             
             // Sum all days for this batch
-            const batchTotal = (batch.Timbang_Days || 0) + 
-                             (batch.Proses_Days || 0) + 
-                             (batch.QC_Days || 0) + 
-                             (batch.Mikro_Days || 0) + 
+            const batchTotal = (batch.Timbang_Days || 0) +
+                             (batch[PCT_MID_KEY] || 0) +
+                             (batch.QC_Days || 0) +
+                             (batch.Mikro_Days || 0) +
                              (batch.QA_Days || 0);
             totalPctDays += batchTotal;
           });
@@ -3268,13 +3330,7 @@ const ProductionDashboard = () => {
             avgTotalPct
           });
         } else {
-          setPctData({
-            Timbang: 0,
-            Proses: 0,
-            QC: 0,
-            Mikro: 0,
-            QA: 0,
-          });
+          setPctData(PCT_STAGES.reduce((acc, s) => { acc[s] = 0; return acc; }, {}));
           setPctDeptData({
             departments: {},
             totalBatches: 0,
@@ -3393,13 +3449,7 @@ const ProductionDashboard = () => {
         setError(err.message);
         
         // Fallback to empty data
-        setPctData({
-          Timbang: 0,
-          Proses: 0,
-          QC: 0,
-          Mikro: 0,
-          QA: 0,
-        });
+        setPctData(PCT_STAGES.reduce((acc, s) => { acc[s] = 0; return acc; }, {}));
         setProcessedWipData([]);
         
         setLoading(false);
@@ -3464,7 +3514,7 @@ const ProductionDashboard = () => {
         
         // Calculate PCT stage averages
         if (pctBatchData.length > 0) {
-          const stages = ['Timbang', 'Proses', 'QC', 'Mikro', 'QA'];
+          const stages = PCT_STAGES;
           const pctBreakdown = {};
           
           stages.forEach(stage => {
@@ -3483,13 +3533,7 @@ const ProductionDashboard = () => {
           
           setPctData(pctBreakdown);
         } else {
-          setPctData({
-            Timbang: 0,
-            Proses: 0,
-            QC: 0,
-            Mikro: 0,
-            QA: 0,
-          });
+          setPctData(PCT_STAGES.reduce((acc, s) => { acc[s] = 0; return acc; }, {}));
         }
       } catch (error) {
         console.error('Error fetching PCT data:', error);

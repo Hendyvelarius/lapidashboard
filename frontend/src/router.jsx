@@ -15,6 +15,7 @@ import LinePN2Dashboard from "./components/LinePN2Dashboard";
 import QualityDashboard from "./components/QualityDashboard";
 import QCDashboard from "./components/QCDashboard";
 import LandingPage from "./components/LandingPage";
+import AlurProsesGroupConfig from "./components/AlurProsesGroupConfig";
 
 // Component to handle auth token from URL
 function AuthHandler({ children }) {
@@ -106,6 +107,7 @@ export default function AppRouter() {
         <Route path="/quality" element={<ProtectedRoute pageName="quality"><QualityDashboard /></ProtectedRoute>} />
         <Route path="/quality-control" element={<ProtectedRoute pageName="quality-control"><QCDashboard /></ProtectedRoute>} />
         <Route path="/stock-forecast" element={<ProtectedRoute pageName="stock-forecast"><StockForecastDashboard /></ProtectedRoute>} />
+        <Route path="/alur-config" element={<ProtectedRoute pageName="alur-config"><AlurProsesGroupConfig /></ProtectedRoute>} />
       </Routes>
       </AuthHandler>
       </HelpProvider>

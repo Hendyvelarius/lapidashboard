@@ -1,6 +1,23 @@
 const { connect } = require('../../config/sqlserver');
 const sql = require('mssql');
 
+// Rollback switch for the redefined stage-group boundaries (mirrors the frontend
+// USE_NEW_STAGE_LOGIC constant in frontend/src/utils/stageBoundaries.js).
+// Set env USE_NEW_STAGE_LOGIC=false to fall back to the legacy PCT breakdown.
+const USE_NEW_STAGE_LOGIC = process.env.USE_NEW_STAGE_LOGIC !== 'false';
+
+/**
+ * Normalize an `asOf` value (used for the "view previous months" / end-of-month
+ * simulation) into a JS Date pinned to the end of that day, or null when absent.
+ * Accepts 'YYYY-MM-DD'. Anything malformed returns null (= live mode).
+ */
+function normalizeAsOf(asOf) {
+  if (!asOf) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(asOf))) return null;
+  const d = new Date(`${asOf}T23:59:59`);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 async function getFulfillmentPerDept() {
   const db = await connect();
   const result = await db.request().query(`EXEC sp_Dashboard_OF1 'SummaryTotalPerDept';`);
@@ -359,7 +376,15 @@ async function getMaterial() {
   return result.recordset;
 }
 
+// Dispatcher: new step-name-based boundaries (Timbang / Produksi / QC / Mikro / QA)
+// when USE_NEW_STAGE_LOGIC is on, otherwise the legacy per-tahapan_group breakdown.
 async function getPCTBreakdown(period = 'MTD') {
+  return USE_NEW_STAGE_LOGIC ? getPCTBreakdownV2(period) : getPCTBreakdownLegacy(period);
+}
+
+// Legacy PCT breakdown: 5 groups (Timbang, Proses, QC, Mikro, QA) derived generically
+// from tahapan_group as MIN(StartDate) -> MAX(EndDate). Preserved verbatim for rollback.
+async function getPCTBreakdownLegacy(period = 'MTD') {
   const db = await connect();
   
   // Determine the date filter based on period
@@ -496,18 +521,121 @@ async function getPCTBreakdown(period = 'MTD') {
   return result.recordset;
 }
 
-async function getLeadTime(period = 'MTD') {
+// New PCT breakdown: 5 groups (Timbang, Produksi, QC, Mikro, QA) with step-name-based
+// boundaries per the redefined stage-grouping rules. "Produksi" combines Proses +
+// Kemas Primer + Kemas Sekunder (Terima Bahan Baku start -> Pengiriman Obat Jadi end).
+async function getPCTBreakdownV2(period = 'MTD') {
   const db = await connect();
-  
-  // Determine the date filter based on period
+
+  // Determine the date filter based on period (MTD default, YTD, or ALL)
+  let dateFilter;
+  if (period === 'YTD') {
+    dateFilter = `AND YEAR(EndDate) = YEAR(GETDATE())`;
+  } else {
+    dateFilter = `AND YEAR(EndDate) = YEAR(GETDATE())
+        AND MONTH(EndDate) = MONTH(GETDATE())`;
+  }
+
+  // Step-name matches use LTRIM/RTRIM (canonical names are single-spaced in the DB).
+  const query = `
+    WITH FilteredAlur AS (
+      SELECT
+        ap.*,
+        mp.Product_Name,
+        LTRIM(RTRIM(ap.nama_tahapan)) AS nama_trim,
+        ISNULL(mtg.tahapan_group, 'Other') AS tahapan_group
+      FROM t_alur_proses ap
+      JOIN m_Product mp ON ap.Product_ID = mp.Product_ID
+      LEFT JOIN m_tahapan_group mtg ON ap.kode_tahapan = mtg.kode_tahapan
+      WHERE
+        ap.Batch_Date LIKE '[1-2][0-9][0-9][0-9]/[0-1][0-9]/[0-3][0-9]'
+        AND LEN(ap.Batch_Date) = 10
+        AND ISDATE(ap.Batch_Date) = 1
+        AND mp.Product_Name NOT LIKE '%granulat%'
+    ),
+    CompletedBatches AS (
+      SELECT DISTINCT Batch_No
+      FROM FilteredAlur
+      WHERE LOWER(nama_tahapan) LIKE '%tempel%label%realese%'
+        AND EndDate IS NOT NULL
+        ${dateFilter}
+    )
+    SELECT
+      fa.Batch_No,
+      fa.Batch_Date,
+      fa.Product_ID,
+      fa.Product_Name,
+      -- Total calendar days from earliest StartDate to Tempel Label Realese EndDate
+      DATEDIFF(DAY,
+        MIN(fa.StartDate),
+        MAX(CASE WHEN fa.nama_trim = 'Tempel Label Realese' THEN fa.EndDate END)
+      ) AS Total_Days,
+      -- Timbang: Penyiapan BB start -> Pengiriman Bahan Baku end
+      DATEDIFF(DAY,
+        MIN(CASE WHEN fa.nama_trim = 'Penyiapan BB' THEN fa.StartDate END),
+        MAX(CASE WHEN fa.nama_trim = 'Pengiriman Bahan Baku' THEN fa.EndDate END)
+      ) AS Timbang_Days,
+      -- Produksi (Proses + Kemas Primer + Kemas Sekunder):
+      -- Terima Bahan Baku start -> Pengiriman Obat Jadi end
+      DATEDIFF(DAY,
+        MIN(CASE WHEN fa.nama_trim = 'Terima Bahan Baku' THEN fa.StartDate END),
+        MAX(CASE WHEN fa.nama_trim = 'Pengiriman Obat Jadi' THEN fa.EndDate END)
+      ) AS Produksi_Days,
+      -- QC: Pickup Sample QC start -> Penyerahan Hasil Uji QC end
+      DATEDIFF(DAY,
+        MIN(CASE WHEN fa.nama_trim = 'Pickup Sample QC' THEN fa.StartDate END),
+        MAX(CASE WHEN fa.nama_trim = 'Penyerahan Hasil Uji QC' THEN fa.EndDate END)
+      ) AS QC_Days,
+      -- Mikro: MIN start / MAX end of Pengujian MC / Pengujian Sterilitas MC
+      DATEDIFF(DAY,
+        MIN(CASE WHEN fa.nama_trim IN ('Pengujian MC', 'Pengujian Sterilitas MC') THEN fa.StartDate END),
+        MAX(CASE WHEN fa.nama_trim IN ('Pengujian MC', 'Pengujian Sterilitas MC') THEN fa.EndDate END)
+      ) AS Mikro_Days,
+      -- QA: MIN start of (Penyerahan PPI ke QA, Penyerahan Hasil Uji QC) -> Tempel Label Realese end
+      DATEDIFF(DAY,
+        MIN(CASE WHEN fa.nama_trim IN ('Penyerahan PPI ke QA', 'Penyerahan Hasil Uji QC') THEN fa.StartDate END),
+        MAX(CASE WHEN fa.nama_trim = 'Tempel Label Realese' THEN fa.EndDate END)
+      ) AS QA_Days
+    FROM FilteredAlur fa
+    INNER JOIN CompletedBatches cb ON fa.Batch_No = cb.Batch_No
+    GROUP BY fa.Batch_No, fa.Batch_Date, fa.Product_ID, fa.Product_Name
+    HAVING (
+      DATEDIFF(DAY,
+        MIN(CASE WHEN fa.nama_trim = 'Penyiapan BB' THEN fa.StartDate END),
+        MAX(CASE WHEN fa.nama_trim = 'Pengiriman Bahan Baku' THEN fa.EndDate END)) IS NOT NULL
+      OR DATEDIFF(DAY,
+        MIN(CASE WHEN fa.nama_trim = 'Terima Bahan Baku' THEN fa.StartDate END),
+        MAX(CASE WHEN fa.nama_trim = 'Pengiriman Obat Jadi' THEN fa.EndDate END)) IS NOT NULL
+      OR DATEDIFF(DAY,
+        MIN(CASE WHEN fa.nama_trim = 'Pickup Sample QC' THEN fa.StartDate END),
+        MAX(CASE WHEN fa.nama_trim = 'Penyerahan Hasil Uji QC' THEN fa.EndDate END)) IS NOT NULL
+      OR DATEDIFF(DAY,
+        MIN(CASE WHEN fa.nama_trim IN ('Pengujian MC', 'Pengujian Sterilitas MC') THEN fa.StartDate END),
+        MAX(CASE WHEN fa.nama_trim IN ('Pengujian MC', 'Pengujian Sterilitas MC') THEN fa.EndDate END)) IS NOT NULL
+      OR DATEDIFF(DAY,
+        MIN(CASE WHEN fa.nama_trim IN ('Penyerahan PPI ke QA', 'Penyerahan Hasil Uji QC') THEN fa.StartDate END),
+        MAX(CASE WHEN fa.nama_trim = 'Tempel Label Realese' THEN fa.EndDate END)) IS NOT NULL
+    )
+    ORDER BY fa.Batch_No
+  `;
+  const result = await db.request().query(query);
+  return result.recordset;
+}
+
+async function getLeadTime(period = 'MTD', asOf = null) {
+  const db = await connect();
+  const asOfDate = normalizeAsOf(asOf);
+  const anchor = asOfDate ? '@asOf' : 'GETDATE()';
+
+  // Determine the date filter based on period (anchored to @asOf in historical mode)
   let dateFilter;
   if (period === 'YTD') {
     // Year-to-Date: filter by year only
-    dateFilter = `AND YEAR(sc.Stage_Completion_Date) = YEAR(GETDATE())`;
+    dateFilter = `AND YEAR(sc.Stage_Completion_Date) = YEAR(${anchor})`;
   } else {
     // Month-to-Date (default): filter by year and month
-    dateFilter = `AND YEAR(sc.Stage_Completion_Date) = YEAR(GETDATE())
-        AND MONTH(sc.Stage_Completion_Date) = MONTH(GETDATE())`;
+    dateFilter = `AND YEAR(sc.Stage_Completion_Date) = YEAR(${anchor})
+        AND MONTH(sc.Stage_Completion_Date) = MONTH(${anchor})`;
   }
   
   const query = `
@@ -566,16 +694,28 @@ async function getLeadTime(period = 'MTD') {
       ${dateFilter}
     ORDER BY sc.Stage_Completion_Date, sc.Batch_No
   `;
-  
-  const result = await db.request().query(query);
+
+  const request = db.request();
+  if (asOfDate) request.input('asOf', sql.DateTime, asOfDate);
+  const result = await request.query(query);
   return result.recordset;
 }
 
-async function getWIPData() {
+async function getWIPData(asOf = null) {
   const db = await connect();
   // Optimized: broken into temp-table steps to avoid SQL Server 2008 R2 optimizer
   // picking a bad execution plan when 10+ tables are joined in a single statement.
   // Original single-statement query timed out at >300s; this approach runs in ~10s.
+  //
+  // Historical ("end of month" simulation) mode: when `asOf` is provided, the query is
+  // anchored to @asOf instead of GETDATE(), any StartDate/EndDate after @asOf is treated
+  // as NULL (the step had not happened yet), and the completion/idle gates only count
+  // events on or before @asOf. The t_rfid_batch_card Batch_Status='Open' filter is dropped
+  // in historical mode because that flag is current-state only (not historized) — a batch
+  // that was WIP back then but has since closed would otherwise be wrongly excluded.
+  const asOfDate = normalizeAsOf(asOf);
+  const isHist = !!asOfDate;
+  const anchor = isHist ? '@asOf' : 'GETDATE()';
   const query = `
     -- Step 1: Core data - join only the essential indexed tables first
     SELECT a.Product_ID, a.Batch_No, a.Batch_Date, a.nama_tahapan, a.kode_tahapan,
@@ -583,27 +723,32 @@ async function getWIPData() {
            prod.Product_Name
     INTO #tmpData
     FROM t_alur_proses a
-    JOIN (SELECT DISTINCT Batch_No, Batch_Date, Product_ID FROM t_rfid_batch_card WHERE isActive=1 AND Batch_Status='Open') c
+    JOIN (SELECT DISTINCT Batch_No, Batch_Date, Product_ID FROM t_rfid_batch_card ${isHist ? '' : "WHERE isActive=1 AND Batch_Status='Open'"}) c
       ON c.Product_ID = a.Product_ID AND c.Batch_Date = a.Batch_Date AND c.Batch_No = a.Batch_No
     JOIN m_product prod ON a.Product_ID = prod.Product_ID
     WHERE REPLACE(LEFT(a.Batch_Date, 7), '/', '')
-      BETWEEN CONVERT(nvarchar(6), DATEADD(month,-12,GETDATE()), 112) AND CONVERT(nvarchar(6), GETDATE(), 112)
+      BETWEEN CONVERT(nvarchar(6), DATEADD(month,-12,${anchor}), 112) AND CONVERT(nvarchar(6), ${anchor}, 112)
       AND prod.Product_Name NOT LIKE '%Granulat%'
       AND NOT (a.Batch_No = 'CY3A01' OR a.Batch_No = 'BI063' OR a.Batch_No = 'PI3L01');
-
+    ${isHist ? `
+    -- Historical: events dated after @asOf had not happened yet -> treat as NULL
+    UPDATE #tmpData SET
+      StartDate = CASE WHEN StartDate > @asOf THEN NULL ELSE StartDate END,
+      EndDate   = CASE WHEN EndDate   > @asOf THEN NULL ELSE EndDate   END;
+    ` : ''}
     -- Step 2: Remove batches where tempel label is already completed
     DELETE FROM #tmpData
     WHERE EXISTS (
       SELECT 1 FROM t_alur_proses xy
       WHERE xy.Product_ID = #tmpData.Product_ID AND xy.Batch_No = #tmpData.Batch_No AND xy.Batch_Date = #tmpData.Batch_Date
-        AND xy.nama_tahapan LIKE '%tempel%label' AND xy.EndDate IS NOT NULL
+        AND xy.nama_tahapan LIKE '%tempel%label' AND xy.EndDate IS NOT NULL ${isHist ? 'AND xy.EndDate <= @asOf' : ''}
     );
 
     -- Step 3: Remove DNC products with TempelLabel filled
     DELETE FROM #tmpData
     WHERE EXISTS (
       SELECT 1 FROM t_dnc_product b
-      WHERE ISNULL(b.DNC_TempelLabel, '') <> ''
+      WHERE ISNULL(b.DNC_TempelLabel, '') <> '' ${isHist ? 'AND b.DNC_TempelLabel <= @asOf' : ''}
         AND #tmpData.Batch_No = b.DNc_BatchNo AND #tmpData.Product_ID = b.DNc_ProductID
     );
 
@@ -619,12 +764,12 @@ async function getWIPData() {
     WHERE NOT EXISTS (
       SELECT 1 FROM t_alur_proses ap
       INNER JOIN m_tahapan_group mtg ON ap.kode_tahapan = mtg.kode_tahapan
-      WHERE mtg.tahapan_group = 'Timbang' AND ap.StartDate IS NOT NULL
+      WHERE mtg.tahapan_group = 'Timbang' AND ap.StartDate IS NOT NULL ${isHist ? 'AND ap.StartDate <= @asOf' : ''}
         AND ap.Batch_Date = #tmpData.Batch_Date AND ap.Batch_No = #tmpData.Batch_No AND ap.Product_ID = #tmpData.Product_ID
     )
     AND NOT EXISTS (
       SELECT 1 FROM t_alur_proses ap2
-      WHERE LTRIM(RTRIM(ap2.nama_tahapan)) = 'Terima Bahan Baku' AND ap2.EndDate IS NOT NULL
+      WHERE LTRIM(RTRIM(ap2.nama_tahapan)) = 'Terima Bahan Baku' AND ap2.EndDate IS NOT NULL ${isHist ? 'AND ap2.EndDate <= @asOf' : ''}
         AND ap2.Batch_Date = #tmpData.Batch_Date AND ap2.Batch_No = #tmpData.Batch_No AND ap2.Product_ID = #tmpData.Product_ID
     );
 
@@ -641,7 +786,7 @@ async function getWIPData() {
     UPDATE t SET t.Group_Dept = gp.Group_Dept
     FROM #tmpData t
     LEFT JOIN m_product_pn_group gp ON gp.Group_ProductID = t.Product_ID
-      AND REPLACE(gp.Group_Periode, ' ', '') = CONVERT(varchar(6), GETDATE(), 112);
+      AND REPLACE(gp.Group_Periode, ' ', '') = CONVERT(varchar(6), ${anchor}, 112);
 
     UPDATE t SET t.Jenis_Sediaan = s.Jenis_Sediaan
     FROM #tmpData t
@@ -696,7 +841,9 @@ async function getWIPData() {
     DROP TABLE #tmpData;
   `;
 
-  const result = await db.request().query(query);
+  const request = db.request();
+  if (isHist) request.input('asOf', sql.DateTime, asOfDate);
+  const result = await request.query(query);
   return result.recordset;
 }
 
@@ -784,15 +931,17 @@ async function getOTCProducts() {
   return result.recordset;
 }
 
-async function getProductGroupDept() {
+async function getProductGroupDept(asOf = null) {
   const db = await connect();
-  const currentYear = new Date().getFullYear();
-  const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
-  const currentPeriod = `${currentYear} ${currentMonth}`;
-  
+  // In historical mode use the selected month's period mapping, else current month.
+  const ref = normalizeAsOf(asOf) || new Date();
+  const refYear = ref.getFullYear();
+  const refMonth = String(ref.getMonth() + 1).padStart(2, '0');
+  const currentPeriod = `${refYear} ${refMonth}`;
+
   const query = `
-    SELECT Group_ProductID, Group_Dept 
-    FROM m_Product_PN_Group 
+    SELECT Group_ProductID, Group_Dept
+    FROM m_Product_PN_Group
     WHERE Group_Periode = '${currentPeriod}'
   `;
   const result = await db.request().query(query);
@@ -821,37 +970,46 @@ async function getReleasedBatches() {
   return result.recordset;
 }
 
-async function getReleasedBatchesYTD() {
+async function getReleasedBatchesYTD(asOf = null) {
   const db = await connect();
-  
-  // Get current year for filtering
-  const currentYear = new Date().getFullYear();
-  
+
+  // In historical mode: releases in the selected year up to and including the as-of date.
+  const ref = normalizeAsOf(asOf) || new Date();
+  const refYear = ref.getFullYear();
+
+  const request = db.request();
+  let cutoffClause = '';
+  if (normalizeAsOf(asOf)) {
+    cutoffClause = 'AND Process_Date <= @asOf';
+    request.input('asOf', sql.DateTime, normalizeAsOf(asOf));
+  }
+
   const query = `
-    SELECT 
-      DNc_ProductID, 
-      DNc_BatchNo, 
+    SELECT
+      DNc_ProductID,
+      DNc_BatchNo,
       DNC_Diluluskan,
       dnc_status,
       Process_Date
     FROM t_dnc_product
     WHERE dnc_status = 'DILULUSKAN'
-      AND YEAR(Process_Date) = ${currentYear}
+      AND YEAR(Process_Date) = ${refYear}
+      ${cutoffClause}
   `;
-  
-  const result = await db.request().query(query);
+
+  const result = await request.query(query);
   return result.recordset;
 }
 
-async function getDailyProduction() {
+async function getDailyProduction(asOf = null) {
   const db = await connect();
-  
-  // Get current month in YYYYMM format
-  const currentDate = new Date();
+
+  // Get target month in YYYYMM format (selected month in historical mode, else current)
+  const currentDate = normalizeAsOf(asOf) || new Date();
   const currentYear = currentDate.getFullYear();
   const currentMonth = String(currentDate.getMonth() + 1).padStart(2, '0');
   const targetMonth = `${currentYear}${currentMonth}`;
-  
+
   const query = `
     SELECT 
       CONVERT(DATE, s.process_date) AS ProductionDate,
@@ -1212,6 +1370,91 @@ async function deleteProductType(productId) {
   const query = `DELETE FROM m_product_sediaan_produksi WHERE Product_ID = @productId`;
   const result = await request.query(query);
   return { deleted: result.rowsAffected[0] > 0, productId };
+}
+
+// ============================================
+// Tahapan Group (Alur Proses) Configuration
+// m_tahapan_group maps each process step (kode_tahapan) to a category (tahapan_group).
+// Those categories roll up into the 7 display stages used by the dashboards; the rollup
+// itself lives in frontend/src/utils/stageBoundaries.js (TAHAPAN_GROUP_TO_DISPLAY).
+// ============================================
+
+// Distinct categories currently in use (the picklist users assign steps to). We only
+// expose existing categories so new/typo values can't break the display-stage rollup.
+async function getTahapanGroupCategories() {
+  const db = await connect();
+  const query = `
+    SELECT DISTINCT tahapan_group
+    FROM m_tahapan_group
+    WHERE tahapan_group IS NOT NULL AND LTRIM(RTRIM(tahapan_group)) <> ''
+    ORDER BY tahapan_group
+  `;
+  const result = await db.request().query(query);
+  return result.recordset.map(r => r.tahapan_group);
+}
+
+// All steps with their current category. The step registry is the master table m_tahapan
+// (canonical kode_tahapan -> nama_tahapan, plus alias/dept), LEFT JOINed to m_tahapan_group
+// for the current category (null = unassigned). Sourcing names from m_tahapan means every
+// step has a proper name — including steps that have never appeared in t_alur_proses yet.
+async function getTahapanGroupAssignments() {
+  const db = await connect();
+  // kode_tahapan is int in m_tahapan but varchar in m_tahapan_group; cast for a safe join.
+  const query = `
+    SELECT
+      t.kode_tahapan,
+      LTRIM(RTRIM(t.nama_tahapan)) AS nama_tahapan,
+      LTRIM(RTRIM(t.alias)) AS alias,
+      LTRIM(RTRIM(t.dept)) AS dept,
+      g.tahapan_group
+    FROM m_tahapan t
+    LEFT JOIN m_tahapan_group g ON CAST(t.kode_tahapan AS VARCHAR(50)) = g.kode_tahapan
+    ORDER BY g.tahapan_group, t.nama_tahapan
+  `;
+  const result = await db.request().query(query);
+  return result.recordset;
+}
+
+// Bulk apply step -> category changes. A null/empty `tahapan_group` means "unassign" —
+// the step's mapping row is removed so it belongs to no category (a valid state, e.g. steps
+// handled by an external team). Non-empty values must be a known category so the
+// display-stage rollup can never be broken by an unknown value.
+async function bulkUpsertTahapanGroups(assignments) {
+  const db = await connect();
+
+  const validCategories = new Set(await getTahapanGroupCategories());
+  const results = [];
+
+  for (const a of assignments) {
+    const kode = a.kode_tahapan;
+    const group = a.tahapan_group == null ? '' : String(a.tahapan_group).trim();
+
+    const request = db.request();
+    request.input('kode', sql.VarChar(50), String(kode));
+
+    // Empty -> unassign (delete the mapping row).
+    if (group === '') {
+      const del = await request.query(`DELETE FROM m_tahapan_group WHERE kode_tahapan = @kode`);
+      results.push({ action: 'unassigned', kode_tahapan: kode, removed: del.rowsAffected[0] > 0 });
+      continue;
+    }
+
+    if (!validCategories.has(group)) {
+      throw new Error(`Kategori tidak dikenal: '${group}'`);
+    }
+
+    request.input('grp', sql.VarChar(100), group);
+    const check = await request.query(`SELECT COUNT(*) AS count FROM m_tahapan_group WHERE kode_tahapan = @kode`);
+    if (check.recordset[0].count > 0) {
+      await request.query(`UPDATE m_tahapan_group SET tahapan_group = @grp WHERE kode_tahapan = @kode`);
+      results.push({ action: 'updated', kode_tahapan: kode, tahapan_group: group });
+    } else {
+      await request.query(`INSERT INTO m_tahapan_group (kode_tahapan, tahapan_group) VALUES (@kode, @grp)`);
+      results.push({ action: 'created', kode_tahapan: kode, tahapan_group: group });
+    }
+  }
+
+  return results;
 }
 
 // ============================================
@@ -1731,4 +1974,4 @@ async function getExpiredMaterials() {
   return result.recordset;
 }
 
-module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTSummary, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getQCSummary, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig, getExpiredMaterials};
+module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTBreakdownLegacy, getPCTBreakdownV2, getPCTSummary, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getTahapanGroupCategories, getTahapanGroupAssignments, bulkUpsertTahapanGroups, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getQCSummary, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig, getExpiredMaterials};

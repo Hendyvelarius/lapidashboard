@@ -28,6 +28,14 @@ function shouldSkipCache(req) {
   return req.query.refresh === 'true';
 }
 
+// Helper to read & validate the optional `asOf` query param (YYYY-MM-DD) used by the
+// "view previous months" / end-of-month simulation. Returns null when absent/invalid.
+function getAsOf(req) {
+  const asOf = req.query.asOf;
+  if (asOf && /^\d{4}-\d{2}-\d{2}$/.test(asOf)) return asOf;
+  return null;
+}
+
 // Controller for /fulfillment
 async function getFulfillment(req, res) {
   try {
@@ -278,7 +286,9 @@ async function getPCTBreakdown(req, res) {
 
 async function getWIPData(req, res) {
   try {
-    const data = await getCachedData('wipData', () => SqlModel.getWIPData(), CACHE_TTL.MEDIUM, shouldSkipCache(req));
+    const asOf = getAsOf(req);
+    const cacheKey = asOf ? `wipData_${asOf}` : 'wipData';
+    const data = await getCachedData(cacheKey, () => SqlModel.getWIPData(asOf), CACHE_TTL.MEDIUM, shouldSkipCache(req));
     res.json({ data });
   } catch (err) {
     console.error('Error in fetching WIP Data:', err);
@@ -308,7 +318,9 @@ async function getOTCProducts(req, res) {
 
 async function getProductGroupDept(req, res) {
   try {
-    const data = await getCachedData('productGroupDept', () => SqlModel.getProductGroupDept(), CACHE_TTL.LONG, shouldSkipCache(req));
+    const asOf = getAsOf(req);
+    const cacheKey = asOf ? `productGroupDept_${asOf}` : 'productGroupDept';
+    const data = await getCachedData(cacheKey, () => SqlModel.getProductGroupDept(asOf), CACHE_TTL.LONG, shouldSkipCache(req));
     res.json({ data });
   } catch (err) {
     console.error('Error in fetching Product Group Dept:', err);
@@ -328,7 +340,9 @@ async function getReleasedBatches(req, res) {
 
 async function getReleasedBatchesYTD(req, res) {
   try {
-    const data = await getCachedData('releasedBatchesYTD', () => SqlModel.getReleasedBatchesYTD(), CACHE_TTL.MEDIUM, shouldSkipCache(req));
+    const asOf = getAsOf(req);
+    const cacheKey = asOf ? `releasedBatchesYTD_${asOf}` : 'releasedBatchesYTD';
+    const data = await getCachedData(cacheKey, () => SqlModel.getReleasedBatchesYTD(asOf), CACHE_TTL.MEDIUM, shouldSkipCache(req));
     res.json({ data });
   } catch (err) {
     console.error('Error in fetching Released Batches YTD:', err);
@@ -338,7 +352,9 @@ async function getReleasedBatchesYTD(req, res) {
 
 async function getDailyProduction(req, res) {
   try {
-    const data = await getCachedData('dailyProduction', () => SqlModel.getDailyProduction(), CACHE_TTL.MEDIUM, shouldSkipCache(req));
+    const asOf = getAsOf(req);
+    const cacheKey = asOf ? `dailyProduction_${asOf}` : 'dailyProduction';
+    const data = await getCachedData(cacheKey, () => SqlModel.getDailyProduction(asOf), CACHE_TTL.MEDIUM, shouldSkipCache(req));
     res.json({ data });
   } catch (err) {
     console.error('Error in fetching Daily Production:', err);
@@ -349,8 +365,9 @@ async function getDailyProduction(req, res) {
 async function getLeadTime(req, res) {
   try {
     const period = req.query.period || 'MTD'; // Default to MTD if not specified
-    const cacheKey = `leadTime_${period}`;
-    const data = await getCachedData(cacheKey, () => SqlModel.getLeadTime(period), CACHE_TTL.LONG, shouldSkipCache(req));
+    const asOf = getAsOf(req);
+    const cacheKey = asOf ? `leadTime_${period}_${asOf}` : `leadTime_${period}`;
+    const data = await getCachedData(cacheKey, () => SqlModel.getLeadTime(period, asOf), CACHE_TTL.LONG, shouldSkipCache(req));
     res.json({ data });
   } catch (err) {
     console.error('Error in fetching Lead Time:', err);
@@ -530,6 +547,62 @@ async function deleteProductType(req, res) {
 }
 
 // ============================================
+// Tahapan Group (Alur Proses) Configuration Controllers
+// ============================================
+
+// GET /api/tahapanGroupCategories - distinct category picklist
+async function getTahapanGroupCategories(req, res) {
+  try {
+    const data = await getCachedData('tahapanGroupCategories', () => SqlModel.getTahapanGroupCategories(), CACHE_TTL.LONG, shouldSkipCache(req));
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching Tahapan Group Categories:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+// GET /api/tahapanGroupAssignments - every step with its current category + display name
+async function getTahapanGroupAssignments(req, res) {
+  try {
+    const data = await getCachedData('tahapanGroupAssignments', () => SqlModel.getTahapanGroupAssignments(), CACHE_TTL.MEDIUM, shouldSkipCache(req));
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching Tahapan Group Assignments:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+// POST /api/tahapanGroups/bulk - bulk assign steps to categories
+async function bulkUpsertTahapanGroups(req, res) {
+  try {
+    const { assignments } = req.body;
+
+    if (!assignments || !Array.isArray(assignments) || assignments.length === 0) {
+      return res.status(400).json({ success: false, error: 'assignments array is required' });
+    }
+    for (const a of assignments) {
+      // tahapan_group may be null/empty (= unassign); only kode_tahapan is required.
+      if (!a.kode_tahapan || !('tahapan_group' in a)) {
+        return res.status(400).json({ success: false, error: 'Each assignment must have kode_tahapan (tahapan_group may be null to unassign)' });
+      }
+    }
+
+    const results = await SqlModel.bulkUpsertTahapanGroups(assignments);
+
+    // Changing the step -> category mapping affects the enriched WIP feed the dashboards
+    // consume, so invalidate those caches.
+    cache.delete('tahapanGroupAssignments');
+    cache.delete('tahapanGroupCategories');
+    cache.delete('wipData');
+
+    res.json({ success: true, data: results });
+  } catch (err) {
+    console.error('Error in bulk upserting Tahapan Groups:', err);
+    res.status(500).json({ success: false, error: err.message || 'Internal server error' });
+  }
+}
+
+// ============================================
 // QC (Quality Control) Dashboard Controllers
 // ============================================
 
@@ -663,4 +736,4 @@ async function getExpiredMaterials(req, res) {
   }
 }
 
-module.exports = { getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getPCTSummary, getOrderFulfillment, getStockReport, getofsummary, getPCTBreakdown, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getQCSummary, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig, getExpiredMaterials };
+module.exports = { getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getPCTSummary, getOrderFulfillment, getStockReport, getofsummary, getPCTBreakdown, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getTahapanGroupCategories, getTahapanGroupAssignments, bulkUpsertTahapanGroups, getQCSummary, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig, getExpiredMaterials };

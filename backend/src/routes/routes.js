@@ -99,6 +99,13 @@ router.post('/productType', SqlController.upsertProductType);                   
 router.post('/productTypes/bulk', SqlController.bulkUpsertProductTypes);           // Bulk create/update
 router.delete('/productType/:productId', SqlController.deleteProductType);         // Delete
 
+// ============================================
+// Tahapan Group (Alur Proses) Configuration Routes
+// ============================================
+router.get('/tahapanGroupCategories', SqlController.getTahapanGroupCategories);    // Category picklist
+router.get('/tahapanGroupAssignments', SqlController.getTahapanGroupAssignments);  // All step -> category
+router.post('/tahapanGroups/bulk', SqlController.bulkUpsertTahapanGroups);         // Bulk assign
+
 // Cache management endpoints
 const { cache } = require('../utils/cache');
 

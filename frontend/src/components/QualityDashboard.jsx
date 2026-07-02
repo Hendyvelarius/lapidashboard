@@ -9,7 +9,8 @@ import ContextualHelpModal from './ContextualHelpModal';
 import { useHelp } from '../context/HelpContext';
 import { useAuth } from '../context/AuthContext';
 import { loadQualityCache, saveQualityCache, clearQualityCache, isQualityCacheValid } from '../utils/dashboardCache';
-import { calculateCalendarDaysToToday, setHolidays } from '../utils/workingDays';
+import { calculateCalendarDaysToToday, calculateCalendarDaysTo, setHolidays } from '../utils/workingDays';
+import { USE_NEW_STAGE_LOGIC, GROUP_ORDER, groupStartFor, getStageMembership, computeDaysInStageForGroup } from '../utils/stageBoundaries';
 import { apiUrl, apiUrlWithRefresh } from '../api';
 import './QualityDashboard.css';
 import './QCDashboard.css';
@@ -553,6 +554,55 @@ const QualityDashboard = () => {
   const [of1ModalOpen, setOf1ModalOpen] = useState(false);
   const [of1ModalData, setOf1ModalData] = useState(null);
   const [error, setError] = useState(null);
+
+  // ── "View previous months" (end-of-month simulation) ──────────────────────────
+  // selectedPeriode = null -> live data. Otherwise YYYYMM of the selected month.
+  // In historical mode we refetch the date-sensitive endpoints with ?asOf=<month-end>
+  // and pin every "today" calculation to that month-end via `referenceDate`.
+  const [selectedPeriode, setSelectedPeriode] = useState(null);
+  const [historicalLoading, setHistoricalLoading] = useState(false);
+  const isHistorical = selectedPeriode !== null;
+
+  // The reference "now" used by all processing functions. Live = real now; historical
+  // = last day of the selected month (23:59:59 so the whole month counts as elapsed).
+  const referenceDate = React.useMemo(() => {
+    if (selectedPeriode === null) return new Date();
+    const year = Math.floor(selectedPeriode / 100);
+    const month = selectedPeriode % 100; // 1-based
+    return new Date(year, month, 0, 23, 59, 59); // day 0 of next month = last day of this month
+  }, [selectedPeriode]);
+
+  // Month options for the selector: current month ("Live") + the previous 11 months.
+  const availableMonths = React.useMemo(() => {
+    const opts = [];
+    const now = new Date();
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      opts.push({
+        periode: d.getFullYear() * 100 + (d.getMonth() + 1),
+        label: d.toLocaleString('en-US', { month: 'long', year: 'numeric' }),
+        isCurrent: i === 0,
+      });
+    }
+    return opts;
+  }, []);
+
+  // Format a YYYYMM periode as "May 2026"
+  const formatPeriodeLabel = (periode) => {
+    if (periode === null) return 'Live';
+    const year = Math.floor(periode / 100);
+    const month = periode % 100;
+    return new Date(year, month - 1).toLocaleString('en-US', { month: 'long', year: 'numeric' });
+  };
+
+  // asOf string (YYYY-MM-DD, the selected month-end) for backend query params.
+  const asOfParam = React.useMemo(() => {
+    if (selectedPeriode === null) return null;
+    const year = Math.floor(selectedPeriode / 100);
+    const month = selectedPeriode % 100;
+    const lastDay = new Date(year, month, 0).getDate();
+    return `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  }, [selectedPeriode]);
   
   // Lead Time states
   const [leadTimeView, setLeadTimeView] = useState('qc'); // 'qc' or 'mikro'
@@ -849,9 +899,18 @@ const QualityDashboard = () => {
       }
     });
 
-    const activeBatches = rawData.filter(entry => 
+    const activeBatches = rawData.filter(entry =>
       !batchesWithTempelLabelRelease.has(entry.Batch_No)
     );
+
+    // Full per-batch entries (all steps) for the new stage-boundary logic
+    // (QA's start references a QC-group step, so per-stage entries are not enough).
+    const fullEntriesByBatch = {};
+    activeBatches.forEach(entry => {
+      const bn = entry.Batch_No;
+      if (!fullEntriesByBatch[bn]) fullEntriesByBatch[bn] = [];
+      fullEntriesByBatch[bn].push(entry);
+    });
 
     // Define the Quality stages we want to track (QC, Mikro, QA)
     const qualityStageNames = ['QC', 'Mikro', 'QA'];
@@ -904,6 +963,20 @@ const QualityDashboard = () => {
       const stageName = stageKey.split(' ')[1]; // Extract 'QC', 'Mikro', or 'QA'
       
       stageData[stageKey].batches.forEach((batch, batchNo) => {
+        if (USE_NEW_STAGE_LOGIC) {
+          // New logic: membership + waiting defined by the group's window.
+          const fullEntries = fullEntriesByBatch[batchNo] || batch.entries;
+          const status = getStageMembership(fullEntries, stageName, referenceDate);
+          if (!status) {
+            stageData[stageKey].batches.delete(batchNo);
+            return;
+          }
+          batch.isWaiting = status === 'waiting';
+          batch.daysInStage = computeDaysInStageForGroup(fullEntries, stageName, referenceDate) || 0;
+          return;
+        }
+
+        // ===== Legacy logic (rollback path) =====
         // Special logic for QA stage
         if (stageName === 'QA') {
           const requiredQASteps = [
@@ -912,72 +985,43 @@ const QualityDashboard = () => {
             'Cek Dokumen MC oleh QA',
             'Cek Dokumen QC oleh QA'
           ];
-          
-          // Find all the required QA steps that have IdleStartDate
-          const qaStepsWithIdleDate = batch.entries.filter(entry => 
+          const qaStepsWithIdleDate = batch.entries.filter(entry =>
             requiredQASteps.includes(entry.nama_tahapan) && entry.IdleStartDate
           );
-          
-          // Check if all 4 required steps have IdleStartDate
           const allRequiredStepsStarted = requiredQASteps.every(stepName =>
             qaStepsWithIdleDate.some(entry => entry.nama_tahapan === stepName)
           );
-          
-          // If not all 4 steps have started, exclude this batch from QA
           if (!allRequiredStepsStarted) {
             stageData[stageKey].batches.delete(batchNo);
-            return; // Skip this batch
+            return;
           }
-          
-          // Check if QA batch is actually in progress (same logic as Production Dashboard)
           const hasStartDate = batch.entries.some(e => e.StartDate);
           const hasMissingEndDate = batch.entries.some(e => !e.EndDate);
           const hasDisplayFlag = batch.entries.some(e => e.Display === '1' || e.Display === 1);
-          
-          // Check if batch is in waiting status
           const isWaiting = isBatchWaiting(batch.entries);
-          
-          // Only include batches actively in progress, exclude waiting batches
           if (isWaiting || !((hasStartDate && hasMissingEndDate) || hasDisplayFlag)) {
             stageData[stageKey].batches.delete(batchNo);
-            return; // Skip this batch - not actually in progress
+            return;
           }
-          
-          // For QA, use the LATEST IdleStartDate among the 4 required steps
           let latestIdleDate = null;
           qaStepsWithIdleDate.forEach(entry => {
-            if (requiredQASteps.includes(entry.nama_tahapan)) {
-              const idleDate = new Date(entry.IdleStartDate);
-              if (!isNaN(idleDate.getTime())) {
-                if (!latestIdleDate || idleDate > latestIdleDate) {
-                  latestIdleDate = idleDate;
-                }
-              }
+            const idleDate = new Date(entry.IdleStartDate);
+            if (!isNaN(idleDate.getTime()) && (!latestIdleDate || idleDate > latestIdleDate)) {
+              latestIdleDate = idleDate;
             }
           });
-          
-          let daysInStage = 0;
-          if (latestIdleDate) {
-            // Use working days calculation (excludes weekends and holidays)
-            daysInStage = calculateCalendarDaysToToday(latestIdleDate);
-          }
-          
-          batch.daysInStage = daysInStage;
+          batch.daysInStage = latestIdleDate ? calculateCalendarDaysTo(latestIdleDate, referenceDate) : 0;
           batch.isWaiting = isWaiting;
-          return; // QA logic complete, continue to next batch
+          return;
         }
-        
+
         // Default logic for QC and Mikro stages
         const hasStartDate = batch.entries.some(e => e.StartDate);
         const hasMissingEndDate = batch.entries.some(e => !e.EndDate);
         const hasDisplayFlag = batch.entries.some(e => e.Display === '1' || e.Display === 1);
-
-        // Check if batch is in waiting status
         const isWaiting = isBatchWaiting(batch.entries);
 
-        // Only include batches actively in progress, exclude waiting batches
         if (!isWaiting && ((hasStartDate && hasMissingEndDate) || hasDisplayFlag)) {
-          // Calculate days in stage using EARLIEST IdleStartDate from all entries
           let earliestIdleDate = null;
           batch.entries.forEach(entry => {
             if (entry.IdleStartDate) {
@@ -989,18 +1033,9 @@ const QualityDashboard = () => {
               }
             }
           });
-
-          let daysInStage = 0;
-          if (earliestIdleDate) {
-            // Use working days calculation (excludes weekends and holidays)
-            daysInStage = calculateCalendarDaysToToday(earliestIdleDate);
-          }
-
-          // Update the batch with calculated days and waiting status
-          batch.daysInStage = daysInStage;
+          batch.daysInStage = earliestIdleDate ? calculateCalendarDaysTo(earliestIdleDate, referenceDate) : 0;
           batch.isWaiting = isWaiting;
         } else {
-          // Batch not in progress or waiting, remove it
           stageData[stageKey].batches.delete(batchNo);
         }
       });
@@ -1011,22 +1046,22 @@ const QualityDashboard = () => {
     
     return stageOrder.map(stageKey => {
       const allBatches = Array.from(stageData[stageKey].batches.values());
-      
-      // Only include batches that are actively in progress (exclude waiting batches)
+
       const inProgressBatches = allBatches.filter(b => !b.isWaiting);
-      
-      // Sort in-progress batches by days descending
+      const waitingBatches = allBatches.filter(b => b.isWaiting);
+
+      // Sort in-progress batches by days descending; waiting listed after.
       inProgressBatches.sort((a, b) => b.daysInStage - a.daysInStage);
 
       return {
         name: stageKey,
-        value: inProgressBatches.length, // Only count in-progress batches
-        waitingCount: 0, // Waiting batches are not displayed
-        totalCount: inProgressBatches.length, // Only in-progress batches
-        avgDays: inProgressBatches.length > 0 
+        value: inProgressBatches.length, // Speedometer value = in-progress count
+        waitingCount: waitingBatches.length, // Waiting members (idle) tracked separately
+        totalCount: inProgressBatches.length + waitingBatches.length,
+        avgDays: inProgressBatches.length > 0
           ? Math.round(inProgressBatches.reduce((sum, b) => sum + b.daysInStage, 0) / inProgressBatches.length)
           : 0,
-        batches: inProgressBatches // Only in-progress batches (waiting batches excluded)
+        batches: [...inProgressBatches, ...waitingBatches]
       };
     });
   };
@@ -1038,7 +1073,7 @@ const QualityDashboard = () => {
       return [];
     }
 
-    const currentDate = new Date();
+    const currentDate = new Date(referenceDate);
     const currentYear = currentDate.getFullYear();
     const currentMonth = currentDate.getMonth() + 1;
 
@@ -1086,7 +1121,7 @@ const QualityDashboard = () => {
   const processDailyBatchReleases = () => {
     if (!ofActualData || ofActualData.length === 0 || Object.keys(productCategories).length === 0) {
       // Return empty array for current month days if no data
-      const today = new Date();
+      const today = new Date(referenceDate);
       const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
       return Array.from({ length: daysInMonth }, (_, i) => ({
         day: i + 1,
@@ -1097,7 +1132,7 @@ const QualityDashboard = () => {
       }));
     }
 
-    const today = new Date();
+    const today = new Date(referenceDate);
     const currentYear = today.getFullYear();
     const currentMonth = today.getMonth(); // 0-indexed
     const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
@@ -1153,7 +1188,7 @@ const QualityDashboard = () => {
       return { daily: [], averageLeadTime: 0 };
     }
 
-    const today = new Date();
+    const today = new Date(referenceDate);
     const currentYear = today.getFullYear();
     const currentMonth = today.getMonth();
     const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
@@ -1212,7 +1247,7 @@ const QualityDashboard = () => {
 
   // Process OF1 data - MTD cumulative production vs monthly target
   const processOF1Data = () => {
-    const currentDate = new Date();
+    const currentDate = new Date(referenceDate);
     const currentYear = currentDate.getFullYear();
     const currentMonth = currentDate.getMonth(); // 0-indexed
     const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
@@ -1548,6 +1583,80 @@ const QualityDashboard = () => {
     }, 1000);
   };
 
+  // Handle selecting a month from the period selector.
+  // periode === null -> return to live data (reload from cache/live endpoints).
+  // Otherwise fetch the date-sensitive endpoints with ?asOf=<month-end> so the
+  // dashboard simulates the state at the end of that month.
+  const handlePeriodChange = async (periode) => {
+    if (periode === selectedPeriode) return;
+
+    if (periode === null) {
+      // Back to live: restore from cache if available, else trigger a fresh fetch.
+      setSelectedPeriode(null);
+      const cachedData = loadQualityCache();
+      if (cachedData) {
+        setWipData(cachedData.wipData || []);
+        setLeadTimeData(cachedData.leadTimeData || []);
+        setDailyProductionData(cachedData.dailyProductionData || []);
+        setOfActualData(cachedData.ofActualData || []);
+        setProductGroupDept(cachedData.productGroupDept || {});
+      }
+      setLastFetchTime(new Date());
+      setSidebarChartKey(prev => prev + 1);
+      return;
+    }
+
+    // Historical month selected
+    setHistoricalLoading(true);
+    setSelectedPeriode(periode);
+
+    const year = Math.floor(periode / 100);
+    const month = periode % 100;
+    const lastDay = new Date(year, month, 0).getDate();
+    const asOf = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    const q = `asOf=${asOf}`;
+
+    try {
+      const [wipResponse, leadTimeResponse, dailyProductionResponse, ofActualResponse, groupDeptResponse] = await Promise.all([
+        fetch(apiUrl(`/api/wipData?${q}`)),
+        fetch(apiUrl(`/api/leadTime?period=MTD&${q}`)),
+        fetch(apiUrl(`/api/dailyProduction?${q}`)),
+        fetch(apiUrl(`/api/releasedBatchesYTD?${q}`)),
+        fetch(apiUrl(`/api/productGroupDept?${q}`)),
+      ]);
+
+      if (wipResponse.ok) {
+        const r = await wipResponse.json();
+        setWipData(r.data || []);
+      }
+      if (leadTimeResponse.ok) {
+        const r = await leadTimeResponse.json();
+        setLeadTimeData(r.data || []);
+      }
+      if (dailyProductionResponse.ok) {
+        const r = await dailyProductionResponse.json();
+        setDailyProductionData(r.data || []);
+      }
+      if (ofActualResponse.ok) {
+        const r = await ofActualResponse.json();
+        setOfActualData(r.data || []);
+      }
+      if (groupDeptResponse.ok) {
+        const r = await groupDeptResponse.json();
+        const deptMap = {};
+        (r.data || []).forEach(item => { deptMap[item.Group_ProductID] = item.Group_Dept; });
+        setProductGroupDept(deptMap);
+      }
+      setLastFetchTime(new Date(year, month, 0, 23, 59, 59));
+      setSidebarChartKey(prev => prev + 1);
+    } catch (err) {
+      console.error('Error loading historical data:', err);
+      setError('Failed to load data for ' + formatPeriodeLabel(periode));
+    } finally {
+      setHistoricalLoading(false);
+    }
+  };
+
   // Handle Output chart click
   const handleOutputChartClick = (event, elements, chart) => {
     if (!elements || elements.length === 0) {
@@ -1565,11 +1674,11 @@ const QualityDashboard = () => {
       // Monthly view - get the month
       const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
       periodLabel = monthNames[index];
-      fullDate = `${periodLabel} ${new Date().getFullYear()}`;
-      targetDate = { year: new Date().getFullYear(), month: index + 1 };
+      fullDate = `${periodLabel} ${new Date(referenceDate).getFullYear()}`;
+      targetDate = { year: new Date(referenceDate).getFullYear(), month: index + 1 };
     } else {
       // Daily view - get the day of current month (index 0 = day 1, etc.)
-      const today = new Date();
+      const today = new Date(referenceDate);
       const currentYear = today.getFullYear();
       const currentMonth = today.getMonth();
       const day = index + 1; // Chart index 0 = day 1
@@ -1670,7 +1779,7 @@ const QualityDashboard = () => {
       return;
     }
 
-    const currentDate = new Date();
+    const currentDate = new Date(referenceDate);
     const currentYear = currentDate.getFullYear();
     const currentMonth = currentDate.getMonth();
     const monthName = currentDate.toLocaleString('en-US', { month: 'long' });
@@ -1987,13 +2096,30 @@ const QualityDashboard = () => {
       }
     });
 
-    // Filter to only show batches in progress or waiting
+    // Full per-batch entries (all steps) for the new stage-boundary logic.
+    const fullEntriesByBatch = {};
+    wipData.forEach(entry => {
+      const bn = entry.Batch_No;
+      if (!fullEntriesByBatch[bn]) fullEntriesByBatch[bn] = [];
+      fullEntriesByBatch[bn].push(entry);
+    });
+
+    // Keep this stage's members; compute days/start/waiting.
     const activeBatches = Object.values(batchDetails).filter(batch => {
-      if (!batch.hasMissingEndDate && !batch.hasDisplayFlag) {
-        return false;
+      const fullEntries = fullEntriesByBatch[batch.batchNo] || batch.entries;
+
+      if (USE_NEW_STAGE_LOGIC && GROUP_ORDER.includes(actualStageName)) {
+        const status = getStageMembership(fullEntries, actualStageName, referenceDate);
+        if (!status) return false;
+        const start = groupStartFor(fullEntries, actualStageName);
+        batch.isWaiting = status === 'waiting';
+        batch.daysInStage = computeDaysInStageForGroup(fullEntries, actualStageName, referenceDate) || 0;
+        batch.stageStart = start ? new Date(start).toLocaleDateString('en-GB') : 'N/A';
+        return true;
       }
-      
-      // Special check for QA stage - only include if all 4 required steps have started
+
+      // ===== Legacy filter + day calc =====
+      if (!batch.hasMissingEndDate && !batch.hasDisplayFlag) return false;
       if (actualStageName === 'QA') {
         const requiredQASteps = [
           'Cek Dokumen PC oleh QA',
@@ -2001,35 +2127,19 @@ const QualityDashboard = () => {
           'Cek Dokumen MC oleh QA',
           'Cek Dokumen QC oleh QA'
         ];
-        
-        const qaStepsWithIdleDate = batch.entries.filter(entry => 
+        const qaStepsWithIdleDate = batch.entries.filter(entry =>
           requiredQASteps.includes(entry.nama_tahapan) && entry.IdleStartDate
         );
-        
         const allRequiredStepsStarted = requiredQASteps.every(stepName =>
           qaStepsWithIdleDate.some(entry => entry.nama_tahapan === stepName)
         );
-        
-        // If not all 4 steps have started, exclude this batch from QA modal
-        if (!allRequiredStepsStarted) {
-          return false;
-        }
+        if (!allRequiredStepsStarted) return false;
       }
-      
       const isWaiting = isBatchWaiting(batch.entries);
       const isInProgress = (batch.hasStartDate && batch.hasMissingEndDate) || batch.hasDisplayFlag;
-      // Only include batches actively in progress, exclude waiting batches
-      return isInProgress && !isWaiting;
-    });
+      if (!(isInProgress && !isWaiting)) return false;
 
-    // All batches are in progress (waiting batches excluded)
-    const inProgressBatches = [];
-
-    // Calculate days in stage for each batch
-    activeBatches.forEach(batch => {
       let idleDate = null;
-      
-      // Special logic for QA stage - use LATEST IdleStartDate
       if (actualStageName === 'QA') {
         const requiredQASteps = [
           'Cek Dokumen PC oleh QA',
@@ -2037,64 +2147,35 @@ const QualityDashboard = () => {
           'Cek Dokumen MC oleh QA',
           'Cek Dokumen QC oleh QA'
         ];
-        
-        const qaStepsWithIdleDate = batch.entries.filter(entry => 
-          requiredQASteps.includes(entry.nama_tahapan) && entry.IdleStartDate
-        );
-        
-        // Find the LATEST IdleStartDate among the 4 required steps
-        let latestIdleDate = null;
-        qaStepsWithIdleDate.forEach(entry => {
-          if (requiredQASteps.includes(entry.nama_tahapan)) {
-            const entryIdleDate = new Date(entry.IdleStartDate);
-            if (!isNaN(entryIdleDate.getTime())) {
-              if (!latestIdleDate || entryIdleDate > latestIdleDate) {
-                latestIdleDate = entryIdleDate;
-              }
-            }
+        batch.entries.forEach(entry => {
+          if (requiredQASteps.includes(entry.nama_tahapan) && entry.IdleStartDate) {
+            const d = new Date(entry.IdleStartDate);
+            if (!isNaN(d.getTime()) && (!idleDate || d > idleDate)) idleDate = d;
           }
         });
-        
-        idleDate = latestIdleDate;
       } else {
-        // Default logic for other stages - use EARLIEST IdleStartDate
-        let earliestIdleDate = null;
         batch.entries.forEach(entry => {
           if (entry.IdleStartDate) {
-            const entryIdleDate = new Date(entry.IdleStartDate);
-            if (!isNaN(entryIdleDate.getTime())) {
-              if (!earliestIdleDate || entryIdleDate < earliestIdleDate) {
-                earliestIdleDate = entryIdleDate;
-              }
-            }
+            const d = new Date(entry.IdleStartDate);
+            if (!isNaN(d.getTime()) && (!idleDate || d < idleDate)) idleDate = d;
           }
         });
-        
-        idleDate = earliestIdleDate;
       }
-
-      if (idleDate) {
-        // Use working days calculation (excludes weekends and holidays)
-        batch.daysInStage = calculateCalendarDaysToToday(idleDate);
-        batch.stageStart = idleDate.toLocaleDateString('en-GB');
-      } else {
-        batch.daysInStage = 0;
-        batch.stageStart = 'N/A';
-      }
-
-      // All batches here are in progress (waiting excluded earlier)
+      batch.daysInStage = idleDate ? calculateCalendarDaysTo(idleDate, referenceDate) : 0;
+      batch.stageStart = idleDate ? idleDate.toLocaleDateString('en-GB') : 'N/A';
       batch.isWaiting = false;
-      inProgressBatches.push(batch);
+      return true;
     });
 
-    // Sort in-progress batches by longest duration first
+    const inProgressBatches = activeBatches.filter(b => !b.isWaiting);
+    const waitingBatches = activeBatches.filter(b => b.isWaiting);
     inProgressBatches.sort((a, b) => b.daysInStage - a.daysInStage);
 
     setSelectedWipStageData({
       stageName: stageName,
-      batches: inProgressBatches,
+      batches: [...inProgressBatches, ...waitingBatches],
       inProgressCount: inProgressBatches.length,
-      waitingCount: 0,
+      waitingCount: waitingBatches.length,
       color: '#4f8cff',
     });
     setWipStageModalOpen(true);
@@ -2198,35 +2279,36 @@ const QualityDashboard = () => {
       return;
     }
 
-    // Calculate days in stage and stage start
-    let earliestIdleDate = null;
-    fullBatchData.entries.forEach(entry => {
-      if (entry.IdleStartDate) {
-        const idleDate = new Date(entry.IdleStartDate);
-        if (!isNaN(idleDate.getTime())) {
-          if (!earliestIdleDate || idleDate < earliestIdleDate) {
-            earliestIdleDate = idleDate;
-          }
-        }
-      }
+    // Full per-batch entries (all steps) for the new stage-boundary logic.
+    const fullEntriesByBatch = {};
+    wipData.forEach(entry => {
+      const bn = entry.Batch_No;
+      if (!fullEntriesByBatch[bn]) fullEntriesByBatch[bn] = [];
+      fullEntriesByBatch[bn].push(entry);
     });
 
-    if (earliestIdleDate) {
-      // Use working days calculation (excludes weekends and holidays)
-      fullBatchData.daysInStage = calculateCalendarDaysToToday(earliestIdleDate);
-      fullBatchData.stageStart = earliestIdleDate.toLocaleDateString('en-GB');
-    } else {
-      fullBatchData.daysInStage = 0;
-      fullBatchData.stageStart = 'N/A';
-    }
-
-    // Get all active batches for the stage modal (exclude waiting batches)
-    const activeBatches = Object.values(batchDetails).filter(batch => {
-      if (!batch.hasMissingEndDate && !batch.hasDisplayFlag) {
-        return false;
+    // Compute days/start/waiting on a batch and return whether it belongs to this stage.
+    const computeForBatch = (batch) => {
+      const fullEntries = fullEntriesByBatch[batch.batchNo] || batch.entries;
+      if (USE_NEW_STAGE_LOGIC && GROUP_ORDER.includes(actualStageName)) {
+        const status = getStageMembership(fullEntries, actualStageName, referenceDate);
+        const start = groupStartFor(fullEntries, actualStageName);
+        batch.isWaiting = status === 'waiting';
+        batch.daysInStage = computeDaysInStageForGroup(fullEntries, actualStageName, referenceDate) || 0;
+        batch.stageStart = start ? new Date(start).toLocaleDateString('en-GB') : 'N/A';
+        return status !== null;
       }
-      
-      // Special check for QA stage - only include if all 4 required steps have started
+      // Legacy day calc + membership.
+      let earliestIdleDate = null;
+      batch.entries.forEach(entry => {
+        if (entry.IdleStartDate) {
+          const d = new Date(entry.IdleStartDate);
+          if (!isNaN(d.getTime()) && (!earliestIdleDate || d < earliestIdleDate)) earliestIdleDate = d;
+        }
+      });
+      batch.daysInStage = earliestIdleDate ? calculateCalendarDaysTo(earliestIdleDate, referenceDate) : 0;
+      batch.stageStart = earliestIdleDate ? earliestIdleDate.toLocaleDateString('en-GB') : 'N/A';
+      if (!batch.hasMissingEndDate && !batch.hasDisplayFlag) return false;
       if (actualStageName === 'QA') {
         const requiredQASteps = [
           'Cek Dokumen PC oleh QA',
@@ -2234,63 +2316,29 @@ const QualityDashboard = () => {
           'Cek Dokumen MC oleh QA',
           'Cek Dokumen QC oleh QA'
         ];
-        
-        const qaStepsWithIdleDate = batch.entries.filter(entry => 
+        const qaStepsWithIdleDate = batch.entries.filter(entry =>
           requiredQASteps.includes(entry.nama_tahapan) && entry.IdleStartDate
         );
-        
         const allRequiredStepsStarted = requiredQASteps.every(stepName =>
           qaStepsWithIdleDate.some(entry => entry.nama_tahapan === stepName)
         );
-        
-        if (!allRequiredStepsStarted) {
-          return false;
-        }
+        if (!allRequiredStepsStarted) return false;
       }
-      
       const isWaiting = isBatchWaiting(batch.entries);
       const isInProgress = (batch.hasStartDate && batch.hasMissingEndDate) || batch.hasDisplayFlag;
-      // Only include batches actively in progress, exclude waiting batches
+      batch.isWaiting = false;
       return isInProgress && !isWaiting;
-    });
+    };
 
-    // Calculate days for all batches
-    activeBatches.forEach(batch => {
-      if (batch.batchNo === fullBatchData.batchNo) {
-        // Already calculated for the clicked batch
-        batch.daysInStage = fullBatchData.daysInStage;
-        batch.stageStart = fullBatchData.stageStart;
-      } else {
-        let earliestIdleDate = null;
-        batch.entries.forEach(entry => {
-          if (entry.IdleStartDate) {
-            const idleDate = new Date(entry.IdleStartDate);
-            if (!isNaN(idleDate.getTime())) {
-              if (!earliestIdleDate || idleDate < earliestIdleDate) {
-                earliestIdleDate = idleDate;
-              }
-            }
-          }
-        });
-
-        if (earliestIdleDate) {
-          // Use working days calculation (excludes weekends and holidays)
-          batch.daysInStage = calculateCalendarDaysToToday(earliestIdleDate);
-          batch.stageStart = earliestIdleDate.toLocaleDateString('en-GB');
-        } else {
-          batch.daysInStage = 0;
-          batch.stageStart = 'N/A';
-        }
-      }
-    });
-
-    // Sort by longest duration first
-    activeBatches.sort((a, b) => b.daysInStage - a.daysInStage);
+    const activeBatches = Object.values(batchDetails).filter(computeForBatch);
+    const inProgressBatches = activeBatches.filter(b => !b.isWaiting);
+    const waitingBatches = activeBatches.filter(b => b.isWaiting);
+    inProgressBatches.sort((a, b) => b.daysInStage - a.daysInStage);
 
     // Open stage modal
     setSelectedWipStageData({
       stageName: stageName,
-      batches: activeBatches,
+      batches: [...inProgressBatches, ...waitingBatches],
       color: '#4f8cff',
     });
     setWipStageModalOpen(true);
@@ -2504,7 +2552,7 @@ const QualityDashboard = () => {
         callbacks: {
           title: function(context) {
             const day = context[0].label; // Day of month (1-31)
-            const today = new Date();
+            const today = new Date(referenceDate);
             const currentYear = today.getFullYear();
             const currentMonth = today.getMonth();
             
@@ -2634,7 +2682,7 @@ const QualityDashboard = () => {
         callbacks: {
           title: function(context) {
             const day = context[0].label;
-            const currentDate = new Date();
+            const currentDate = new Date(referenceDate);
             const currentMonth = currentDate.toLocaleString('en-US', { month: 'long' });
             const currentYear = currentDate.getFullYear();
             return `${currentMonth} ${day}, ${currentYear}`;
@@ -2878,19 +2926,46 @@ const QualityDashboard = () => {
               </div>
             </div>
             <div className="qc-header-right">
-              <button 
+              <select
+                className="qc-period-select"
+                value={selectedPeriode === null ? 'live' : String(selectedPeriode)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  handlePeriodChange(v === 'live' ? null : parseInt(v, 10));
+                }}
+                disabled={historicalLoading}
+                title="View the dashboard as it was at the end of a previous month"
+              >
+                {availableMonths.map(m => (
+                  <option key={m.periode} value={m.isCurrent ? 'live' : String(m.periode)}>
+                    {m.isCurrent ? `Live (${m.label})` : m.label}
+                  </option>
+                ))}
+              </select>
+              <button
                 onClick={handleRefresh}
-                disabled={refreshing}
+                disabled={refreshing || isHistorical}
                 className="qc-refresh-btn"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
                 {refreshing ? 'Refreshing...' : 'Refresh'}
               </button>
               <span className="qc-last-refresh">
-                Updated: {formatLastFetchTime()}
+                {isHistorical ? `As of: ${formatPeriodeLabel(selectedPeriode)} (end of month)` : `Updated: ${formatLastFetchTime()}`}
               </span>
             </div>
           </div>
+
+          {isHistorical && (
+            <div className="qc-historical-banner">
+              <span className="qc-historical-banner-dot" />
+              Simulated end-of-month view for <strong>{formatPeriodeLabel(selectedPeriode)}</strong>.
+              Data reflects the state as of {asOfParam}. The OF1 target line still reflects the current production plan.
+              <button className="qc-historical-banner-back" onClick={() => handlePeriodChange(null)}>
+                Back to live
+              </button>
+            </div>
+          )}
 
           <div className={`quality-charts-container ${sidebarMinimized ? 'sidebar-minimized' : ''}`}>
             {/* Combined Monthly/Daily Output - Auto-rotating */}

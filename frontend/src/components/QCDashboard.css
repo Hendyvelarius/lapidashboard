@@ -118,6 +118,52 @@
   animation: spin 1s linear infinite;
 }
 
+/* Historical ("end of month" simulation) banner */
+.qc-historical-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0 0 1rem 0;
+  padding: 0.65rem 1rem;
+  background: linear-gradient(135deg, #fff7ed, #ffedd5);
+  border: 1px solid #fdba74;
+  border-radius: 10px;
+  color: #9a3412;
+  font-size: 0.85rem;
+}
+
+.qc-historical-banner strong {
+  font-weight: 700;
+}
+
+.qc-historical-banner-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #f97316;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.2);
+  flex-shrink: 0;
+}
+
+.qc-historical-banner-back {
+  margin-left: auto;
+  padding: 0.35rem 0.85rem;
+  border: 1px solid #f97316;
+  background: white;
+  color: #c2410c;
+  border-radius: 7px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.qc-historical-banner-back:hover {
+  background: #f97316;
+  color: white;
+}
+
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }

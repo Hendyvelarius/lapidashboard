@@ -1,0 +1,122 @@
+/* Konfigurasi Alur Proses Group — page styles */
+
+.apg-page { padding: 24px 28px 60px; max-width: 1200px; margin: 0 auto; }
+
+/* Header */
+.apg-header { margin-bottom: 18px; }
+.apg-breadcrumb { font-size: 0.78rem; color: #9ca3af; margin-bottom: 4px; }
+.apg-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; display: flex; align-items: center; gap: 0.6rem; }
+.apg-subtitle { font-size: 0.9rem; color: #6b7280; margin: 6px 0 0; max-width: 760px; line-height: 1.5; }
+
+/* Info / rollup explanation panel */
+.apg-info {
+  background: linear-gradient(180deg, #f0f9ff 0%, #f8fafc 100%);
+  border: 1px solid #bae6fd;
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 18px;
+}
+.apg-info-title { font-size: 0.9rem; font-weight: 700; color: #0c4a6e; display: flex; align-items: center; gap: 0.5rem; margin-bottom: 6px; }
+.apg-info-text { font-size: 0.82rem; color: #334155; line-height: 1.55; margin: 0 0 12px; }
+.apg-info-text strong { color: #0f172a; }
+
+/* Rollup map: display stages and the categories inside each */
+.apg-rollup { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.apg-rollup-stage {
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 12px;
+  border-left: 4px solid var(--stage-color, #94a3b8);
+}
+.apg-rollup-stage-name { font-size: 0.82rem; font-weight: 700; color: #0f172a; margin-bottom: 6px; }
+.apg-rollup-cats { display: flex; flex-wrap: wrap; gap: 5px; }
+.apg-cat-chip {
+  font-size: 0.7rem; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+  background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0;
+}
+
+/* Toolbar */
+.apg-toolbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  padding: 12px 14px; background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+  position: sticky; top: 12px; z-index: 5; margin-bottom: 14px;
+  box-shadow: 0 1px 4px rgba(15,23,42,0.04);
+}
+.apg-search { position: relative; flex: 1 1 240px; min-width: 200px; }
+.apg-search input {
+  width: 100%; padding: 0.55rem 0.7rem 0.55rem 2rem; border-radius: 8px;
+  border: 1px solid #d1d5db; font-size: 0.86rem;
+}
+.apg-search svg { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); color: #9ca3af; }
+.apg-filter-select { padding: 0.55rem 0.6rem; border-radius: 8px; border: 1px solid #d1d5db; font-size: 0.84rem; background: #fff; }
+.apg-check { display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; color: #374151; cursor: pointer; user-select: none; }
+.apg-spacer { flex: 1 1 auto; }
+
+.apg-changes-pill {
+  font-size: 0.78rem; font-weight: 600; padding: 5px 10px; border-radius: 999px;
+  background: #fef3c7; color: #92400e; white-space: nowrap;
+}
+.apg-btn {
+  display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.55rem 0.95rem; border-radius: 8px;
+  border: none; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: background 0.15s, opacity 0.15s;
+}
+.apg-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.apg-btn.primary { background: #2563eb; color: #fff; }
+.apg-btn.primary:hover:not(:disabled) { background: #1d4ed8; }
+.apg-btn.ghost { background: #fff; color: #374151; border: 1px solid #d1d5db; }
+.apg-btn.ghost:hover:not(:disabled) { background: #f9fafb; }
+.apg-btn.danger { background: #ef4444; color: #fff; }
+.apg-btn.danger:hover:not(:disabled) { background: #dc2626; }
+
+/* Table */
+.apg-table-wrap { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; }
+.apg-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.apg-table thead th {
+  text-align: left; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em;
+  color: #64748b; background: #f8fafc; padding: 10px 14px; border-bottom: 1px solid #e5e7eb; position: sticky; top: 0;
+}
+.apg-table tbody td { padding: 9px 14px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+.apg-table tbody tr:hover { background: #f8fafc; }
+.apg-row-changed { background: #fffbeb !important; }
+.apg-row-changed td:first-child { box-shadow: inset 3px 0 0 #f59e0b; }
+
+.apg-step-name { font-weight: 600; color: #111827; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.apg-step-kode { font-size: 0.72rem; color: #9ca3af; font-family: ui-monospace, monospace; margin-top: 2px; }
+.apg-dept-chip {
+  font-size: 0.66rem; font-weight: 700; letter-spacing: 0.02em; color: #3730a3;
+  background: #eef2ff; border: 1px solid #e0e7ff; padding: 1px 6px; border-radius: 5px;
+}
+/* "No category" is a legitimate, intentional state — style it neutrally, not as an error. */
+.apg-unassigned-tag { font-size: 0.68rem; font-weight: 600; color: #64748b; background: #f1f5f9; padding: 1px 7px; border-radius: 999px; margin-left: 6px; border: 1px solid #e2e8f0; }
+
+.apg-cat-select { padding: 0.4rem 0.5rem; border-radius: 7px; border: 1px solid #d1d5db; font-size: 0.83rem; background: #fff; min-width: 170px; }
+.apg-cat-select.is-empty { color: #64748b; font-style: italic; }
+
+.apg-stage-badge {
+  font-size: 0.72rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; color: #fff; white-space: nowrap;
+  background: var(--stage-color, #94a3b8);
+}
+.apg-stage-badge.none { background: #e5e7eb; color: #6b7280; }
+
+.apg-section-row td {
+  background: #f1f5f9; font-weight: 700; color: #0f172a; font-size: 0.78rem;
+  text-transform: uppercase; letter-spacing: 0.03em; padding: 8px 14px;
+}
+.apg-count-muted { color: #94a3b8; font-weight: 600; margin-left: 6px; }
+
+.apg-empty { padding: 40px; text-align: center; color: #94a3b8; font-size: 0.9rem; }
+
+/* Toast */
+.apg-toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  padding: 12px 20px; border-radius: 10px; font-size: 0.88rem; font-weight: 600; z-index: 1100;
+  box-shadow: 0 6px 20px rgba(15,23,42,0.18); display: flex; align-items: center; gap: 0.5rem;
+}
+.apg-toast.success { background: #065f46; color: #fff; }
+.apg-toast.error { background: #991b1b; color: #fff; }
+
+/* Confirm modal reuse of overlay */
+.apg-confirm { max-width: 460px; }
+.apg-confirm-list { max-height: 220px; overflow: auto; margin: 10px 0; border: 1px solid #e5e7eb; border-radius: 8px; }
+.apg-confirm-list-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 12px; border-bottom: 1px solid #f1f5f9; font-size: 0.82rem; }
+.apg-confirm-list-item:last-child { border-bottom: none; }
+.apg-confirm-arrow { color: #94a3b8; }
+.apg-mini-badge { font-size: 0.7rem; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: #eff6ff; color: #1d4ed8; }
