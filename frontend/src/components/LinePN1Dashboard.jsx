@@ -1869,24 +1869,9 @@ const LinePN1Dashboard = () => {
 
   // Handle task details click
   const handleWipTaskDetailsClick = (batch, stageName, color) => {
-    // Sort tasks: in progress first, then unstarted, then completed
+    // Sort tasks by urutan (chronological process order)
     const sortedTasks = [...batch.entries].sort((a, b) => {
-      const aInProgress = a.StartDate && !a.EndDate;
-      const bInProgress = b.StartDate && !b.EndDate;
-      const aUnstarted = !a.StartDate;
-      const bUnstarted = !b.StartDate;
-
-      // In progress first
-      if (aInProgress && !bInProgress) return -1;
-      if (!aInProgress && bInProgress) return 1;
-
-      // Then unstarted
-      if (aInProgress === bInProgress) {
-        if (aUnstarted && !bUnstarted) return -1;
-        if (!aUnstarted && bUnstarted) return 1;
-      }
-
-      return 0;
+      return (Number(a.urutan) || 0) - (Number(b.urutan) || 0);
     });
 
     setSelectedWipTaskData({
@@ -3669,25 +3654,25 @@ const LinePN1Dashboard = () => {
                   
                   if (isCompleted) {
                     statusBadge = '✅ Completed';
-                    statusColor = '#10b981';
+                    statusColor = '#228B22'; // Forest Green
                     bgColor = '#f0fdf4';
                   } else if (isInProgress) {
                     statusBadge = '🔄 In Progress';
-                    statusColor = '#f59e0b';
-                    bgColor = '#fffbeb';
+                    statusColor = '#32CD32'; // Lime Green
+                    bgColor = '#f7fee7';
                   } else if (isWaiting) {
                     statusBadge = '⏳ Waiting';
-                    statusColor = '#8b5cf6';
-                    bgColor = '#faf5ff';
+                    statusColor = '#ef4444'; // Red
+                    bgColor = '#fef2f2';
                   } else if (isUnstarted) {
                     statusBadge = '⏸️ Not Started';
-                    statusColor = '#6b7280';
-                    bgColor = '#f9fafb';
+                    statusColor = '#eab308'; // Yellow
+                    bgColor = '#fefce8';
                   } else {
                     // Fallback for any edge cases
                     statusBadge = '⏸️ Not Started';
-                    statusColor = '#6b7280';
-                    bgColor = '#f9fafb';
+                    statusColor = '#eab308'; // Yellow
+                    bgColor = '#fefce8';
                   }
 
                   return (

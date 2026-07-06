@@ -1974,4 +1974,134 @@ async function getExpiredMaterials() {
   return result.recordset;
 }
 
-module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTBreakdownLegacy, getPCTBreakdownV2, getPCTSummary, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getTahapanGroupCategories, getTahapanGroupAssignments, bulkUpsertTahapanGroups, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getQCSummary, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig, getExpiredMaterials};
+// ============================================================================
+// Dept Production Dashboard
+// Rolling last-N-months (default 13) breakdown of Output, Yield and Order
+// Fulfillment, split by production line (PN1/PN2) and bentuk sediaan.
+// ============================================================================
+
+/**
+ * Build the last `monthsBack` periods (inclusive of the current month) as
+ * 'YYYYMM' strings, oldest first.
+ */
+function buildRecentPeriods(monthsBack = 13, ref = new Date()) {
+  const periods = [];
+  const year = ref.getFullYear();
+  const month = ref.getMonth(); // 0-indexed
+  for (let i = monthsBack - 1; i >= 0; i--) {
+    const d = new Date(year, month - i, 1);
+    periods.push(`${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}`);
+  }
+  return periods;
+}
+
+/**
+ * Output + Yield aggregates from the HPP Actual header (t_COGS_HPP_Actual_Header),
+ * grouped by (Periode, Dept, Sediaan). This is the same batch universe eSBM's
+ * "HPP Actual" list uses, so Output and Yield are always consistent.
+ *
+ * Per group we return raw sums so the frontend can freely re-aggregate across
+ * any combination of months / depts / sediaan:
+ *   - SumOutput          -> Output metric (units produced)
+ *   - SumRendemenActual / YieldBatchCount -> simple-average actual yield %
+ *   - SumRendemenStd     -> expected-yield reference (avg = /YieldBatchCount)
+ */
+async function getDeptProductionOutputYield(monthsBack = 13) {
+  const db = await connect();
+  const periods = buildRecentPeriods(monthsBack);
+  const inList = periods.map(p => `'${p}'`).join(', ');
+
+  const query = `
+    SELECT
+      CAST(h.Periode AS VARCHAR(6))                       AS Periode,
+      ISNULL(NULLIF(LTRIM(RTRIM(h.Group_PNCategory_Dept)), ''), 'Other') AS Dept,
+      ISNULL(s.Jenis_Sediaan, 'Belum Ada')               AS Sediaan,
+      COUNT(*)                                           AS BatchCount,
+      SUM(ISNULL(h.Output_Actual, 0))                    AS SumOutput,
+      SUM(ISNULL(h.Batch_Size_Std, 0))                   AS SumBatchSize,
+      -- Yield sums only include batches with a sane actual yield. Some batches
+      -- have a corrupt Batch_Size_Std (~1) which yields Rendemen_Actual values in
+      -- the thousands/millions; those are excluded so they don't poison averages.
+      SUM(CASE WHEN h.Rendemen_Actual > 0 AND h.Rendemen_Actual <= 150 THEN 1 ELSE 0 END) AS YieldBatchCount,
+      SUM(CASE WHEN h.Rendemen_Actual > 0 AND h.Rendemen_Actual <= 150 THEN h.Rendemen_Actual ELSE 0 END) AS SumRendemenActual,
+      SUM(CASE WHEN h.Rendemen_Actual > 0 AND h.Rendemen_Actual <= 150 THEN ISNULL(h.Rendemen_Std, 0) ELSE 0 END) AS SumRendemenStd
+    FROM t_COGS_HPP_Actual_Header h
+    LEFT JOIN m_product_sediaan_produksi s ON s.Product_ID = h.DNc_ProductID
+    WHERE h.Calculation_Status = 'COMPLETED'
+      AND h.LOB NOT IN ('GRANULATE', 'FG')
+      AND CAST(h.Periode AS VARCHAR(6)) IN (${inList})
+    GROUP BY CAST(h.Periode AS VARCHAR(6)),
+             ISNULL(NULLIF(LTRIM(RTRIM(h.Group_PNCategory_Dept)), ''), 'Other'),
+             ISNULL(s.Jenis_Sediaan, 'Belum Ada')
+    ORDER BY Periode, Dept, Sediaan
+  `;
+
+  const result = await db.request().query(query);
+  return { periods, rows: result.recordset };
+}
+
+/**
+ * Order Fulfillment aggregates for the last `monthsBack` months, grouped by
+ * (Periode, Dept, Sediaan) as { SumTarget, SumRelease }. OF% = Release / Target.
+ *
+ * Finalized months come from the month-end results table r_target_of1_dashboard;
+ * the running current month is pulled live from sp_Dashboard_OF1 'RAW' so the
+ * newest month is always represented (and never double-counted).
+ */
+async function getDeptProductionFulfillment(monthsBack = 13) {
+  const db = await connect();
+  const periods = buildRecentPeriods(monthsBack);
+  const currentPeriode = periods[periods.length - 1];
+  const historicalPeriods = periods.filter(p => p !== currentPeriode);
+
+  const rows = [];
+
+  // --- Finalized months from the stored monthly results table ---
+  if (historicalPeriods.length) {
+    const inList = historicalPeriods.map(p => `'${p}'`).join(', ');
+    const histQuery = `
+      SELECT
+        CAST(t.periode AS VARCHAR(6))                    AS Periode,
+        ISNULL(NULLIF(LTRIM(RTRIM(g.Group_Dept)), ''), 'Other') AS Dept,
+        ISNULL(s.Jenis_Sediaan, 'Belum Ada')            AS Sediaan,
+        SUM(ISNULL(t.target, 0))                        AS SumTarget,
+        SUM(ISNULL(t.[release], 0))                     AS SumRelease
+      FROM r_target_of1_dashboard t
+      LEFT JOIN m_product_sediaan_produksi s ON s.Product_ID = t.product_id
+      LEFT JOIN m_Product_PN_Group g
+             ON g.Group_ProductID = t.product_id
+            AND g.Group_Periode = LEFT(CAST(t.periode AS VARCHAR(6)), 4) + ' ' + RIGHT(CAST(t.periode AS VARCHAR(6)), 2)
+      WHERE CAST(t.periode AS VARCHAR(6)) IN (${inList})
+      GROUP BY CAST(t.periode AS VARCHAR(6)),
+               ISNULL(NULLIF(LTRIM(RTRIM(g.Group_Dept)), ''), 'Other'),
+               ISNULL(s.Jenis_Sediaan, 'Belum Ada')
+    `;
+    const histResult = await db.request().query(histQuery);
+    rows.push(...histResult.recordset);
+  }
+
+  // --- Running current month, live from the OF1 dashboard SP ---
+  try {
+    const rawResult = await db.request().query(`EXEC sp_Dashboard_OF1 'RAW';`);
+    const agg = new Map(); // key: Dept||Sediaan
+    for (const r of rawResult.recordset) {
+      const dept = (r.Group_Dept && String(r.Group_Dept).trim()) || 'Other';
+      const sediaan = (r.pengelompokan && String(r.pengelompokan).trim()) || 'Belum Ada';
+      const key = `${dept}||${sediaan}`;
+      const cur = agg.get(key) || { SumTarget: 0, SumRelease: 0 };
+      cur.SumTarget += Number(r.jlhTarget) || 0;
+      cur.SumRelease += Number(r.release) || 0;
+      agg.set(key, cur);
+    }
+    for (const [key, v] of agg) {
+      const [Dept, Sediaan] = key.split('||');
+      rows.push({ Periode: currentPeriode, Dept, Sediaan, SumTarget: v.SumTarget, SumRelease: v.SumRelease });
+    }
+  } catch (err) {
+    console.error('getDeptProductionFulfillment: live current-month fetch failed:', err.message);
+  }
+
+  return { periods, rows };
+}
+
+module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTBreakdownLegacy, getPCTBreakdownV2, getPCTSummary, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getTahapanGroupCategories, getTahapanGroupAssignments, bulkUpsertTahapanGroups, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getQCSummary, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig, getExpiredMaterials, getDeptProductionOutputYield, getDeptProductionFulfillment};

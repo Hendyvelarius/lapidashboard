@@ -29,6 +29,10 @@ router.get('/wipData', SqlController.getWIPData);
 router.get('/alur', SqlController.getAlur);
 router.get('/batch', SqlController.getBatchAlur);
 
+// Routing Dept Production Dashboard
+router.get('/deptProduction/outputYield', SqlController.getDeptProductionOutputYield);
+router.get('/deptProduction/fulfillment', SqlController.getDeptProductionFulfillment);
+
 // Routing Order Fulfillment
 router.get('/fulfillment', SqlController.getFulfillment);
 router.get('/fulfillmentKelompok', SqlController.getFulfillmentPerKelompok);

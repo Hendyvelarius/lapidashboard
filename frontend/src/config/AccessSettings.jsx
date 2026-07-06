@@ -104,6 +104,20 @@ export const PAGE_ACCESS = {
     ],
   },
 
+  // Dept Production / "Line Metrics" Dashboard (Output / Yield / Order Fulfillment
+  // per sediaan). Access mirrors the 'summary' dashboard.
+  'dept-production': {
+    requireAuth: true,
+    allowedDepartments: ['NT', 'PL', 'PC', 'HC', 'DS'],
+    allowedUserIds: ['JDV', 'HWA'],
+    allowedJobLevels: [],
+    specificCombinations: [
+      { department: 'DS', jobLevel: 'DIR' },
+      { department: 'MS', jobLevel: 'MGR' },
+      { department: 'HQ', jobLevel: 'HO' },
+    ],
+  },
+
   // Line PN1 Dashboard
   'line-pn1': {
     requireAuth: true,

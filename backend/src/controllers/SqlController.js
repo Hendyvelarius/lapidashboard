@@ -736,4 +736,44 @@ async function getExpiredMaterials(req, res) {
   }
 }
 
-module.exports = { getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getPCTSummary, getOrderFulfillment, getStockReport, getofsummary, getPCTBreakdown, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getTahapanGroupCategories, getTahapanGroupAssignments, bulkUpsertTahapanGroups, getQCSummary, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig, getExpiredMaterials };
+// ============================================
+// Dept Production Dashboard
+// ============================================
+
+// Controller for /deptProduction/outputYield
+async function getDeptProductionOutputYield(req, res) {
+  try {
+    const months = parseInt(req.query.months, 10);
+    const monthsBack = Number.isFinite(months) && months > 0 && months <= 36 ? months : 13;
+    const data = await getCachedData(
+      `deptProductionOutputYield:${monthsBack}`,
+      () => SqlModel.getDeptProductionOutputYield(monthsBack),
+      CACHE_TTL.LONG,
+      shouldSkipCache(req)
+    );
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching Dept Production Output/Yield:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+// Controller for /deptProduction/fulfillment
+async function getDeptProductionFulfillment(req, res) {
+  try {
+    const months = parseInt(req.query.months, 10);
+    const monthsBack = Number.isFinite(months) && months > 0 && months <= 36 ? months : 13;
+    const data = await getCachedData(
+      `deptProductionFulfillment:${monthsBack}`,
+      () => SqlModel.getDeptProductionFulfillment(monthsBack),
+      CACHE_TTL.LONG,
+      shouldSkipCache(req)
+    );
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching Dept Production Fulfillment:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+module.exports = { getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getPCTSummary, getOrderFulfillment, getStockReport, getofsummary, getPCTBreakdown, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getTahapanGroupCategories, getTahapanGroupAssignments, bulkUpsertTahapanGroups, getQCSummary, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig, getExpiredMaterials, getDeptProductionOutputYield, getDeptProductionFulfillment };
