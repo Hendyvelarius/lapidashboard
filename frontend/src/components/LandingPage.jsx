@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import { hasPageAccess } from '../config/AccessSettings';
-import { FaChartLine, FaClipboardList, FaBoxOpen, FaRegFileAlt, FaFlask, FaIndustry, FaArchive, FaTachometerAlt } from 'react-icons/fa';
+import { FaChartLine, FaClipboardList, FaBoxOpen, FaRegFileAlt, FaFlask, FaIndustry, FaArchive, FaTachometerAlt, FaChartBar } from 'react-icons/fa';
 import Sidebar from './Sidebar';
 import Modal from './Modal';
 import './LandingPage.css';
@@ -20,9 +20,12 @@ const dashboardCards = [
     Icon: FaClipboardList,
     title: "Production",
     desc: "Informasi proses produksi secara keseluruhan.",
-    route: "/production",
-    pageName: "production",
     color: "#38e6c5",
+    group: true,
+    items: [
+      { key: "production", label: "Production", desc: "Informasi proses produksi secara keseluruhan.", icon: <FaClipboardList size={20} color="#38e6c5" />, route: "/production", pageName: "production" },
+      { key: "line-metrics", label: "Line Metrics", desc: "Output, yield, dan order fulfillment per bentuk sediaan.", icon: <FaChartBar size={20} color="#0ea5e9" />, route: "/dept-production", pageName: "dept-production" },
+    ],
   },
   {
     Icon: FaIndustry,
