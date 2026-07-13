@@ -1069,10 +1069,11 @@ export const helpContent = {
   },
 
   // ====================================
-  // QUALITY - MATERIALS (QC) DASHBOARD
+  // QUALITY CONTROL (QC) DASHBOARD
+  // Covers both scopes of the dashboard: Material (BB/BK) and Finished Goods.
   // ====================================
   qc: {
-    dashboardTitle: 'Quality - Materials Dashboard',
+    dashboardTitle: 'Quality Control Dashboard',
     topics: {
       kpi: {
         id: 'kpi',

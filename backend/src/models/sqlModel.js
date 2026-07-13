@@ -1852,6 +1852,302 @@ async function getQCSummary(period) {
 }
 
 // ============================================
+// QC Dashboard - Finished Goods (Barang Jadi)
+// ============================================
+
+/**
+ * The finished-goods QC window.
+ *
+ * Materials have a real inspection queue in t_dnc_manufacturing, but the finished-goods
+ * table t_dnc_product is only the *release record*: a row appears there at the moment QA
+ * releases the batch, so it holds no queue at all (2 of 18,851 rows lack a label date) and
+ * its turnaround is ~0 days. The real QC window for finished goods lives in t_alur_proses:
+ * it opens when the batch is handed over to QA and closes at 'Tempel Label Realese'.
+ *
+ * Note 'Penyerahaan PPI ke QA' is spelled with a double-a in the DB (100% of rows); the
+ * correctly-spelled variant matches nothing. See also stageBoundaries.js on the frontend.
+ *
+ * Some batches are released in t_dnc_product without the alur label step ever being closed,
+ * so the exit is the first of: alur label EndDate, DNC_TempelLabel, dnc Process_Date. That
+ * mirrors getWIPData, which treats either signal as "done".
+ */
+const FG_QC_CTE = `
+  WITH alur AS (
+    SELECT Product_ID, Batch_No, Batch_Date,
+      MIN(CASE WHEN nama_tahapan IN ('Penyerahaan PPI ke QA', 'Penyerahan Hasil Uji QC')
+               THEN StartDate END) AS QAEntry,
+      MAX(CASE WHEN nama_tahapan = 'Tempel Label Realese' THEN EndDate END) AS LabelEnd
+    FROM t_alur_proses
+    GROUP BY Product_ID, Batch_No, Batch_Date
+  ),
+  qa AS (
+    SELECT
+      a.Product_ID, a.Batch_No, a.Batch_Date, a.QAEntry,
+      COALESCE(a.LabelEnd, dp.DNC_TempelLabel, dp.Process_Date) AS QAExit,
+      dp.DNc_No, dp.DNc_Status, dp.DNc_Keterangan,
+      dp.DNC_Diluluskan, dp.DNC_ditolak,
+      p.Product_Name, p.Product_Unit
+    FROM alur a
+    JOIN m_Product p ON p.Product_ID = a.Product_ID
+    OUTER APPLY (
+      SELECT TOP 1 b.DNc_No, b.DNc_Status, b.DNc_Keterangan, b.DNC_TempelLabel,
+                   b.Process_Date, b.DNC_Diluluskan, b.DNC_ditolak
+      FROM t_dnc_product b
+      WHERE b.DNc_ProductID = a.Product_ID AND b.DNc_BatchNo = a.Batch_No
+      ORDER BY b.Process_Date DESC
+    ) dp
+    WHERE a.QAEntry IS NOT NULL
+      AND p.Product_Name NOT LIKE '%Granulat%'
+      AND NOT EXISTS (
+        SELECT 1 FROM t_wip_batal wb
+        WHERE wb.wip_batchno = a.Batch_No AND wb.wip_productID = a.Product_ID
+      )
+  )`;
+
+/**
+ * Live batches, using the same rule as getWIPData: an open RFID batch card and a batch date
+ * inside the last 12 months. Only applied to the in-process query -- completed batches have
+ * closed cards, so joining this to them would filter out everything.
+ *
+ * Without it the in-process count is badly inflated: the raw QA window is open on 291
+ * batches, but 129 of those were already released and the rest include abandoned batches
+ * dating back to 2023. Applying it yields ~60 genuinely-in-QA batches.
+ */
+const FG_LIVE_BATCHES = `
+  SELECT DISTINCT a.Product_ID, a.Batch_No, a.Batch_Date
+  FROM t_alur_proses a
+  JOIN (
+    SELECT DISTINCT Batch_No, Batch_Date, Product_ID
+    FROM t_rfid_batch_card WHERE isActive = 1 AND Batch_Status = 'Open'
+  ) c ON c.Product_ID = a.Product_ID AND c.Batch_Date = a.Batch_Date AND c.Batch_No = a.Batch_No
+  JOIN m_Product p ON p.Product_ID = a.Product_ID
+  WHERE REPLACE(LEFT(a.Batch_Date, 7), '/', '')
+    BETWEEN CONVERT(nvarchar(6), DATEADD(month, -12, GETDATE()), 112)
+        AND CONVERT(nvarchar(6), GETDATE(), 112)
+    AND p.Product_Name NOT LIKE '%Granulat%'`;
+
+// Columns are aliased to the material dashboard's names (DNc_ItemID, DNC_BatchNo, ...) so the
+// frontend renders both scopes through one code path.
+const FG_QC_COLUMNS = `
+  qa.DNc_No,
+  qa.Product_ID AS DNc_ItemID,
+  qa.Product_Name AS Item_Name,
+  qa.Batch_No AS DNC_BatchNo,
+  qa.Batch_Date,
+  qa.QAEntry AS DNc_Date,
+  qa.Product_Unit AS DNc_UnitID,
+  qa.DNC_Diluluskan AS DNc_ReleaseQTY,
+  qa.DNC_ditolak AS DNc_RejectQTY,
+  qa.DNc_Status,
+  qa.DNc_Keterangan,
+  'FG' AS Item_Type`;
+
+/**
+ * Finished-goods batches currently sitting in QC (QA window open, not yet released).
+ */
+async function getFGQCInProcess() {
+  const db = await connect();
+  const result = await db.request().query(`
+    ${FG_QC_CTE}
+    SELECT
+      ${FG_QC_COLUMNS},
+      DATEDIFF(day, qa.QAEntry, GETDATE()) AS DaysInQC
+    FROM qa
+    JOIN (${FG_LIVE_BATCHES}) live
+      ON live.Product_ID = qa.Product_ID
+     AND live.Batch_No = qa.Batch_No
+     AND live.Batch_Date = qa.Batch_Date
+    WHERE qa.QAExit IS NULL
+    ORDER BY qa.QAEntry ASC
+  `);
+  return result.recordset;
+}
+
+/**
+ * Finished-goods batches that entered QC in a given period (YYYYMM).
+ */
+async function getFGQCByPeriod(period) {
+  const db = await connect();
+  const request = db.request();
+  request.input('period', sql.NVarChar(6), period);
+  const result = await request.query(`
+    ${FG_QC_CTE}
+    SELECT
+      ${FG_QC_COLUMNS},
+      qa.QAExit AS DNC_tempellabelDate,
+      DATEDIFF(day, qa.QAEntry, qa.QAExit) AS TurnaroundDays,
+      DATEDIFF(day, qa.QAEntry, COALESCE(qa.QAExit, GETDATE())) AS DaysInQC
+    FROM qa
+    WHERE CONVERT(nvarchar(6), qa.QAEntry, 112) = @period
+    ORDER BY qa.QAEntry DESC
+  `);
+  return result.recordset;
+}
+
+/**
+ * Finished-goods batches released from QC in a given period (YYYYMM), by completion date.
+ */
+async function getFGQCCompletedByPeriod(period) {
+  const db = await connect();
+  const request = db.request();
+  request.input('period', sql.NVarChar(6), period);
+  const result = await request.query(`
+    ${FG_QC_CTE}
+    SELECT
+      ${FG_QC_COLUMNS},
+      qa.QAExit AS DNC_tempellabelDate,
+      DATEDIFF(day, qa.QAEntry, qa.QAExit) AS TurnaroundDays
+    FROM qa
+    WHERE qa.QAExit IS NOT NULL
+      AND CONVERT(nvarchar(6), qa.QAExit, 112) = @period
+    ORDER BY qa.QAExit DESC
+  `);
+  return result.recordset;
+}
+
+/**
+ * Summary statistics powering the finished-goods KPI cards and charts.
+ * Mirrors getQCSummary, minus the BB/BK split (finished goods are a single series).
+ */
+async function getFGQCSummary(period) {
+  const db = await connect();
+  const targetPeriod = period || new Date().toISOString().slice(0, 7).replace('-', '');
+
+  const AGING_BUCKET = (expr) => `
+    CASE
+      WHEN ${expr} <= 3 THEN '0-3 days'
+      WHEN ${expr} <= 7 THEN '4-7 days'
+      WHEN ${expr} <= 14 THEN '8-14 days'
+      WHEN ${expr} <= 30 THEN '15-30 days'
+      ELSE '30+ days'
+    END`;
+  const turnaround = 'DATEDIFF(day, qa.QAEntry, qa.QAExit)';
+
+  // 1. Total currently in QC (same definition as getFGQCInProcess)
+  const totalInQCReq = db.request();
+  const totalInQC = await totalInQCReq.query(`
+    ${FG_QC_CTE}
+    SELECT COUNT(*) AS total
+    FROM qa
+    JOIN (${FG_LIVE_BATCHES}) live
+      ON live.Product_ID = qa.Product_ID
+     AND live.Batch_No = qa.Batch_No
+     AND live.Batch_Date = qa.Batch_Date
+    WHERE qa.QAExit IS NULL
+  `);
+
+  // 2. Aging: turnaround spread of batches released in the selected period
+  const agingReq = db.request();
+  agingReq.input('agingPeriod', sql.NVarChar(6), targetPeriod);
+  const agingResult = await agingReq.query(`
+    ${FG_QC_CTE}
+    SELECT ${AGING_BUCKET(turnaround)} AS aging_bucket, COUNT(*) AS count
+    FROM qa
+    WHERE qa.QAExit IS NOT NULL
+      AND CONVERT(nvarchar(6), qa.QAExit, 112) = @agingPeriod
+    GROUP BY ${AGING_BUCKET(turnaround)}
+  `);
+
+  // 3. Aging over the last 13 months (YTD toggle)
+  const agingYTDResult = await db.request().query(`
+    ${FG_QC_CTE}
+    SELECT ${AGING_BUCKET(turnaround)} AS aging_bucket, COUNT(*) AS count
+    FROM qa
+    WHERE qa.QAExit IS NOT NULL
+      AND qa.QAExit >= DATEADD(month, -13, GETDATE())
+    GROUP BY ${AGING_BUCKET(turnaround)}
+  `);
+
+  // 4. Monthly volume by QC entry month (last 13 months)
+  const monthlyResult = await db.request().query(`
+    ${FG_QC_CTE}
+    SELECT
+      CONVERT(nvarchar(6), qa.QAEntry, 112) AS period,
+      COUNT(*) AS total,
+      SUM(CASE WHEN qa.QAExit IS NULL THEN 1 ELSE 0 END) AS still_in_qc,
+      SUM(CASE WHEN qa.QAExit IS NOT NULL THEN 1 ELSE 0 END) AS completed,
+      SUM(ISNULL(qa.DNC_Diluluskan, 0)) AS total_released,
+      SUM(ISNULL(qa.DNC_ditolak, 0)) AS total_rejected,
+      SUM(CASE WHEN qa.DNc_Status = 'DITOLAK' OR qa.DNC_ditolak > 0 THEN 1 ELSE 0 END) AS has_reject,
+      ROUND(SUM(ISNULL(qa.DNC_ditolak, 0)) * 100.0
+            / NULLIF(SUM(ISNULL(qa.DNC_Diluluskan, 0) + ISNULL(qa.DNC_ditolak, 0)), 0), 2) AS reject_pct
+    FROM qa
+    WHERE qa.QAEntry >= DATEADD(month, -13, GETDATE())
+    GROUP BY CONVERT(nvarchar(6), qa.QAEntry, 112)
+    ORDER BY period ASC
+  `);
+
+  // 5. Daily intake for the selected period
+  const dailyIntakeReq = db.request();
+  dailyIntakeReq.input('intakePeriod', sql.NVarChar(6), targetPeriod);
+  const dailyIntakeResult = await dailyIntakeReq.query(`
+    ${FG_QC_CTE}
+    SELECT CONVERT(date, qa.QAEntry) AS entry_date, COUNT(*) AS cnt
+    FROM qa
+    WHERE CONVERT(nvarchar(6), qa.QAEntry, 112) = @intakePeriod
+    GROUP BY CONVERT(date, qa.QAEntry)
+    ORDER BY entry_date
+  `);
+
+  // 6. Daily completions for the selected period
+  const dailyCompReq = db.request();
+  dailyCompReq.input('compPeriod', sql.NVarChar(6), targetPeriod);
+  const dailyCompResult = await dailyCompReq.query(`
+    ${FG_QC_CTE}
+    SELECT CONVERT(date, qa.QAExit) AS completion_date, COUNT(*) AS cnt
+    FROM qa
+    WHERE qa.QAExit IS NOT NULL
+      AND CONVERT(nvarchar(6), qa.QAExit, 112) = @compPeriod
+    GROUP BY CONVERT(date, qa.QAExit)
+    ORDER BY completion_date
+  `);
+
+  // 7. Leadtime by completion month (18 months, so the frontend can window 13 of them)
+  const leadtimeMonthlyResult = await db.request().query(`
+    ${FG_QC_CTE}
+    SELECT
+      CONVERT(nvarchar(6), qa.QAExit, 112) AS period,
+      AVG(CAST(${turnaround} AS FLOAT)) AS avg_turnaround,
+      COUNT(*) AS sample_count
+    FROM qa
+    WHERE qa.QAExit IS NOT NULL
+      AND qa.QAExit >= DATEADD(month, -18, GETDATE())
+    GROUP BY CONVERT(nvarchar(6), qa.QAExit, 112)
+    ORDER BY period ASC
+  `);
+
+  // 8. Released count by completion month (drives the Released / Reject Rate KPI cards)
+  const releasedResult = await db.request().query(`
+    ${FG_QC_CTE}
+    SELECT
+      CONVERT(nvarchar(6), qa.QAExit, 112) AS period,
+      COUNT(*) AS completed,
+      SUM(ISNULL(qa.DNC_Diluluskan, 0)) AS total_released,
+      SUM(ISNULL(qa.DNC_ditolak, 0)) AS total_rejected,
+      SUM(CASE WHEN qa.DNc_Status = 'DITOLAK' OR qa.DNC_ditolak > 0 THEN 1 ELSE 0 END) AS has_reject,
+      ROUND(SUM(ISNULL(qa.DNC_ditolak, 0)) * 100.0
+            / NULLIF(SUM(ISNULL(qa.DNC_Diluluskan, 0) + ISNULL(qa.DNC_ditolak, 0)), 0), 2) AS reject_pct
+    FROM qa
+    WHERE qa.QAExit IS NOT NULL
+      AND qa.QAExit >= DATEADD(month, -13, GETDATE())
+    GROUP BY CONVERT(nvarchar(6), qa.QAExit, 112)
+    ORDER BY period ASC
+  `);
+
+  return {
+    totalInQC: totalInQC.recordset[0].total,
+    currentPeriod: targetPeriod,
+    aging: agingResult.recordset,
+    agingYTD: agingYTDResult.recordset,
+    monthly: monthlyResult.recordset,
+    dailyIntake: dailyIntakeResult.recordset,
+    dailyCompletions: dailyCompResult.recordset,
+    leadtimeMonthly: leadtimeMonthlyResult.recordset,
+    released: releasedResult.recordset
+  };
+}
+
+// ============================================
 // OF1 Target Configuration
 // ============================================
 
@@ -2104,4 +2400,4 @@ async function getDeptProductionFulfillment(monthsBack = 13) {
   return { periods, rows };
 }
 
-module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTBreakdownLegacy, getPCTBreakdownV2, getPCTSummary, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getTahapanGroupCategories, getTahapanGroupAssignments, bulkUpsertTahapanGroups, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getQCSummary, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig, getExpiredMaterials, getDeptProductionOutputYield, getDeptProductionFulfillment};
+module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTBreakdownLegacy, getPCTBreakdownV2, getPCTSummary, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getTahapanGroupCategories, getTahapanGroupAssignments, bulkUpsertTahapanGroups, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getQCSummary, getFGQCInProcess, getFGQCByPeriod, getFGQCCompletedByPeriod, getFGQCSummary, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig, getExpiredMaterials, getDeptProductionOutputYield, getDeptProductionFulfillment};

@@ -92,6 +92,12 @@ router.get('/qcInProcess', SqlController.getQCInProcess);
 router.get('/qcByPeriod', SqlController.getQCByPeriod);
 router.get('/qcCompletedByPeriod', SqlController.getQCCompletedByPeriod);
 
+// Finished Goods scope of the same dashboard
+router.get('/fgQcSummary', SqlController.getFGQCSummary);
+router.get('/fgQcInProcess', SqlController.getFGQCInProcess);
+router.get('/fgQcByPeriod', SqlController.getFGQCByPeriod);
+router.get('/fgQcCompletedByPeriod', SqlController.getFGQCCompletedByPeriod);
+
 // ============================================
 // Product Type (Jenis Sediaan) Management Routes
 // ============================================

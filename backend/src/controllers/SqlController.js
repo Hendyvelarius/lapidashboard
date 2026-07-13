@@ -662,6 +662,66 @@ async function getQCCompletedByPeriod(req, res) {
   }
 }
 
+// ============================================
+// QC Dashboard Controllers - Finished Goods
+// ============================================
+
+// GET /api/fgQcSummary - Finished-goods QC summary (KPIs, aging, leadtime, daily flow)
+async function getFGQCSummary(req, res) {
+  try {
+    const period = req.query.period || null;
+    const cacheKey = period ? `fgQcSummary_${period}` : 'fgQcSummary';
+    const data = await getCachedData(cacheKey, () => SqlModel.getFGQCSummary(period), CACHE_TTL.MEDIUM, shouldSkipCache(req));
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching FG QC Summary:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+// GET /api/fgQcInProcess - Finished-goods batches currently in QC
+async function getFGQCInProcess(req, res) {
+  try {
+    const data = await getCachedData('fgQcInProcess', () => SqlModel.getFGQCInProcess(), CACHE_TTL.MEDIUM, shouldSkipCache(req));
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching FG QC In Process:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+// GET /api/fgQcByPeriod?period=YYYYMM - Finished-goods batches that entered QC in a period
+async function getFGQCByPeriod(req, res) {
+  try {
+    const period = req.query.period;
+    if (!period || !/^\d{6}$/.test(period)) {
+      return res.status(400).json({ success: false, error: 'period query parameter is required in YYYYMM format' });
+    }
+    const cacheKey = `fgQcByPeriod_${period}`;
+    const data = await getCachedData(cacheKey, () => SqlModel.getFGQCByPeriod(period), CACHE_TTL.MEDIUM, shouldSkipCache(req));
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching FG QC By Period:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+// GET /api/fgQcCompletedByPeriod?period=YYYYMM - Finished-goods batches released in a period
+async function getFGQCCompletedByPeriod(req, res) {
+  try {
+    const period = req.query.period;
+    if (!period || !/^\d{6}$/.test(period)) {
+      return res.status(400).json({ success: false, error: 'period query parameter is required in YYYYMM format' });
+    }
+    const cacheKey = `fgQcCompletedByPeriod_${period}`;
+    const data = await getCachedData(cacheKey, () => SqlModel.getFGQCCompletedByPeriod(period), CACHE_TTL.MEDIUM, shouldSkipCache(req));
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching FG QC Completed By Period:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
 async function getOF1TargetProducts(req, res) {
   try {
     const periode = req.query.periode;
@@ -776,4 +836,4 @@ async function getDeptProductionFulfillment(req, res) {
   }
 }
 
-module.exports = { getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getPCTSummary, getOrderFulfillment, getStockReport, getofsummary, getPCTBreakdown, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getTahapanGroupCategories, getTahapanGroupAssignments, bulkUpsertTahapanGroups, getQCSummary, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig, getExpiredMaterials, getDeptProductionOutputYield, getDeptProductionFulfillment };
+module.exports = { getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getPCTSummary, getOrderFulfillment, getStockReport, getofsummary, getPCTBreakdown, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getTahapanGroupCategories, getTahapanGroupAssignments, bulkUpsertTahapanGroups, getQCSummary, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getFGQCSummary, getFGQCInProcess, getFGQCByPeriod, getFGQCCompletedByPeriod, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig, getExpiredMaterials, getDeptProductionOutputYield, getDeptProductionFulfillment };

@@ -237,6 +237,22 @@
   background: #e8ecf1;
 }
 
+/* Material <-> Finished Goods scope switch on the QC dashboard. Wider than the
+   product/material switch above because "Finished Goods" is a longer label. */
+.quality-toggle-track.qc-scope-toggle {
+  width: 260px;
+}
+
+.qc-scope-toggle.active-scope-material .quality-toggle-thumb {
+  left: 4px;
+  background: linear-gradient(135deg, #e57373, #ef5350);
+}
+
+.qc-scope-toggle.active-scope-fg .quality-toggle-thumb {
+  left: calc(50%);
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+}
+
 /* ============================================
    KPI Cards Row
    ============================================ */

@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router';
 import { Chart as ChartJS, ArcElement, BarElement, CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend } from 'chart.js';
 import ChartDataLabels from 'chartjs-plugin-datalabels';
 import { Bar, Line, Doughnut } from 'react-chartjs-2';
@@ -8,7 +7,10 @@ import Modal from './Modal';
 import DashboardLoading from './DashboardLoading';
 import ContextualHelpModal from './ContextualHelpModal';
 import { useHelp } from '../context/HelpContext';
-import { loadQCCache, saveQCCache, clearQCCache, isQCCacheValid } from '../utils/dashboardCache';
+import {
+  loadQCCache, saveQCCache, clearQCCache, isQCCacheValid,
+  loadFGQCCache, saveFGQCCache, clearFGQCCache
+} from '../utils/dashboardCache';
 import { apiUrl, apiUrlWithRefresh } from '../api';
 import './QCDashboard.css';
 
@@ -69,12 +71,26 @@ const getPeriodOptions = () => {
 
 const ROWS_PER_PAGE = 25;
 
+const AGING_BUCKETS = ['0-3 days', '4-7 days', '8-14 days', '15-30 days', '30+ days'];
+const AGING_FILLS = [
+  'rgba(34, 197, 94, 0.8)',
+  'rgba(59, 130, 246, 0.8)',
+  'rgba(245, 158, 11, 0.8)',
+  'rgba(249, 115, 22, 0.8)',
+  'rgba(239, 68, 68, 0.8)',
+];
+const AGING_BORDERS = ['#22c55e', '#3b82f6', '#f59e0b', '#f97316', '#ef4444'];
+
 // ============================================
 // Main Component
 // ============================================
 
 const QCDashboard = () => {
-  const navigate = useNavigate();
+  // Which side of the dashboard is showing: incoming materials (BB/BK) or finished goods.
+  // Both scopes render through the same components; only the split-by-type controls differ,
+  // since finished goods have no BB/BK equivalent.
+  const [scope, setScope] = useState('material'); // 'material' | 'fg'
+  const isFG = scope === 'fg';
 
   // Help system: register this dashboard and scroll to the active topic's section
   const { helpMode, activeTopic, selectTopic, setCurrentDashboard } = useHelp();
@@ -147,14 +163,26 @@ const QCDashboard = () => {
   // Data Fetching
   // ============================================
 
+  // Endpoint + cache wiring for each scope. The two scopes are cached separately so that
+  // toggling between them is instant rather than re-fetching.
+  const endpoints = isFG
+    ? { summary: 'fgQcSummary', inProcess: 'fgQcInProcess', byPeriod: 'fgQcByPeriod', completed: 'fgQcCompletedByPeriod' }
+    : { summary: 'qcSummary', inProcess: 'qcInProcess', byPeriod: 'qcByPeriod', completed: 'qcCompletedByPeriod' };
+  const loadCache = isFG ? loadFGQCCache : loadQCCache;
+  const saveCache = isFG ? saveFGQCCache : saveQCCache;
+  const clearCache = isFG ? clearFGQCCache : clearQCCache;
+
   const fetchData = useCallback(async (skipCache = false) => {
     setLoading(true);
     setError(null);
 
-    // Try cache first
+    // Try cache first. The material cache predates the finished-goods scope, so it is only
+    // considered valid once it carries the BB/BK breakdown a stale entry would lack.
     if (!skipCache) {
-      const cached = loadQCCache();
-      if (cached && cached.completedData && cached.summaryData?.releasedByType) {
+      const cached = loadCache();
+      const cacheUsable = cached && cached.completedData &&
+        (isFG ? cached.summaryData?.released : cached.summaryData?.releasedByType);
+      if (cacheUsable) {
         setSummaryData(cached.summaryData);
         setInProcessData(cached.inProcessData || []);
         setPeriodData(cached.periodData || []);
@@ -170,10 +198,10 @@ const QCDashboard = () => {
 
       // Fetch all four endpoints in parallel
       const [summaryRes, inProcessRes, periodRes, completedRes] = await Promise.all([
-        fetch(buildUrl(`/api/qcSummary?period=${selectedPeriod}`)),
-        fetch(buildUrl('/api/qcInProcess')),
-        fetch(buildUrl(`/api/qcByPeriod?period=${selectedPeriod}`)),
-        fetch(buildUrl(`/api/qcCompletedByPeriod?period=${selectedPeriod}`))
+        fetch(buildUrl(`/api/${endpoints.summary}?period=${selectedPeriod}`)),
+        fetch(buildUrl(`/api/${endpoints.inProcess}`)),
+        fetch(buildUrl(`/api/${endpoints.byPeriod}?period=${selectedPeriod}`)),
+        fetch(buildUrl(`/api/${endpoints.completed}?period=${selectedPeriod}`))
       ]);
 
       const [summaryJson, inProcessJson, periodJson, completedJson] = await Promise.all([
@@ -194,23 +222,22 @@ const QCDashboard = () => {
       setCompletedData(completed);
       setLastRefreshTime(new Date());
 
-      // Save to cache
-      saveQCCache({ summaryData: summary, inProcessData: inProcess, periodData: period, completedData: completed });
+      saveCache({ summaryData: summary, inProcessData: inProcess, periodData: period, completedData: completed });
     } catch (err) {
       console.error('Error fetching QC data:', err);
       setError('Gagal mengambil data QC. Silakan coba lagi.');
     } finally {
       setLoading(false);
     }
-  }, [selectedPeriod]);
+  }, [selectedPeriod, scope]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch period-dependent data when period changes (summary + period table)
   const fetchPeriodData = useCallback(async () => {
     try {
       const [summaryRes, periodRes, completedRes] = await Promise.all([
-        fetch(apiUrl(`/api/qcSummary?period=${selectedPeriod}`)),
-        fetch(apiUrl(`/api/qcByPeriod?period=${selectedPeriod}`)),
-        fetch(apiUrl(`/api/qcCompletedByPeriod?period=${selectedPeriod}`))
+        fetch(apiUrl(`/api/${endpoints.summary}?period=${selectedPeriod}`)),
+        fetch(apiUrl(`/api/${endpoints.byPeriod}?period=${selectedPeriod}`)),
+        fetch(apiUrl(`/api/${endpoints.completed}?period=${selectedPeriod}`))
       ]);
       const [summaryJson, periodJson, completedJson] = await Promise.all([
         summaryRes.json(),
@@ -223,13 +250,20 @@ const QCDashboard = () => {
     } catch (err) {
       console.error('Error fetching period data:', err);
     }
-  }, [selectedPeriod]);
+  }, [selectedPeriod, scope]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Initial load, and a full reload whenever the scope is toggled.
   useEffect(() => {
     fetchData();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const didMountRef = useRef(false);
   useEffect(() => {
+    // Skip the first run: the scope effect above already fetched this period.
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return;
+    }
     if (!loading) {
       fetchPeriodData();
     }
@@ -239,6 +273,15 @@ const QCDashboard = () => {
   useEffect(() => {
     setCurrentPage(1);
   }, [activeTab, searchQuery, tableTypeFilter]);
+
+  // Switching scope swaps the whole dataset out; drop any filters that belong to the old one.
+  useEffect(() => {
+    setTableTypeFilter('all');
+    setSearchQuery('');
+    setSortConfig({ key: null, direction: 'asc' });
+    setMonthlyFilter('all');
+    setCurrentPage(1);
+  }, [scope]);
 
   // Daily Flow - spin switch logic
   const triggerDailyFlowSwitch = useCallback((newType) => {
@@ -256,15 +299,15 @@ const QCDashboard = () => {
     }, 400);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-rotate daily flow every 15 seconds
+  // Auto-rotate daily flow every 15 seconds (material only - finished goods are one series)
   useEffect(() => {
-    if (dailyFlowMode !== 'auto') return;
+    if (isFG || dailyFlowMode !== 'auto') return;
     const interval = setInterval(() => {
       const next = dailyFlowRenderRef.current === 'BB' ? 'BK' : 'BB';
       triggerDailyFlowSwitch(next);
     }, 15000);
     return () => clearInterval(interval);
-  }, [dailyFlowMode, triggerDailyFlowSwitch]);
+  }, [isFG, dailyFlowMode, triggerDailyFlowSwitch]);
 
   // Cleanup spin timers
   useEffect(() => {
@@ -316,6 +359,7 @@ const QCDashboard = () => {
       (item.Item_Name && item.Item_Name.toLowerCase().includes(q)) ||
       (item.DNc_ItemID && item.DNc_ItemID.toLowerCase().includes(q)) ||
       (item.DNc_SuppName && item.DNc_SuppName.toLowerCase().includes(q)) ||
+      (item.Batch_Date && item.Batch_Date.toLowerCase().includes(q)) ||
       (item.DNC_BatchNo && item.DNC_BatchNo.toLowerCase().includes(q))
     );
   };
@@ -371,9 +415,43 @@ const QCDashboard = () => {
     };
   }, [summaryData, inProcessData]);
 
+  // Finished goods carry no BB/BK split, so this is a single set of four figures.
+  const fgKpiData = useMemo(() => {
+    if (!summaryData) return { pending: 0, avgDays: 0, completed: 0, rejectPct: 0 };
+    const cp = summaryData.currentPeriod;
+    const lead = (summaryData.leadtimeMonthly || []).find((d) => d.period === cp);
+    const released = (summaryData.released || []).find((d) => d.period === cp);
+    return {
+      pending: inProcessData.length,
+      avgDays: lead ? Math.round(lead.avg_turnaround * 10) / 10 : 0,
+      completed: released?.completed || 0,
+      rejectPct: released?.reject_pct || 0
+    };
+  }, [summaryData, inProcessData]);
+
   // ============================================
   // KPI Click Handlers (drilldowns)
   // ============================================
+
+  const handleFGInProgressClick = () => {
+    setDrilldownModal({ open: true, title: `Produk In Progress (${inProcessData.length})`, type: 'item-inprogress', items: inProcessData });
+  };
+
+  const handleFGLeadtimeClick = () => {
+    const cp = summaryData?.currentPeriod;
+    setDrilldownModal({ open: true, title: `Leadtime Produksi – ${periodToLabel(cp)} (${completedData.length} selesai)`, type: 'item-leadtime', items: completedData });
+  };
+
+  const handleFGReleasedClick = () => {
+    const cp = summaryData?.currentPeriod;
+    setDrilldownModal({ open: true, title: `Produk Released – ${periodToLabel(cp)} (${completedData.length} batch)`, type: 'item-released', items: completedData });
+  };
+
+  const handleFGRejectClick = () => {
+    const cp = summaryData?.currentPeriod;
+    const items = completedData.filter((d) => d.DNc_RejectQTY > 0 || d.DNc_Status === 'DITOLAK');
+    setDrilldownModal({ open: true, title: `Reject Rate – ${periodToLabel(cp)} (${items.length} batch)`, type: 'item-reject', items });
+  };
 
   const handleBBInProgressClick = () => {
     const items = inProcessData.filter((d) => d.Item_Type === 'BB');
@@ -472,20 +550,13 @@ const QCDashboard = () => {
   // Aging chart data (kept for backward compat)
   const agingChartData = useMemo(() => {
     if (!summaryData?.aging) return null;
-    const order = ['0-3 days', '4-7 days', '8-14 days', '15-30 days', '30+ days'];
-    const sorted = order.map((b) => summaryData.aging.find((a) => a.aging_bucket === b) || { aging_bucket: b, count: 0 });
+    const sorted = AGING_BUCKETS.map((b) => summaryData.aging.find((a) => a.aging_bucket === b) || { aging_bucket: b, count: 0 });
     return {
       labels: sorted.map((a) => a.aging_bucket),
       datasets: [{
         data: sorted.map((a) => a.count),
-        backgroundColor: [
-          'rgba(34, 197, 94, 0.8)',
-          'rgba(59, 130, 246, 0.8)',
-          'rgba(245, 158, 11, 0.8)',
-          'rgba(249, 115, 22, 0.8)',
-          'rgba(239, 68, 68, 0.8)',
-        ],
-        borderColor: ['#22c55e', '#3b82f6', '#f59e0b', '#f97316', '#ef4444'],
+        backgroundColor: AGING_FILLS,
+        borderColor: AGING_BORDERS,
         borderWidth: 2
       }]
     };
@@ -495,32 +566,41 @@ const QCDashboard = () => {
   const agingByTypeChartData = useMemo(() => {
     const source = agingMode === 'ytd' ? summaryData?.agingByTypeYTD : summaryData?.agingByType;
     if (!source) return {};
-    const order = ['0-3 days', '4-7 days', '8-14 days', '15-30 days', '30+ days'];
-    const colors = [
-      'rgba(34, 197, 94, 0.8)',
-      'rgba(59, 130, 246, 0.8)',
-      'rgba(245, 158, 11, 0.8)',
-      'rgba(249, 115, 22, 0.8)',
-      'rgba(239, 68, 68, 0.8)',
-    ];
-    const borders = ['#22c55e', '#3b82f6', '#f59e0b', '#f97316', '#ef4444'];
     const result = {};
     ['BB', 'BK'].forEach((type) => {
       const items = source.filter((a) => a.material_type === type);
-      const sorted = order.map((b) => items.find((a) => a.aging_bucket === b) || { aging_bucket: b, count: 0 });
+      const sorted = AGING_BUCKETS.map((b) => items.find((a) => a.aging_bucket === b) || { aging_bucket: b, count: 0 });
       const total = sorted.reduce((sum, a) => sum + a.count, 0);
       result[type] = {
         labels: sorted.map((a) => a.aging_bucket),
         datasets: [{
           data: sorted.map((a) => a.count),
-          backgroundColor: colors,
-          borderColor: borders,
+          backgroundColor: AGING_FILLS,
+          borderColor: AGING_BORDERS,
           borderWidth: 2
         }],
         total
       };
     });
     return result;
+  }, [summaryData, agingMode]);
+
+  // Finished goods: one donut instead of the BB/BK pair. Honours the same Month/YTD toggle.
+  const fgAgingChartData = useMemo(() => {
+    const source = agingMode === 'ytd' ? summaryData?.agingYTD : summaryData?.aging;
+    if (!source) return null;
+    const order = ['0-3 days', '4-7 days', '8-14 days', '15-30 days', '30+ days'];
+    const sorted = order.map((b) => source.find((a) => a.aging_bucket === b) || { aging_bucket: b, count: 0 });
+    return {
+      labels: sorted.map((a) => a.aging_bucket),
+      datasets: [{
+        data: sorted.map((a) => a.count),
+        backgroundColor: AGING_FILLS,
+        borderColor: AGING_BORDERS,
+        borderWidth: 2
+      }],
+      total: sorted.reduce((sum, a) => sum + a.count, 0)
+    };
   }, [summaryData, agingMode]);
 
   const agingChartOptions = {
@@ -604,6 +684,48 @@ const QCDashboard = () => {
     return result;
   }, [summaryData]);
 
+  // Finished goods: a single Masuk/Selesai series, no BB/BK switch.
+  const fgDailyFlowData = useMemo(() => {
+    if (!summaryData?.dailyIntake || !summaryData?.dailyCompletions) return null;
+    const dateMap = {};
+    (summaryData.dailyIntake || []).forEach((d) => {
+      const key = new Date(d.entry_date).toISOString().slice(0, 10);
+      dateMap[key] = { ...(dateMap[key] || {}), intake: d.cnt };
+    });
+    (summaryData.dailyCompletions || []).forEach((d) => {
+      const key = new Date(d.completion_date).toISOString().slice(0, 10);
+      dateMap[key] = { ...(dateMap[key] || {}), completed: d.cnt };
+    });
+    const dates = Object.keys(dateMap).sort();
+    if (dates.length === 0) return null;
+    return {
+      labels: dates.map((d) => {
+        const dt = new Date(d);
+        return `${dt.getDate()}/${dt.getMonth() + 1}`;
+      }),
+      datasets: [
+        {
+          label: 'Masuk QC',
+          data: dates.map((d) => dateMap[d].intake || 0),
+          backgroundColor: 'rgba(229, 115, 115, 0.7)',
+          borderColor: '#e57373',
+          borderWidth: 1,
+          borderRadius: 4,
+          order: 1
+        },
+        {
+          label: 'Selesai QC',
+          data: dates.map((d) => dateMap[d].completed || 0),
+          backgroundColor: 'rgba(102, 187, 106, 0.7)',
+          borderColor: '#66bb6a',
+          borderWidth: 1,
+          borderRadius: 4,
+          order: 2
+        }
+      ]
+    };
+  }, [summaryData]);
+
   const dailyFlowOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -663,6 +785,25 @@ const QCDashboard = () => {
       ]
     };
   }, [summaryData, monthlyFilter]);
+
+  // Finished goods: single Total / Released / Reject% series, no BB/BK filter.
+  const fgMonthlyTrendData = useMemo(() => {
+    if (!summaryData?.monthly) return null;
+    const data = summaryData.monthly;
+    const periods = [...new Set(data.map((d) => d.period))].sort();
+    const pick = (key) => periods.map((p) => {
+      const item = data.find((d) => d.period === p);
+      return item ? (item[key] || 0) : 0;
+    });
+    return {
+      labels: periods.map((p) => periodToLabel(p)),
+      datasets: [
+        { label: 'Total', data: pick('total'), borderColor: '#4f8cff', backgroundColor: 'rgba(79, 140, 255, 0.15)', fill: true, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#4f8cff' },
+        { label: 'Released', data: pick('completed'), borderColor: '#22c55e', backgroundColor: 'rgba(34, 197, 94, 0.15)', fill: true, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#22c55e' },
+        { label: 'Reject %', data: pick('reject_pct'), borderColor: '#ef4444', borderDash: [5, 5], tension: 0.3, pointRadius: 4, pointBackgroundColor: '#ef4444', yAxisID: 'y1' }
+      ]
+    };
+  }, [summaryData]);
 
   const monthlyTrendOptions = {
     responsive: true,
@@ -729,6 +870,35 @@ const QCDashboard = () => {
           borderRadius: 4
         }
       ]
+    };
+  }, [summaryData, selectedPeriod]);
+
+  // Finished goods: one bar per month over the same rolling 13-month window.
+  const fgLeadtimeChartData = useMemo(() => {
+    if (!summaryData?.leadtimeMonthly) return null;
+    const data = summaryData.leadtimeMonthly;
+
+    const endYear = parseInt(selectedPeriod.slice(0, 4));
+    const endMonth = parseInt(selectedPeriod.slice(4, 6));
+    const periods = [];
+    for (let i = 12; i >= 0; i--) {
+      const d = new Date(endYear, endMonth - 1 - i, 1);
+      periods.push(`${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}`);
+    }
+
+    return {
+      labels: periods.map((p) => periodToLabel(p)),
+      datasets: [{
+        label: 'Leadtime QC',
+        data: periods.map((p) => {
+          const item = data.find((d) => d.period === p);
+          return item ? Math.round(item.avg_turnaround * 10) / 10 : 0;
+        }),
+        backgroundColor: 'rgba(34, 197, 94, 0.7)',
+        borderColor: '#22c55e',
+        borderWidth: 1,
+        borderRadius: 4
+      }]
     };
   }, [summaryData, selectedPeriod]);
 
@@ -805,49 +975,76 @@ const QCDashboard = () => {
     const item = detailModal.item;
     if (!item) return null;
     return (
-      <Modal open={detailModal.open} onClose={() => setDetailModal({ open: false, item: null })} title={`Detail: ${item.DNc_No}`}>
+      <Modal open={detailModal.open} onClose={() => setDetailModal({ open: false, item: null })} title={`Detail: ${item.DNc_No || item.DNC_BatchNo}`}>
         <div className="qc-detail-modal-content">
           <div className="qc-detail-grid">
             <div className="qc-detail-item">
               <span className="qc-detail-label">DNC No</span>
-              <span className="qc-detail-value">{item.DNc_No}</span>
+              <span className="qc-detail-value">{item.DNc_No || '-'}</span>
             </div>
             <div className="qc-detail-item">
-              <span className="qc-detail-label">Item ID</span>
+              <span className="qc-detail-label">{isFG ? 'Product ID' : 'Item ID'}</span>
               <span className="qc-detail-value">{item.DNc_ItemID}</span>
             </div>
             <div className="qc-detail-item">
-              <span className="qc-detail-label">Item Name</span>
+              <span className="qc-detail-label">{isFG ? 'Product Name' : 'Item Name'}</span>
               <span className="qc-detail-value">{item.Item_Name || '-'}</span>
             </div>
-            <div className="qc-detail-item">
-              <span className="qc-detail-label">Item Group</span>
-              <span className="qc-detail-value">{item.Item_Group || '-'}</span>
-            </div>
-            <div className="qc-detail-item">
-              <span className="qc-detail-label">Supplier</span>
-              <span className="qc-detail-value">{item.DNc_SuppName || '-'}</span>
-            </div>
-            <div className="qc-detail-item">
-              <span className="qc-detail-label">Batch No</span>
-              <span className="qc-detail-value">{item.DNC_BatchNo || '-'}</span>
-            </div>
-            <div className="qc-detail-item">
-              <span className="qc-detail-label">Entry Date</span>
-              <span className="qc-detail-value">{formatDate(item.DNc_Date)}</span>
-            </div>
-            <div className="qc-detail-item">
-              <span className="qc-detail-label">Inspection Date</span>
-              <span className="qc-detail-value">{formatDate(item.DNc_InspectionDate)}</span>
-            </div>
-            <div className="qc-detail-item">
-              <span className="qc-detail-label">Sample By</span>
-              <span className="qc-detail-value">{item.DNc_SampleBy || '-'}</span>
-            </div>
-            <div className="qc-detail-item">
-              <span className="qc-detail-label">Sample Date</span>
-              <span className="qc-detail-value">{formatDate(item.DNc_SampleDate)}</span>
-            </div>
+            {isFG ? (
+              <>
+                <div className="qc-detail-item">
+                  <span className="qc-detail-label">Batch No</span>
+                  <span className="qc-detail-value">{item.DNC_BatchNo || '-'}</span>
+                </div>
+                <div className="qc-detail-item">
+                  <span className="qc-detail-label">Batch Date</span>
+                  <span className="qc-detail-value">{item.Batch_Date || '-'}</span>
+                </div>
+                <div className="qc-detail-item">
+                  <span className="qc-detail-label">Status QA</span>
+                  <span className="qc-detail-value">
+                    {item.DNc_Status
+                      ? <span className={item.DNc_Status === 'DITOLAK' ? 'qc-reject-badge' : 'qc-release-badge'}>{item.DNc_Status}</span>
+                      : '-'}
+                  </span>
+                </div>
+                <div className="qc-detail-item">
+                  <span className="qc-detail-label">Masuk QC</span>
+                  <span className="qc-detail-value">{formatDate(item.DNc_Date)}</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="qc-detail-item">
+                  <span className="qc-detail-label">Item Group</span>
+                  <span className="qc-detail-value">{item.Item_Group || '-'}</span>
+                </div>
+                <div className="qc-detail-item">
+                  <span className="qc-detail-label">Supplier</span>
+                  <span className="qc-detail-value">{item.DNc_SuppName || '-'}</span>
+                </div>
+                <div className="qc-detail-item">
+                  <span className="qc-detail-label">Batch No</span>
+                  <span className="qc-detail-value">{item.DNC_BatchNo || '-'}</span>
+                </div>
+                <div className="qc-detail-item">
+                  <span className="qc-detail-label">Entry Date</span>
+                  <span className="qc-detail-value">{formatDate(item.DNc_Date)}</span>
+                </div>
+                <div className="qc-detail-item">
+                  <span className="qc-detail-label">Inspection Date</span>
+                  <span className="qc-detail-value">{formatDate(item.DNc_InspectionDate)}</span>
+                </div>
+                <div className="qc-detail-item">
+                  <span className="qc-detail-label">Sample By</span>
+                  <span className="qc-detail-value">{item.DNc_SampleBy || '-'}</span>
+                </div>
+                <div className="qc-detail-item">
+                  <span className="qc-detail-label">Sample Date</span>
+                  <span className="qc-detail-value">{formatDate(item.DNc_SampleDate)}</span>
+                </div>
+              </>
+            )}
             <div className="qc-detail-item">
               <span className="qc-detail-label">Release Qty</span>
               <span className="qc-detail-value">
@@ -885,9 +1082,12 @@ const QCDashboard = () => {
               </div>
             )}
           </div>
-          {(item.DNc_ReleaseRemark || item.DNc_RejectRemark || item.alasan_Reject) && (
+          {(item.DNc_ReleaseRemark || item.DNc_RejectRemark || item.alasan_Reject || item.DNc_Keterangan) && (
             <div className="qc-detail-remarks">
               <h4>Remarks</h4>
+              {item.DNc_Keterangan && item.DNc_Keterangan !== '' && (
+                <p><strong>Keterangan:</strong> {item.DNc_Keterangan}</p>
+              )}
               {item.DNc_ReleaseRemark && item.DNc_ReleaseRemark !== '' && (
                 <p><strong>Release:</strong> {item.DNc_ReleaseRemark}</p>
               )}
@@ -922,9 +1122,9 @@ const QCDashboard = () => {
               <thead>
                 <tr>
                   <th>Kode</th>
-                  <th>Nama Material</th>
+                  <th>{isFG ? 'Nama Produk' : 'Nama Material'}</th>
                   <th>Batch No</th>
-                  {isInProgress && <><th>Supplier</th><th>Masuk QC</th><th>Hari di QC</th></>}
+                  {isInProgress && <><th>{isFG ? 'Batch Date' : 'Supplier'}</th><th>Masuk QC</th><th>Hari di QC</th></>}
                   {!isInProgress && !isReject && <><th>Released Qty</th><th>Masuk QC</th><th>Selesai</th><th>Turnaround</th></>}
                   {isReject && <><th>Released Qty</th><th>Reject Qty</th><th>Masuk QC</th><th>Selesai</th></>}
                 </tr>
@@ -944,7 +1144,7 @@ const QCDashboard = () => {
                     <td className="qc-td-mono">{d.DNC_BatchNo || '-'}</td>
                     {isInProgress && (
                       <>
-                        <td>{d.DNc_SuppName || '-'}</td>
+                        <td>{(isFG ? d.Batch_Date : d.DNc_SuppName) || '-'}</td>
                         <td>{formatDate(d.DNc_Date)}</td>
                         <td><span className={`qc-aging-badge ${getAgingColor(d.DaysInQC)}`}>{d.DaysInQC} hari</span></td>
                       </>
@@ -1040,11 +1240,11 @@ const QCDashboard = () => {
           {/* ====== Header ====== */}
           <div className="qc-header">
             <div className="qc-header-left">
-              <h1><span>Quality - Materials</span> Dashboard</h1>
-              <div className="quality-toggle-switch" onClick={() => navigate('/quality')}>
-                <div className="quality-toggle-track active-material">
-                  <span className="quality-toggle-label">Product</span>
-                  <span className="quality-toggle-label active">Material</span>
+              <h1><span>Quality Control</span> Dashboard</h1>
+              <div className="quality-toggle-switch" onClick={() => setScope(isFG ? 'material' : 'fg')}>
+                <div className={`quality-toggle-track qc-scope-toggle ${isFG ? 'active-scope-fg' : 'active-scope-material'}`}>
+                  <span className={`quality-toggle-label ${!isFG ? 'active' : ''}`}>Material</span>
+                  <span className={`quality-toggle-label ${isFG ? 'active' : ''}`}>Finished Goods</span>
                   <div className="quality-toggle-thumb" />
                 </div>
               </div>
@@ -1061,7 +1261,7 @@ const QCDashboard = () => {
               </select>
               <button
                 className="qc-refresh-btn"
-                onClick={() => { clearQCCache(); fetchData(true); }}
+                onClick={() => { clearCache(); fetchData(true); }}
                 disabled={loading}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
@@ -1075,7 +1275,50 @@ const QCDashboard = () => {
             </div>
           </div>
 
-          {/* ====== KPI Cards (BB/BK split) ====== */}
+          {/* ====== KPI Cards ====== */}
+          {isFG ? (
+            <div className="qc-kpi-row" ref={kpiRef}>
+              <div className="qc-kpi-card" onClick={handleFGInProgressClick}>
+                <div className="qc-kpi-icon pending">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                </div>
+                <div className="qc-kpi-info">
+                  <div className="qc-kpi-label">Product In Progress</div>
+                  <div className="qc-kpi-value">{formatNumber(fgKpiData.pending)}</div>
+                </div>
+              </div>
+
+              <div className="qc-kpi-card" onClick={handleFGLeadtimeClick}>
+                <div className="qc-kpi-icon turnaround">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                </div>
+                <div className="qc-kpi-info">
+                  <div className="qc-kpi-label">Leadtime Produksi</div>
+                  <div className="qc-kpi-value">{fgKpiData.avgDays} <span style={{ fontSize: '0.8rem', fontWeight: 500 }}>hari</span></div>
+                </div>
+              </div>
+
+              <div className="qc-kpi-card" onClick={handleFGReleasedClick}>
+                <div className="qc-kpi-icon completed">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                </div>
+                <div className="qc-kpi-info">
+                  <div className="qc-kpi-label">Products Released</div>
+                  <div className="qc-kpi-value">{formatNumber(fgKpiData.completed)}</div>
+                </div>
+              </div>
+
+              <div className="qc-kpi-card" onClick={handleFGRejectClick}>
+                <div className="qc-kpi-icon rejected">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                </div>
+                <div className="qc-kpi-info">
+                  <div className="qc-kpi-label">Reject Rate</div>
+                  <div className="qc-kpi-value">{fgKpiData.rejectPct}<span style={{ fontSize: '0.8rem', fontWeight: 500 }}>%</span></div>
+                </div>
+              </div>
+            </div>
+          ) : (
           <div className="qc-kpi-row" ref={kpiRef}>
             <div className="qc-kpi-card" onClick={handleBBInProgressClick}>
               <div className="qc-kpi-icon pending">
@@ -1157,6 +1400,7 @@ const QCDashboard = () => {
               </div>
             </div>
           </div>
+          )}
 
           {/* ====== Charts Row 1: Leadtime 12 Months + Daily Flow ====== */}
           <div className="qc-charts-row">
@@ -1164,11 +1408,15 @@ const QCDashboard = () => {
               <div className="qc-chart-header">
                 <div>
                   <div className="qc-chart-title">Leadtime 12 Months</div>
-                  <div className="qc-chart-subtitle">Rata-rata turnaround QC per bulan (BB vs BK)</div>
+                  <div className="qc-chart-subtitle">
+                    {isFG ? 'Rata-rata turnaround QC per bulan (produk jadi)' : 'Rata-rata turnaround QC per bulan (BB vs BK)'}
+                  </div>
                 </div>
               </div>
               <div className="qc-chart-container">
-                {leadtimeChartData && <Bar data={leadtimeChartData} options={leadtimeChartOptions} plugins={[ChartDataLabels]} />}
+                {isFG
+                  ? fgLeadtimeChartData && <Bar data={fgLeadtimeChartData} options={leadtimeChartOptions} plugins={[ChartDataLabels]} />
+                  : leadtimeChartData && <Bar data={leadtimeChartData} options={leadtimeChartOptions} plugins={[ChartDataLabels]} />}
               </div>
             </div>
             <div className="qc-chart-card" ref={dailyflowRef}>
@@ -1177,42 +1425,56 @@ const QCDashboard = () => {
                   <div className="qc-chart-title">Daily QC Flow</div>
                   <div className="qc-chart-subtitle">Masuk vs Selesai - {periodToLabel(summaryData?.currentPeriod)}</div>
                 </div>
-                <div className="qc-daily-flow-controls">
-                  <div className="qc-type-tabs">
-                    <button
-                      className={`qc-type-tab ${dailyFlowRender === 'BB' ? 'active' : ''}`}
-                      onClick={() => { setDailyFlowMode('manual'); triggerDailyFlowSwitch('BB'); }}
-                    >BB</button>
-                    <button
-                      className={`qc-type-tab ${dailyFlowRender === 'BK' ? 'active' : ''}`}
-                      onClick={() => { setDailyFlowMode('manual'); triggerDailyFlowSwitch('BK'); }}
-                    >BK</button>
+                {!isFG && (
+                  <div className="qc-daily-flow-controls">
+                    <div className="qc-type-tabs">
+                      <button
+                        className={`qc-type-tab ${dailyFlowRender === 'BB' ? 'active' : ''}`}
+                        onClick={() => { setDailyFlowMode('manual'); triggerDailyFlowSwitch('BB'); }}
+                      >BB</button>
+                      <button
+                        className={`qc-type-tab ${dailyFlowRender === 'BK' ? 'active' : ''}`}
+                        onClick={() => { setDailyFlowMode('manual'); triggerDailyFlowSwitch('BK'); }}
+                      >BK</button>
+                    </div>
+                    <div className="qc-mode-toggle">
+                      <button
+                        className={`qc-mode-btn ${dailyFlowMode === 'auto' ? 'active' : ''}`}
+                        onClick={() => setDailyFlowMode('auto')}
+                      >Auto</button>
+                      <button
+                        className={`qc-mode-btn ${dailyFlowMode === 'manual' ? 'active' : ''}`}
+                        onClick={() => setDailyFlowMode('manual')}
+                      >Manual</button>
+                    </div>
                   </div>
-                  <div className="qc-mode-toggle">
-                    <button
-                      className={`qc-mode-btn ${dailyFlowMode === 'auto' ? 'active' : ''}`}
-                      onClick={() => setDailyFlowMode('auto')}
-                    >Auto</button>
-                    <button
-                      className={`qc-mode-btn ${dailyFlowMode === 'manual' ? 'active' : ''}`}
-                      onClick={() => setDailyFlowMode('manual')}
-                    >Manual</button>
+                )}
+              </div>
+              {isFG ? (
+                <div className="qc-chart-container">
+                  {fgDailyFlowData ? (
+                    <Bar data={fgDailyFlowData} options={dailyFlowOptions} plugins={[ChartDataLabels]} />
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8', fontSize: '0.875rem' }}>
+                      Tidak ada data
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="qc-daily-flow-viewport">
+                  <div className={`qc-daily-flow-content ${dailyFlowSpin}`}>
+                    <div className="qc-chart-container">
+                      {dailyFlowByType[dailyFlowRender] ? (
+                        <Bar data={dailyFlowByType[dailyFlowRender]} options={dailyFlowOptions} plugins={[ChartDataLabels]} />
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8', fontSize: '0.875rem' }}>
+                          Tidak ada data {dailyFlowRender}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="qc-daily-flow-viewport">
-                <div className={`qc-daily-flow-content ${dailyFlowSpin}`}>
-                  <div className="qc-chart-container">
-                    {dailyFlowByType[dailyFlowRender] ? (
-                      <Bar data={dailyFlowByType[dailyFlowRender]} options={dailyFlowOptions} plugins={[ChartDataLabels]} />
-                    ) : (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8', fontSize: '0.875rem' }}>
-                        Tidak ada data {dailyFlowRender}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
           </div>
 
@@ -1222,20 +1484,28 @@ const QCDashboard = () => {
               <div className="qc-chart-header">
                 <div>
                   <div className="qc-chart-title">Monthly QC Trend</div>
-                  <div className="qc-chart-subtitle">Volume, release, dan reject rate 13 bulan terakhir (BB &amp; BK)</div>
+                  <div className="qc-chart-subtitle">
+                    {isFG
+                      ? 'Volume, release, dan reject rate 13 bulan terakhir (produk jadi)'
+                      : 'Volume, release, dan reject rate 13 bulan terakhir (BB & BK)'}
+                  </div>
                 </div>
-                <div className="qc-monthly-filter">
-                  {['all', 'BB', 'BK'].map((f) => (
-                    <button
-                      key={f}
-                      className={`qc-filter-btn ${monthlyFilter === f ? 'active' : ''}`}
-                      onClick={() => setMonthlyFilter(f)}
-                    >{f === 'all' ? 'All' : f}</button>
-                  ))}
-                </div>
+                {!isFG && (
+                  <div className="qc-monthly-filter">
+                    {['all', 'BB', 'BK'].map((f) => (
+                      <button
+                        key={f}
+                        className={`qc-filter-btn ${monthlyFilter === f ? 'active' : ''}`}
+                        onClick={() => setMonthlyFilter(f)}
+                      >{f === 'all' ? 'All' : f}</button>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="qc-chart-container">
-                {monthlyTrendByTypeData && <Line data={monthlyTrendByTypeData} options={monthlyTrendOptions} />}
+                {isFG
+                  ? fgMonthlyTrendData && <Line data={fgMonthlyTrendData} options={monthlyTrendOptions} />
+                  : monthlyTrendByTypeData && <Line data={monthlyTrendByTypeData} options={monthlyTrendOptions} />}
               </div>
             </div>
             <div className="qc-chart-card" ref={agingRef}>
@@ -1255,22 +1525,33 @@ const QCDashboard = () => {
                 </div>
               </div>
               <div className="qc-aging-dual-container">
-                <div className="qc-aging-donut-wrapper">
-                  <div className="qc-aging-donut-label">BB <span>({agingByTypeChartData.BB?.total || 0})</span></div>
-                  <div className="qc-aging-donut-chart">
-                    {agingByTypeChartData.BB && <Doughnut data={agingByTypeChartData.BB} options={agingByTypeChartOptions} />}
+                {isFG ? (
+                  <div className="qc-aging-donut-wrapper">
+                    <div className="qc-aging-donut-label">Finished Goods <span>({fgAgingChartData?.total || 0})</span></div>
+                    <div className="qc-aging-donut-chart">
+                      {fgAgingChartData && <Doughnut data={fgAgingChartData} options={agingByTypeChartOptions} />}
+                    </div>
                   </div>
-                </div>
-                <div className="qc-aging-donut-wrapper">
-                  <div className="qc-aging-donut-label">BK <span>({agingByTypeChartData.BK?.total || 0})</span></div>
-                  <div className="qc-aging-donut-chart">
-                    {agingByTypeChartData.BK && <Doughnut data={agingByTypeChartData.BK} options={agingByTypeChartOptions} />}
-                  </div>
-                </div>
+                ) : (
+                  <>
+                    <div className="qc-aging-donut-wrapper">
+                      <div className="qc-aging-donut-label">BB <span>({agingByTypeChartData.BB?.total || 0})</span></div>
+                      <div className="qc-aging-donut-chart">
+                        {agingByTypeChartData.BB && <Doughnut data={agingByTypeChartData.BB} options={agingByTypeChartOptions} />}
+                      </div>
+                    </div>
+                    <div className="qc-aging-donut-wrapper">
+                      <div className="qc-aging-donut-label">BK <span>({agingByTypeChartData.BK?.total || 0})</span></div>
+                      <div className="qc-aging-donut-chart">
+                        {agingByTypeChartData.BK && <Doughnut data={agingByTypeChartData.BK} options={agingByTypeChartOptions} />}
+                      </div>
+                    </div>
+                  </>
+                )}
                 <div className="qc-aging-legend">
-                  {['0-3 days', '4-7 days', '8-14 days', '15-30 days', '30+ days'].map((label, i) => (
+                  {AGING_BUCKETS.map((label, i) => (
                     <div key={label} className="qc-aging-legend-item">
-                      <span className="qc-aging-legend-color" style={{ background: ['#22c55e', '#3b82f6', '#f59e0b', '#f97316', '#ef4444'][i] }} />
+                      <span className="qc-aging-legend-color" style={{ background: AGING_BORDERS[i] }} />
                       <span className="qc-aging-legend-text">{label}</span>
                     </div>
                   ))}
@@ -1290,24 +1571,26 @@ const QCDashboard = () => {
               </button>
             </div>
 
-            {/* BB / BK sub-filter tabs */}
-            <div className="qc-table-type-tabs">
-              <button className={`qc-table-type-btn ${tableTypeFilter === 'all' ? 'active' : ''}`} onClick={() => setTableTypeFilter('all')}>
-                All ({formatNumber(currentTableData.length)})
-              </button>
-              <button className={`qc-table-type-btn bb ${tableTypeFilter === 'BB' ? 'active' : ''}`} onClick={() => setTableTypeFilter('BB')}>
-                BB ({formatNumber(bbCount)})
-              </button>
-              <button className={`qc-table-type-btn bk ${tableTypeFilter === 'BK' ? 'active' : ''}`} onClick={() => setTableTypeFilter('BK')}>
-                BK ({formatNumber(bkCount)})
-              </button>
-            </div>
+            {/* BB / BK sub-filter tabs (materials only - finished goods are a single type) */}
+            {!isFG && (
+              <div className="qc-table-type-tabs">
+                <button className={`qc-table-type-btn ${tableTypeFilter === 'all' ? 'active' : ''}`} onClick={() => setTableTypeFilter('all')}>
+                  All ({formatNumber(currentTableData.length)})
+                </button>
+                <button className={`qc-table-type-btn bb ${tableTypeFilter === 'BB' ? 'active' : ''}`} onClick={() => setTableTypeFilter('BB')}>
+                  BB ({formatNumber(bbCount)})
+                </button>
+                <button className={`qc-table-type-btn bk ${tableTypeFilter === 'BK' ? 'active' : ''}`} onClick={() => setTableTypeFilter('BK')}>
+                  BK ({formatNumber(bkCount)})
+                </button>
+              </div>
+            )}
 
             <div className="qc-table-controls">
               <input
                 className="qc-search-input"
                 type="text"
-                placeholder="Cari DNC No, Item, Supplier, Batch..."
+                placeholder={isFG ? 'Cari DNC No, Produk, Batch...' : 'Cari DNC No, Item, Supplier, Batch...'}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -1321,11 +1604,15 @@ const QCDashboard = () => {
                 <thead>
                   <tr>
                     <th onClick={() => handleSort('DNc_No')}>DNC No {sortIndicator('DNc_No')}</th>
-                    <th onClick={() => handleSort('DNc_ItemID')}>Item ID {sortIndicator('DNc_ItemID')}</th>
-                    <th onClick={() => handleSort('Item_Name')}>Item Name {sortIndicator('Item_Name')}</th>
-                    <th onClick={() => handleSort('DNc_SuppName')}>Supplier {sortIndicator('DNc_SuppName')}</th>
+                    <th onClick={() => handleSort('DNc_ItemID')}>{isFG ? 'Product ID' : 'Item ID'} {sortIndicator('DNc_ItemID')}</th>
+                    <th onClick={() => handleSort('Item_Name')}>{isFG ? 'Product Name' : 'Item Name'} {sortIndicator('Item_Name')}</th>
+                    {isFG ? (
+                      <th onClick={() => handleSort('Batch_Date')}>Batch Date {sortIndicator('Batch_Date')}</th>
+                    ) : (
+                      <th onClick={() => handleSort('DNc_SuppName')}>Supplier {sortIndicator('DNc_SuppName')}</th>
+                    )}
                     <th onClick={() => handleSort('DNC_BatchNo')}>Batch No {sortIndicator('DNC_BatchNo')}</th>
-                    <th onClick={() => handleSort('DNc_Date')}>Entry Date {sortIndicator('DNc_Date')}</th>
+                    <th onClick={() => handleSort('DNc_Date')}>{isFG ? 'Masuk QC' : 'Entry Date'} {sortIndicator('DNc_Date')}</th>
                     {activeTab === 'inprocess' ? (
                       <th onClick={() => handleSort('DaysInQC')}>Days In QC {sortIndicator('DaysInQC')}</th>
                     ) : (
@@ -1349,10 +1636,10 @@ const QCDashboard = () => {
                         onClick={() => setDetailModal({ open: true, item })}
                         title="Klik untuk melihat detail"
                       >
-                        <td style={{ fontWeight: 600 }}>{item.DNc_No}</td>
+                        <td style={{ fontWeight: 600 }}>{item.DNc_No || '-'}</td>
                         <td>{item.DNc_ItemID}</td>
                         <td>{item.Item_Name || '-'}</td>
-                        <td>{item.DNc_SuppName || '-'}</td>
+                        <td>{(isFG ? item.Batch_Date : item.DNc_SuppName) || '-'}</td>
                         <td>{item.DNC_BatchNo || '-'}</td>
                         <td>{formatDate(item.DNc_Date)}</td>
                         {activeTab === 'inprocess' ? (

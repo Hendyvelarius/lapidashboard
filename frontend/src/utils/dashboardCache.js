@@ -5,6 +5,7 @@ const CACHE_KEY_LINEPN1 = 'linepn1_dashboard_cache';
 const CACHE_KEY_LINEPN2 = 'linepn2_dashboard_cache';
 const CACHE_KEY_QUALITY = 'quality_dashboard_cache';
 const CACHE_KEY_QC = 'qc_dashboard_cache';
+const CACHE_KEY_FGQC = 'fgqc_dashboard_cache';
 const CACHE_DURATION = 60 * 60 * 1000; // 1 hour in milliseconds
 
 /**
@@ -271,5 +272,20 @@ export const clearQCCache = () => {
     localStorage.removeItem(CACHE_KEY_QC);
   } catch (error) {
     console.error('Failed to clear QC cache:', error);
+  }
+};
+
+// ============================================
+// QC Dashboard Cache Functions - Finished Goods
+// ============================================
+
+export const saveFGQCCache = (data) => saveCacheGeneric(CACHE_KEY_FGQC, data);
+export const loadFGQCCache = () => loadCacheGeneric(CACHE_KEY_FGQC);
+export const isFGQCCacheValid = () => isCacheValidGeneric(CACHE_KEY_FGQC);
+export const clearFGQCCache = () => {
+  try {
+    localStorage.removeItem(CACHE_KEY_FGQC);
+  } catch (error) {
+    console.error('Failed to clear FG QC cache:', error);
   }
 };

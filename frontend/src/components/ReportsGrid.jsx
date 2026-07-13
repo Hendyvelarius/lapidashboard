@@ -40,7 +40,7 @@ const cards = [
     group: true,
     items: [
       { key: "product", label: "Product", desc: "Quality monitoring untuk produk jadi.", icon: <FaFlask size={20} color="#22c55e" />, route: "/quality" },
-      { key: "material", label: "Material", desc: "Quality Control: monitoring material masuk, inspeksi, dan release.", icon: <FaClipboardList size={20} color="#e57373" />, route: "/quality-control" },
+      { key: "material", label: "Quality Control", desc: "Monitoring QC material (BB/BK) dan produk jadi: inspeksi, leadtime, dan release.", icon: <FaClipboardList size={20} color="#e57373" />, route: "/quality-control" },
     ],
   },
   {
