@@ -1856,47 +1856,44 @@ async function getQCSummary(period) {
 // ============================================
 
 /**
- * The finished-goods QC window.
+ * The finished-goods QC window: how long a batch actually sits in QC.
  *
- * Materials have a real inspection queue in t_dnc_manufacturing, but the finished-goods
- * table t_dnc_product is only the *release record*: a row appears there at the moment QA
- * releases the batch, so it holds no queue at all (2 of 18,851 rows lack a label date) and
- * its turnaround is ~0 days. The real QC window for finished goods lives in t_alur_proses:
- * it opens when the batch is handed over to QA and closes at 'Tempel Label Realese'.
+ * This is the same QC stage the Production dashboard measures (stageBoundaries.js, and the
+ * QC_Days column in getPCTBreakdown):
+ *   start = StartDate of 'Pickup Sample QC'
+ *   end   = EndDate   of 'Penyerahan Hasil Uji QC'
  *
- * Note 'Penyerahaan PPI ke QA' is spelled with a double-a in the DB (100% of rows); the
- * correctly-spelled variant matches nothing. See also stageBoundaries.js on the frontend.
- *
- * Some batches are released in t_dnc_product without the alur label step ever being closed,
- * so the exit is the first of: alur label EndDate, DNC_TempelLabel, dnc Process_Date. That
- * mirrors getWIPData, which treats either signal as "done".
+ * It deliberately does NOT come from t_dnc_product. That table is only the QA *release
+ * record* -- a row appears the moment QA releases the batch, so it carries no queue (2 of
+ * 18,851 rows lack a label date) and its own turnaround is ~0 days. It is still joined here,
+ * but purely for the batch's release/reject quantities, never for timing.
  */
 const FG_QC_CTE = `
   WITH alur AS (
     SELECT Product_ID, Batch_No, Batch_Date,
-      MIN(CASE WHEN nama_tahapan IN ('Penyerahaan PPI ke QA', 'Penyerahan Hasil Uji QC')
-               THEN StartDate END) AS QAEntry,
-      MAX(CASE WHEN nama_tahapan = 'Tempel Label Realese' THEN EndDate END) AS LabelEnd
+      MIN(CASE WHEN LTRIM(RTRIM(nama_tahapan)) = 'Pickup Sample QC'
+               THEN StartDate END) AS QCEntry,
+      MAX(CASE WHEN LTRIM(RTRIM(nama_tahapan)) = 'Penyerahan Hasil Uji QC'
+               THEN EndDate END) AS QCExit
     FROM t_alur_proses
     GROUP BY Product_ID, Batch_No, Batch_Date
   ),
   qa AS (
     SELECT
-      a.Product_ID, a.Batch_No, a.Batch_Date, a.QAEntry,
-      COALESCE(a.LabelEnd, dp.DNC_TempelLabel, dp.Process_Date) AS QAExit,
+      a.Product_ID, a.Batch_No, a.Batch_Date, a.QCEntry, a.QCExit,
       dp.DNc_No, dp.DNc_Status, dp.DNc_Keterangan,
       dp.DNC_Diluluskan, dp.DNC_ditolak,
       p.Product_Name, p.Product_Unit
     FROM alur a
     JOIN m_Product p ON p.Product_ID = a.Product_ID
     OUTER APPLY (
-      SELECT TOP 1 b.DNc_No, b.DNc_Status, b.DNc_Keterangan, b.DNC_TempelLabel,
-                   b.Process_Date, b.DNC_Diluluskan, b.DNC_ditolak
+      SELECT TOP 1 b.DNc_No, b.DNc_Status, b.DNc_Keterangan,
+                   b.DNC_Diluluskan, b.DNC_ditolak
       FROM t_dnc_product b
       WHERE b.DNc_ProductID = a.Product_ID AND b.DNc_BatchNo = a.Batch_No
       ORDER BY b.Process_Date DESC
     ) dp
-    WHERE a.QAEntry IS NOT NULL
+    WHERE a.QCEntry IS NOT NULL
       AND p.Product_Name NOT LIKE '%Granulat%'
       AND NOT EXISTS (
         SELECT 1 FROM t_wip_batal wb
@@ -1909,9 +1906,9 @@ const FG_QC_CTE = `
  * inside the last 12 months. Only applied to the in-process query -- completed batches have
  * closed cards, so joining this to them would filter out everything.
  *
- * Without it the in-process count is badly inflated: the raw QA window is open on 291
- * batches, but 129 of those were already released and the rest include abandoned batches
- * dating back to 2023. Applying it yields ~60 genuinely-in-QA batches.
+ * Without it the in-process count picks up abandoned batches whose QC window was never
+ * closed (the raw open-window count reaches back years). Applying it, together with
+ * FG_NOT_QA_RELEASED below, yields ~67 batches genuinely sitting in QC today.
  */
 const FG_LIVE_BATCHES = `
   SELECT DISTINCT a.Product_ID, a.Batch_No, a.Batch_Date
@@ -1934,7 +1931,7 @@ const FG_QC_COLUMNS = `
   qa.Product_Name AS Item_Name,
   qa.Batch_No AS DNC_BatchNo,
   qa.Batch_Date,
-  qa.QAEntry AS DNc_Date,
+  qa.QCEntry AS DNc_Date,
   qa.Product_Unit AS DNc_UnitID,
   qa.DNC_Diluluskan AS DNc_ReleaseQTY,
   qa.DNC_ditolak AS DNc_RejectQTY,
@@ -1943,22 +1940,30 @@ const FG_QC_COLUMNS = `
   'FG' AS Item_Type`;
 
 /**
- * Finished-goods batches currently sitting in QC (QA window open, not yet released).
+ * Finished-goods batches sitting in QC right now: sample picked up, results not yet handed over.
+ *
+ * A handful of batches (4 as of writing) never got an EndDate on 'Penyerahan Hasil Uji QC' even
+ * though QA has since released them -- they would otherwise show up as stuck in QC for 300+ days.
+ * QA cannot release a batch before QC hands over its results, so an existing t_dnc_product row is
+ * treated as proof that QC finished.
  */
+const FG_NOT_QA_RELEASED = `qa.DNc_No IS NULL`;
+
 async function getFGQCInProcess() {
   const db = await connect();
   const result = await db.request().query(`
     ${FG_QC_CTE}
     SELECT
       ${FG_QC_COLUMNS},
-      DATEDIFF(day, qa.QAEntry, GETDATE()) AS DaysInQC
+      DATEDIFF(day, qa.QCEntry, GETDATE()) AS DaysInQC
     FROM qa
     JOIN (${FG_LIVE_BATCHES}) live
       ON live.Product_ID = qa.Product_ID
      AND live.Batch_No = qa.Batch_No
      AND live.Batch_Date = qa.Batch_Date
-    WHERE qa.QAExit IS NULL
-    ORDER BY qa.QAEntry ASC
+    WHERE qa.QCExit IS NULL
+      AND ${FG_NOT_QA_RELEASED}
+    ORDER BY qa.QCEntry ASC
   `);
   return result.recordset;
 }
@@ -1974,18 +1979,18 @@ async function getFGQCByPeriod(period) {
     ${FG_QC_CTE}
     SELECT
       ${FG_QC_COLUMNS},
-      qa.QAExit AS DNC_tempellabelDate,
-      DATEDIFF(day, qa.QAEntry, qa.QAExit) AS TurnaroundDays,
-      DATEDIFF(day, qa.QAEntry, COALESCE(qa.QAExit, GETDATE())) AS DaysInQC
+      qa.QCExit AS DNC_tempellabelDate,
+      DATEDIFF(day, qa.QCEntry, qa.QCExit) AS TurnaroundDays,
+      DATEDIFF(day, qa.QCEntry, COALESCE(qa.QCExit, GETDATE())) AS DaysInQC
     FROM qa
-    WHERE CONVERT(nvarchar(6), qa.QAEntry, 112) = @period
-    ORDER BY qa.QAEntry DESC
+    WHERE CONVERT(nvarchar(6), qa.QCEntry, 112) = @period
+    ORDER BY qa.QCEntry DESC
   `);
   return result.recordset;
 }
 
 /**
- * Finished-goods batches released from QC in a given period (YYYYMM), by completion date.
+ * Finished-goods batches that finished QC in a given period (YYYYMM), by QC completion date.
  */
 async function getFGQCCompletedByPeriod(period) {
   const db = await connect();
@@ -1995,12 +2000,12 @@ async function getFGQCCompletedByPeriod(period) {
     ${FG_QC_CTE}
     SELECT
       ${FG_QC_COLUMNS},
-      qa.QAExit AS DNC_tempellabelDate,
-      DATEDIFF(day, qa.QAEntry, qa.QAExit) AS TurnaroundDays
+      qa.QCExit AS DNC_tempellabelDate,
+      DATEDIFF(day, qa.QCEntry, qa.QCExit) AS TurnaroundDays
     FROM qa
-    WHERE qa.QAExit IS NOT NULL
-      AND CONVERT(nvarchar(6), qa.QAExit, 112) = @period
-    ORDER BY qa.QAExit DESC
+    WHERE qa.QCExit IS NOT NULL
+      AND CONVERT(nvarchar(6), qa.QCExit, 112) = @period
+    ORDER BY qa.QCExit DESC
   `);
   return result.recordset;
 }
@@ -2021,7 +2026,7 @@ async function getFGQCSummary(period) {
       WHEN ${expr} <= 30 THEN '15-30 days'
       ELSE '30+ days'
     END`;
-  const turnaround = 'DATEDIFF(day, qa.QAEntry, qa.QAExit)';
+  const turnaround = 'DATEDIFF(day, qa.QCEntry, qa.QCExit)';
 
   // 1. Total currently in QC (same definition as getFGQCInProcess)
   const totalInQCReq = db.request();
@@ -2033,7 +2038,8 @@ async function getFGQCSummary(period) {
       ON live.Product_ID = qa.Product_ID
      AND live.Batch_No = qa.Batch_No
      AND live.Batch_Date = qa.Batch_Date
-    WHERE qa.QAExit IS NULL
+    WHERE qa.QCExit IS NULL
+      AND ${FG_NOT_QA_RELEASED}
   `);
 
   // 2. Aging: turnaround spread of batches released in the selected period
@@ -2043,8 +2049,8 @@ async function getFGQCSummary(period) {
     ${FG_QC_CTE}
     SELECT ${AGING_BUCKET(turnaround)} AS aging_bucket, COUNT(*) AS count
     FROM qa
-    WHERE qa.QAExit IS NOT NULL
-      AND CONVERT(nvarchar(6), qa.QAExit, 112) = @agingPeriod
+    WHERE qa.QCExit IS NOT NULL
+      AND CONVERT(nvarchar(6), qa.QCExit, 112) = @agingPeriod
     GROUP BY ${AGING_BUCKET(turnaround)}
   `);
 
@@ -2053,8 +2059,8 @@ async function getFGQCSummary(period) {
     ${FG_QC_CTE}
     SELECT ${AGING_BUCKET(turnaround)} AS aging_bucket, COUNT(*) AS count
     FROM qa
-    WHERE qa.QAExit IS NOT NULL
-      AND qa.QAExit >= DATEADD(month, -13, GETDATE())
+    WHERE qa.QCExit IS NOT NULL
+      AND qa.QCExit >= DATEADD(month, -13, GETDATE())
     GROUP BY ${AGING_BUCKET(turnaround)}
   `);
 
@@ -2062,18 +2068,18 @@ async function getFGQCSummary(period) {
   const monthlyResult = await db.request().query(`
     ${FG_QC_CTE}
     SELECT
-      CONVERT(nvarchar(6), qa.QAEntry, 112) AS period,
+      CONVERT(nvarchar(6), qa.QCEntry, 112) AS period,
       COUNT(*) AS total,
-      SUM(CASE WHEN qa.QAExit IS NULL THEN 1 ELSE 0 END) AS still_in_qc,
-      SUM(CASE WHEN qa.QAExit IS NOT NULL THEN 1 ELSE 0 END) AS completed,
+      SUM(CASE WHEN qa.QCExit IS NULL THEN 1 ELSE 0 END) AS still_in_qc,
+      SUM(CASE WHEN qa.QCExit IS NOT NULL THEN 1 ELSE 0 END) AS completed,
       SUM(ISNULL(qa.DNC_Diluluskan, 0)) AS total_released,
       SUM(ISNULL(qa.DNC_ditolak, 0)) AS total_rejected,
       SUM(CASE WHEN qa.DNc_Status = 'DITOLAK' OR qa.DNC_ditolak > 0 THEN 1 ELSE 0 END) AS has_reject,
       ROUND(SUM(ISNULL(qa.DNC_ditolak, 0)) * 100.0
             / NULLIF(SUM(ISNULL(qa.DNC_Diluluskan, 0) + ISNULL(qa.DNC_ditolak, 0)), 0), 2) AS reject_pct
     FROM qa
-    WHERE qa.QAEntry >= DATEADD(month, -13, GETDATE())
-    GROUP BY CONVERT(nvarchar(6), qa.QAEntry, 112)
+    WHERE qa.QCEntry >= DATEADD(month, -13, GETDATE())
+    GROUP BY CONVERT(nvarchar(6), qa.QCEntry, 112)
     ORDER BY period ASC
   `);
 
@@ -2082,10 +2088,10 @@ async function getFGQCSummary(period) {
   dailyIntakeReq.input('intakePeriod', sql.NVarChar(6), targetPeriod);
   const dailyIntakeResult = await dailyIntakeReq.query(`
     ${FG_QC_CTE}
-    SELECT CONVERT(date, qa.QAEntry) AS entry_date, COUNT(*) AS cnt
+    SELECT CONVERT(date, qa.QCEntry) AS entry_date, COUNT(*) AS cnt
     FROM qa
-    WHERE CONVERT(nvarchar(6), qa.QAEntry, 112) = @intakePeriod
-    GROUP BY CONVERT(date, qa.QAEntry)
+    WHERE CONVERT(nvarchar(6), qa.QCEntry, 112) = @intakePeriod
+    GROUP BY CONVERT(date, qa.QCEntry)
     ORDER BY entry_date
   `);
 
@@ -2094,11 +2100,11 @@ async function getFGQCSummary(period) {
   dailyCompReq.input('compPeriod', sql.NVarChar(6), targetPeriod);
   const dailyCompResult = await dailyCompReq.query(`
     ${FG_QC_CTE}
-    SELECT CONVERT(date, qa.QAExit) AS completion_date, COUNT(*) AS cnt
+    SELECT CONVERT(date, qa.QCExit) AS completion_date, COUNT(*) AS cnt
     FROM qa
-    WHERE qa.QAExit IS NOT NULL
-      AND CONVERT(nvarchar(6), qa.QAExit, 112) = @compPeriod
-    GROUP BY CONVERT(date, qa.QAExit)
+    WHERE qa.QCExit IS NOT NULL
+      AND CONVERT(nvarchar(6), qa.QCExit, 112) = @compPeriod
+    GROUP BY CONVERT(date, qa.QCExit)
     ORDER BY completion_date
   `);
 
@@ -2106,13 +2112,13 @@ async function getFGQCSummary(period) {
   const leadtimeMonthlyResult = await db.request().query(`
     ${FG_QC_CTE}
     SELECT
-      CONVERT(nvarchar(6), qa.QAExit, 112) AS period,
+      CONVERT(nvarchar(6), qa.QCExit, 112) AS period,
       AVG(CAST(${turnaround} AS FLOAT)) AS avg_turnaround,
       COUNT(*) AS sample_count
     FROM qa
-    WHERE qa.QAExit IS NOT NULL
-      AND qa.QAExit >= DATEADD(month, -18, GETDATE())
-    GROUP BY CONVERT(nvarchar(6), qa.QAExit, 112)
+    WHERE qa.QCExit IS NOT NULL
+      AND qa.QCExit >= DATEADD(month, -18, GETDATE())
+    GROUP BY CONVERT(nvarchar(6), qa.QCExit, 112)
     ORDER BY period ASC
   `);
 
@@ -2120,7 +2126,7 @@ async function getFGQCSummary(period) {
   const releasedResult = await db.request().query(`
     ${FG_QC_CTE}
     SELECT
-      CONVERT(nvarchar(6), qa.QAExit, 112) AS period,
+      CONVERT(nvarchar(6), qa.QCExit, 112) AS period,
       COUNT(*) AS completed,
       SUM(ISNULL(qa.DNC_Diluluskan, 0)) AS total_released,
       SUM(ISNULL(qa.DNC_ditolak, 0)) AS total_rejected,
@@ -2128,9 +2134,9 @@ async function getFGQCSummary(period) {
       ROUND(SUM(ISNULL(qa.DNC_ditolak, 0)) * 100.0
             / NULLIF(SUM(ISNULL(qa.DNC_Diluluskan, 0) + ISNULL(qa.DNC_ditolak, 0)), 0), 2) AS reject_pct
     FROM qa
-    WHERE qa.QAExit IS NOT NULL
-      AND qa.QAExit >= DATEADD(month, -13, GETDATE())
-    GROUP BY CONVERT(nvarchar(6), qa.QAExit, 112)
+    WHERE qa.QCExit IS NOT NULL
+      AND qa.QCExit >= DATEADD(month, -13, GETDATE())
+    GROUP BY CONVERT(nvarchar(6), qa.QCExit, 112)
     ORDER BY period ASC
   `);
 
