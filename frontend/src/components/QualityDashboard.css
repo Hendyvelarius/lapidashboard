@@ -18,10 +18,17 @@
 }
 
 /* Inner Content Wrapper */
+/* Mirrors .qc-content (QCDashboard.css): the header markup here uses the shared
+   .qc-header card, which has no margin of its own and relies on the flex `gap`
+   for the space between it and the charts below. Without flex+gap the header sat
+   flush against the chart cards, and the larger padding pushed it off the top. */
 .quality-content {
-  padding: 1.5rem;
+  padding: 1rem;
   max-width: 100%;
   overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
 }
 
 /* Header Section */
@@ -130,7 +137,7 @@ body.sidebar-minimized .quality-charts-container.sidebar-minimized {
   display: flex;
   flex-direction: column;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
-  max-height: 350px;
+  max-height: 300px;
 }
 
 .quality-chart-card:hover {
@@ -161,8 +168,8 @@ body.sidebar-minimized .quality-charts-container.sidebar-minimized {
 /* Chart Card Content */
 .chart-card-content {
   flex: 1;
-  height: 250px;
-  min-height: 250px;
+  height: 200px;
+  min-height: 200px;
   position: relative;
   transition: opacity 0.5s ease-in-out;
   will-change: opacity;
@@ -225,7 +232,7 @@ body.sidebar-minimized .quality-charts-container.sidebar-minimized {
   }
 
   .chart-card-content {
-    height: 220px;
+    height: 180px;
   }
 }
 
@@ -245,10 +252,131 @@ body.sidebar-minimized .quality-charts-container.sidebar-minimized {
   }
 }
 
+/* QA Document Backlog (PL / NT only) */
+.qa-backlog-section {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+  padding: 0.75rem 1rem;
+}
+
+/* Title and subtitle share one line; subtitle drops below only when cramped. */
+.qa-backlog-header {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  border-bottom: 2px solid #f3f4f6;
+  padding-bottom: 0.4rem;
+}
+
+.qa-backlog-header h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #1f2937;
+  margin: 0;
+}
+
+.qa-backlog-subtitle {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.qa-backlog-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+}
+
+/* Count and label sit side by side so the card spends its width rather than
+   its height -- keeps the whole section short. */
+.qa-backlog-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0.75rem;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-left: 4px solid #4f8cff;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  min-width: 0;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.qa-backlog-card:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.qa-backlog-card:focus-visible {
+  outline: 2px solid #4f8cff;
+  outline-offset: 2px;
+}
+
+/* Nothing to drill into when the queue is empty. */
+.qa-backlog-card:disabled {
+  cursor: default;
+}
+
+.qa-backlog-card.is-clear {
+  border-left-color: #10b981;
+}
+
+.qa-backlog-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.qa-backlog-dept {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #374151;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  line-height: 1.3;
+}
+
+.qa-backlog-count {
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #4f8cff;
+}
+
+.qa-backlog-card.is-clear .qa-backlog-count {
+  color: #10b981;
+}
+
+.qa-backlog-meta {
+  font-size: 0.65rem;
+  color: #6b7280;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .qa-backlog-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 /* WIP Speedometers Section */
 .quality-wip-section {
-  padding-top: 1.5rem;
+  padding-top: 0.75rem;
   border-top: 1px solid #e5e7eb;
+}
+
+/* The parent .quality-content flex gap already separates these two, so drop the
+   speedometer section's own top padding when the backlog card sits above it. */
+.qa-backlog-section + .quality-wip-section {
+  padding-top: 0;
+  border-top: none;
 }
 
 .quality-section-title {

@@ -358,7 +358,7 @@ export const helpContent = {
         pages: [
           {
             subtitle: 'Apa itu Production Output?',
-            description: 'Membandingkan target produksi dengan realisasi (jumlah yang benar-benar diproduksi) selama 12 bulan terakhir, sehingga performa produksi mudah dipantau dari bulan ke bulan.',
+            description: 'Membandingkan target produksi dengan realisasi (jumlah yang benar-benar diproduksi) selama 13 bulan terakhir, sehingga performa produksi mudah dipantau dari bulan ke bulan sekaligus dibandingkan dengan bulan yang sama tahun lalu.',
             details: [
               'Target: jumlah unit yang direncanakan untuk diproduksi pada bulan tersebut',
               'Realisasi: jumlah unit yang benar-benar selesai diproduksi, dipecah per kategori Generik, OTC, dan ETH',
@@ -386,7 +386,7 @@ export const helpContent = {
             details: [
               'Laporan Perencanaan & Output Produksi (sp_Dashboard_DataReportManHours): menyediakan Forecast penjualan, Stok awal bulan, dan jumlah Produksi per produk per bulan',
               'Daftar & Kategori Produk (productList / otcProducts): menentukan produk masuk kategori Generik, OTC, atau ETH',
-              'Periode: 12 bulan terakhir hingga bulan berjalan'
+              'Periode: 13 bulan terakhir hingga bulan berjalan (agar bulan yang sama tahun lalu ikut tampil)'
             ]
           }
         ]

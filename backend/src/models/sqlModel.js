@@ -1035,15 +1035,17 @@ async function getDailyProduction(asOf = null) {
 async function getOF1Target() {
   const db = await connect();
   
-  // Calculate the last 12 month periods (including current month)
+  // Calculate the last 13 month periods (including current month).
+  // 13 (not 12) so the chart shows the same month one year ago next to the current
+  // month, making a year-over-year comparison possible at a glance.
   const currentDate = new Date();
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth() + 1; // 0-indexed
-  
-  // Generate list of last 12 periods in YYYYMM format
+
+  // Generate list of last 13 periods in YYYYMM format
   // Include both string ('202512') and numeric (202512) versions for compatibility
   const periods = [];
-  for (let i = 11; i >= 0; i--) {
+  for (let i = 12; i >= 0; i--) {
     const targetDate = new Date(currentYear, currentMonth - 1 - i, 1);
     const targetYear = targetDate.getFullYear();
     const targetMonth = targetDate.getMonth() + 1;
@@ -1858,25 +1860,71 @@ async function getQCSummary(period) {
 /**
  * The finished-goods QC window: how long a batch actually sits in QC.
  *
- * This is the same QC stage the Production dashboard measures (stageBoundaries.js, and the
- * QC_Days column in getPCTBreakdown):
- *   start = StartDate of 'Pickup Sample QC'
- *   end   = EndDate   of 'Penyerahan Hasil Uji QC'
+ *   start = the moment the batch became QC's responsibility
+ *   end   = EndDate of 'Penyerahan Hasil Uji QC'
  *
- * It deliberately does NOT come from t_dnc_product. That table is only the QA *release
+ * The start is deliberately NOT the StartDate of 'Pickup Sample QC'. That is when QC chose to
+ * begin, so measuring from it lets a slow queue hide: a batch can sit waiting for days and the
+ * clock only starts once QC picks it up. Instead the clock starts when QC's prerequisite
+ * finished -- i.e. the batch was ready and waiting for them. In practice this matters: 3,964 of
+ * 4,008 completed batches waited before pickup, averaging ~0.4-1.3 days, which the old start
+ * silently discarded.
+ *
+ * "Prerequisite finished" reuses getWIPData's IdleStartDate rule (Step 7): if every step named
+ * in Pickup Sample QC's Prev_Step exists on the batch AND is complete, the entry is the LAST of
+ * their EndDates. Otherwise there is no genuine idle period and we fall back to Pickup Sample
+ * QC's own StartDate. Prev_Step varies by product route ('Sampling QC', 'Sampling PN',
+ * 'Radiasi Produk Jadi', ...) and carries stray whitespace, hence the LTRIM/RTRIM throughout.
+ *
+ * Timing deliberately never comes from t_dnc_product. That table is only the QA *release
  * record* -- a row appears the moment QA releases the batch, so it carries no queue (2 of
  * 18,851 rows lack a label date) and its own turnaround is ~0 days. It is still joined here,
- * but purely for the batch's release/reject quantities, never for timing.
+ * but purely for the batch's release/reject quantities.
  */
 const FG_QC_CTE = `
-  WITH alur AS (
-    SELECT Product_ID, Batch_No, Batch_Date,
-      MIN(CASE WHEN LTRIM(RTRIM(nama_tahapan)) = 'Pickup Sample QC'
-               THEN StartDate END) AS QCEntry,
-      MAX(CASE WHEN LTRIM(RTRIM(nama_tahapan)) = 'Penyerahan Hasil Uji QC'
-               THEN EndDate END) AS QCExit
+  WITH pickup AS (
+    SELECT Product_ID, Batch_No, Batch_Date, Prev_Step, StartDate AS PickupStart
     FROM t_alur_proses
-    GROUP BY Product_ID, Batch_No, Batch_Date
+    WHERE LTRIM(RTRIM(nama_tahapan)) = 'Pickup Sample QC'
+  ),
+  alur AS (
+    -- A couple of batches carry duplicate Pickup / Penyerahan rows, so aggregate per batch.
+    SELECT p.Product_ID, p.Batch_No, p.Batch_Date,
+      MIN(CASE WHEN x.PrevCount > 0 AND x.PrevCount = x.CompletedCount
+               THEN x.MaxPrevEnd ELSE p.PickupStart END) AS QCEntry,
+      MAX(ex.QCExit) AS QCExit
+    FROM pickup p
+    CROSS APPLY (
+      SELECT COUNT(*) AS PrevCount,
+             SUM(n.IsComplete) AS CompletedCount,
+             MAX(n.PrevEnd) AS MaxPrevEnd
+      FROM (
+        SELECT d.pname,
+               MAX(b.EndDate) AS PrevEnd,
+               CASE WHEN COUNT(b.EndDate) > 0
+                     AND COUNT(b.EndDate) = COUNT(b.nama_tahapan)
+                    THEN 1 ELSE 0 END AS IsComplete
+        FROM (
+          SELECT DISTINCT LTRIM(RTRIM(ps.items)) AS pname
+          FROM split(p.Prev_Step, ';') ps
+        ) d
+        LEFT JOIN t_alur_proses b
+          ON b.Product_ID = p.Product_ID
+         AND b.Batch_No = p.Batch_No
+         AND b.Batch_Date = p.Batch_Date
+         AND LTRIM(RTRIM(b.nama_tahapan)) = d.pname
+        GROUP BY d.pname
+      ) n
+    ) x
+    OUTER APPLY (
+      SELECT MAX(e.EndDate) AS QCExit
+      FROM t_alur_proses e
+      WHERE e.Product_ID = p.Product_ID
+        AND e.Batch_No = p.Batch_No
+        AND e.Batch_Date = p.Batch_Date
+        AND LTRIM(RTRIM(e.nama_tahapan)) = 'Penyerahan Hasil Uji QC'
+    ) ex
+    GROUP BY p.Product_ID, p.Batch_No, p.Batch_Date
   ),
   qa AS (
     SELECT
@@ -2027,46 +2075,51 @@ async function getFGQCSummary(period) {
       ELSE '30+ days'
     END`;
   const turnaround = 'DATEDIFF(day, qa.QCEntry, qa.QCExit)';
+  const rejectPct = `
+    ROUND(SUM(ISNULL(qa.DNC_ditolak, 0)) * 100.0
+          / NULLIF(SUM(ISNULL(qa.DNC_Diluluskan, 0) + ISNULL(qa.DNC_ditolak, 0)), 0), 2)`;
 
-  // 1. Total currently in QC (same definition as getFGQCInProcess)
-  const totalInQCReq = db.request();
-  const totalInQC = await totalInQCReq.query(`
+  // The QC window is expensive to derive (a split/CROSS APPLY over every batch's Prev_Step), so
+  // materialise it once into a temp table and run all eight aggregates against that. Re-deriving
+  // it per aggregate cost ~15s; this brings the whole summary down to roughly one derivation.
+  // Everything must stay in a single batch -- #fgqc is session-scoped and the pool hands out a
+  // different connection per request.
+  const request = db.request();
+  request.input('agingPeriod', sql.NVarChar(6), targetPeriod);
+  request.input('intakePeriod', sql.NVarChar(6), targetPeriod);
+  request.input('compPeriod', sql.NVarChar(6), targetPeriod);
+
+  const result = await request.query(`
     ${FG_QC_CTE}
-    SELECT COUNT(*) AS total
+    SELECT
+      qa.QCEntry, qa.QCExit, qa.DNc_Status, qa.DNC_Diluluskan, qa.DNC_ditolak,
+      CASE WHEN qa.QCExit IS NULL AND ${FG_NOT_QA_RELEASED} AND live.Product_ID IS NOT NULL
+           THEN 1 ELSE 0 END AS IsInProgress
+    INTO #fgqc
     FROM qa
-    JOIN (${FG_LIVE_BATCHES}) live
+    LEFT JOIN (${FG_LIVE_BATCHES}) live
       ON live.Product_ID = qa.Product_ID
      AND live.Batch_No = qa.Batch_No
-     AND live.Batch_Date = qa.Batch_Date
-    WHERE qa.QCExit IS NULL
-      AND ${FG_NOT_QA_RELEASED}
-  `);
+     AND live.Batch_Date = qa.Batch_Date;
 
-  // 2. Aging: turnaround spread of batches released in the selected period
-  const agingReq = db.request();
-  agingReq.input('agingPeriod', sql.NVarChar(6), targetPeriod);
-  const agingResult = await agingReq.query(`
-    ${FG_QC_CTE}
+    -- 1. Total currently in QC (same definition as getFGQCInProcess)
+    SELECT COUNT(*) AS total FROM #fgqc qa WHERE qa.IsInProgress = 1;
+
+    -- 2. Aging: QC turnaround spread of batches that finished QC in the selected period
     SELECT ${AGING_BUCKET(turnaround)} AS aging_bucket, COUNT(*) AS count
-    FROM qa
+    FROM #fgqc qa
     WHERE qa.QCExit IS NOT NULL
       AND CONVERT(nvarchar(6), qa.QCExit, 112) = @agingPeriod
-    GROUP BY ${AGING_BUCKET(turnaround)}
-  `);
+    GROUP BY ${AGING_BUCKET(turnaround)};
 
-  // 3. Aging over the last 13 months (YTD toggle)
-  const agingYTDResult = await db.request().query(`
-    ${FG_QC_CTE}
+    -- 3. Aging over the last 13 months (YTD toggle)
     SELECT ${AGING_BUCKET(turnaround)} AS aging_bucket, COUNT(*) AS count
-    FROM qa
+    FROM #fgqc qa
     WHERE qa.QCExit IS NOT NULL
       AND qa.QCExit >= DATEADD(month, -13, GETDATE())
-    GROUP BY ${AGING_BUCKET(turnaround)}
-  `);
+    GROUP BY ${AGING_BUCKET(turnaround)};
 
-  // 4. Monthly volume by QC entry month (last 13 months)
-  const monthlyResult = await db.request().query(`
-    ${FG_QC_CTE}
+    -- 4. Monthly volume by QC entry month (last 13 months)
     SELECT
       CONVERT(nvarchar(6), qa.QCEntry, 112) AS period,
       COUNT(*) AS total,
@@ -2075,81 +2128,67 @@ async function getFGQCSummary(period) {
       SUM(ISNULL(qa.DNC_Diluluskan, 0)) AS total_released,
       SUM(ISNULL(qa.DNC_ditolak, 0)) AS total_rejected,
       SUM(CASE WHEN qa.DNc_Status = 'DITOLAK' OR qa.DNC_ditolak > 0 THEN 1 ELSE 0 END) AS has_reject,
-      ROUND(SUM(ISNULL(qa.DNC_ditolak, 0)) * 100.0
-            / NULLIF(SUM(ISNULL(qa.DNC_Diluluskan, 0) + ISNULL(qa.DNC_ditolak, 0)), 0), 2) AS reject_pct
-    FROM qa
+      ${rejectPct} AS reject_pct
+    FROM #fgqc qa
     WHERE qa.QCEntry >= DATEADD(month, -13, GETDATE())
     GROUP BY CONVERT(nvarchar(6), qa.QCEntry, 112)
-    ORDER BY period ASC
-  `);
+    ORDER BY period ASC;
 
-  // 5. Daily intake for the selected period
-  const dailyIntakeReq = db.request();
-  dailyIntakeReq.input('intakePeriod', sql.NVarChar(6), targetPeriod);
-  const dailyIntakeResult = await dailyIntakeReq.query(`
-    ${FG_QC_CTE}
+    -- 5. Daily intake for the selected period
     SELECT CONVERT(date, qa.QCEntry) AS entry_date, COUNT(*) AS cnt
-    FROM qa
+    FROM #fgqc qa
     WHERE CONVERT(nvarchar(6), qa.QCEntry, 112) = @intakePeriod
     GROUP BY CONVERT(date, qa.QCEntry)
-    ORDER BY entry_date
-  `);
+    ORDER BY entry_date;
 
-  // 6. Daily completions for the selected period
-  const dailyCompReq = db.request();
-  dailyCompReq.input('compPeriod', sql.NVarChar(6), targetPeriod);
-  const dailyCompResult = await dailyCompReq.query(`
-    ${FG_QC_CTE}
+    -- 6. Daily completions for the selected period
     SELECT CONVERT(date, qa.QCExit) AS completion_date, COUNT(*) AS cnt
-    FROM qa
+    FROM #fgqc qa
     WHERE qa.QCExit IS NOT NULL
       AND CONVERT(nvarchar(6), qa.QCExit, 112) = @compPeriod
     GROUP BY CONVERT(date, qa.QCExit)
-    ORDER BY completion_date
-  `);
+    ORDER BY completion_date;
 
-  // 7. Leadtime by completion month (18 months, so the frontend can window 13 of them)
-  const leadtimeMonthlyResult = await db.request().query(`
-    ${FG_QC_CTE}
+    -- 7. Leadtime by completion month (18 months, so the frontend can window 13 of them)
     SELECT
       CONVERT(nvarchar(6), qa.QCExit, 112) AS period,
       AVG(CAST(${turnaround} AS FLOAT)) AS avg_turnaround,
       COUNT(*) AS sample_count
-    FROM qa
+    FROM #fgqc qa
     WHERE qa.QCExit IS NOT NULL
       AND qa.QCExit >= DATEADD(month, -18, GETDATE())
     GROUP BY CONVERT(nvarchar(6), qa.QCExit, 112)
-    ORDER BY period ASC
-  `);
+    ORDER BY period ASC;
 
-  // 8. Released count by completion month (drives the Released / Reject Rate KPI cards)
-  const releasedResult = await db.request().query(`
-    ${FG_QC_CTE}
+    -- 8. Batches finishing QC per completion month (drives the Released / Reject Rate KPIs)
     SELECT
       CONVERT(nvarchar(6), qa.QCExit, 112) AS period,
       COUNT(*) AS completed,
       SUM(ISNULL(qa.DNC_Diluluskan, 0)) AS total_released,
       SUM(ISNULL(qa.DNC_ditolak, 0)) AS total_rejected,
       SUM(CASE WHEN qa.DNc_Status = 'DITOLAK' OR qa.DNC_ditolak > 0 THEN 1 ELSE 0 END) AS has_reject,
-      ROUND(SUM(ISNULL(qa.DNC_ditolak, 0)) * 100.0
-            / NULLIF(SUM(ISNULL(qa.DNC_Diluluskan, 0) + ISNULL(qa.DNC_ditolak, 0)), 0), 2) AS reject_pct
-    FROM qa
+      ${rejectPct} AS reject_pct
+    FROM #fgqc qa
     WHERE qa.QCExit IS NOT NULL
       AND qa.QCExit >= DATEADD(month, -13, GETDATE())
     GROUP BY CONVERT(nvarchar(6), qa.QCExit, 112)
-    ORDER BY period ASC
+    ORDER BY period ASC;
+
+    DROP TABLE #fgqc;
   `);
 
+  const [totalInQC, aging, agingYTD, monthly, dailyIntake, dailyCompletions, leadtimeMonthly, released] = result.recordsets;
+
   return {
-    totalInQC: totalInQC.recordset[0].total,
+    totalInQC: totalInQC[0].total,
     currentPeriod: targetPeriod,
-    aging: agingResult.recordset,
-    agingYTD: agingYTDResult.recordset,
-    monthly: monthlyResult.recordset,
-    dailyIntake: dailyIntakeResult.recordset,
-    dailyCompletions: dailyCompResult.recordset,
-    leadtimeMonthly: leadtimeMonthlyResult.recordset,
-    released: releasedResult.recordset
+    aging,
+    agingYTD,
+    monthly,
+    dailyIntake,
+    dailyCompletions,
+    leadtimeMonthly,
+    released
   };
 }
 

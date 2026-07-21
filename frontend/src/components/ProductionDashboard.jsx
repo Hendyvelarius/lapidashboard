@@ -2343,7 +2343,7 @@ const ProductionDashboard = () => {
       x: 0.5, y: 0.3, w: 9, h: 0.5,
       fontSize: 28, bold: true, color: '2C3E50'
     });
-    slide2.addText('Monthly production tracking for the last 12 months.', {
+    slide2.addText('Monthly production tracking for the last 13 months.', {
       x: 0.5, y: 0.85, w: 9, h: 0.3,
       fontSize: 12, color: '666666'
     });
@@ -2856,7 +2856,7 @@ const ProductionDashboard = () => {
     setOf1ModalOpen(true);
   };
 
-  // Process forecast data to get monthly totals for last 12 months
+  // Process forecast data to get monthly totals for last 13 months
   const processForecastData = (rawForecastData, categories = {}) => {
     if (!rawForecastData || rawForecastData.length === 0) return [];
 
@@ -2864,14 +2864,15 @@ const ProductionDashboard = () => {
     const currentYear = currentDate.getFullYear();
     const currentMonth = currentDate.getMonth() + 1; // 0-indexed, so add 1
 
-    // Generate the last 12 month periods (including current month)
-    const last12Periods = [];
-    for (let i = 11; i >= 0; i--) {
+    // Generate the last 13 month periods (including current month). 13 rather than 12
+    // so the same month one year ago sits on the chart next to the current month.
+    const last13Periods = [];
+    for (let i = 12; i >= 0; i--) {
       const targetDate = new Date(currentYear, currentMonth - 1 - i, 1);
       const targetYear = targetDate.getFullYear();
       const targetMonth = targetDate.getMonth() + 1;
       const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      last12Periods.push({
+      last13Periods.push({
         periode: `${targetYear}${targetMonth.toString().padStart(2, '0')}`,
         year: targetYear,
         month: targetMonth,
@@ -2879,9 +2880,9 @@ const ProductionDashboard = () => {
       });
     }
 
-    // Initialize monthly data for the last 12 months
+    // Initialize monthly data for the last 13 months
     const monthlyData = [];
-    for (const periodInfo of last12Periods) {
+    for (const periodInfo of last13Periods) {
       const periode = periodInfo.periode;
       
       // Filter data for this periode
@@ -3017,14 +3018,15 @@ const ProductionDashboard = () => {
     const currentYear = currentDate.getFullYear();
     const currentMonth = currentDate.getMonth() + 1; // 0-indexed, so add 1
 
-    // Generate the last 12 month periods (including current month)
-    const last12Periods = [];
-    for (let i = 11; i >= 0; i--) {
+    // Generate the last 13 month periods (including current month). 13 rather than 12
+    // so the same month one year ago sits on the chart next to the current month.
+    const last13Periods = [];
+    for (let i = 12; i >= 0; i--) {
       const targetDate = new Date(currentYear, currentMonth - 1 - i, 1);
       const targetYear = targetDate.getFullYear();
       const targetMonth = targetDate.getMonth() + 1;
       const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      last12Periods.push({
+      last13Periods.push({
         periode: `${targetYear}${targetMonth.toString().padStart(2, '0')}`,
         year: targetYear,
         month: targetMonth,
@@ -3042,9 +3044,9 @@ const ProductionDashboard = () => {
       periodeMap[periode].push(item);
     });
 
-    // Calculate monthly average fulfillment percentages for last 12 months
+    // Calculate monthly average fulfillment percentages for last 13 months
     const monthlyData = [];
-    for (const periodInfo of last12Periods) {
+    for (const periodInfo of last13Periods) {
       const periode = periodInfo.periode;
       const monthData = periodeMap[periode] || [];
       
@@ -4198,7 +4200,7 @@ const ProductionDashboard = () => {
                 {/* Production Output Title */}
                 <div style={{ flex: 1 }}>
                   <h3 style={{ margin: '0 0 4px 0', fontSize: '1.1rem', color: '#2c3e50' }}>Production Output</h3>
-                  <p style={{ margin: '0', fontSize: '0.85rem', color: '#666' }}>Monthly production tracking for the last 12 months.</p>
+                  <p style={{ margin: '0', fontSize: '0.85rem', color: '#666' }}>Monthly production tracking for the last 13 months.</p>
                   <small style={{ color: '#666', fontSize: '0.75rem' }}>
                     📊 Click to see individual production for each product.
                   </small>
@@ -4207,7 +4209,7 @@ const ProductionDashboard = () => {
                 {/* OF1 Accomplishment Title */}
                 <div style={{ flex: 1 }}>
                   <h3 style={{ margin: '0 0 4px 0', fontSize: '1.1rem', color: '#2c3e50' }}>OF1 Accomplishment</h3>
-                  <p style={{ margin: '0', fontSize: '0.85rem', color: '#666' }}>Order fulfillment percentage for the last 12 months.</p>
+                  <p style={{ margin: '0', fontSize: '0.85rem', color: '#666' }}>Order fulfillment percentage for the last 13 months.</p>
                   <small style={{ color: '#666', fontSize: '0.75rem' }}>
                     📈 Click to see target vs actual releases per product.
                   </small>

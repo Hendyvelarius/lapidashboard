@@ -532,6 +532,7 @@ const Speedometer = ({ label, value, maxValue = 50, stageName, batches = [], onC
 
 const QualityDashboard = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [sidebarMinimized, setSidebarMinimized] = useState(false);
   const [currentView, setCurrentView] = useState('monthly'); // 'monthly' or 'daily'
   const [autoMode, setAutoMode] = useState(true); // Auto-switch between monthly/daily
@@ -614,6 +615,7 @@ const QualityDashboard = () => {
   // WIP Stage Modal states
   const [wipStageModalOpen, setWipStageModalOpen] = useState(false);
   const [selectedWipStageData, setSelectedWipStageData] = useState(null);
+  const [qaBacklogModalDept, setQaBacklogModalDept] = useState(null);
   const [wipTaskModalOpen, setWipTaskModalOpen] = useState(false);
   const [selectedWipTaskData, setSelectedWipTaskData] = useState(null);
 
@@ -2348,6 +2350,61 @@ const QualityDashboard = () => {
 
   // Get WIP stages data for Quality dashboard (QC, Mikro, QA for both PN1 and PN2)
   const wipStages = processQualityWIPData(wipData);
+
+  // QA document backlog: per originating department (PN, PC, MC, QC), how many
+  // documents have arrived at QA but have not been finished by QA yet.
+  //
+  // "Arrived at QA" is the step *before* "Cek Dokumen <dept> oleh QA" being complete,
+  // which is exactly what IdleStartDate on that step records (see getWIPData step 7).
+  // "Not finished" is that same step having no EndDate. StartDate is deliberately not
+  // used: QA document steps never populate it (see stageBoundaries.js), so a step with
+  // an IdleStartDate and no EndDate is sitting in QA's queue.
+  //
+  // Names are matched by prefix, not equality, because some batches carry a numbered
+  // variant of the step ('Cek Dokumen PN oleh QA 76').
+  const qaBacklog = React.useMemo(() => {
+    const depts = ['PN', 'PC', 'MC', 'QC'];
+    const stepPattern = /^Cek Dokumen (PN|PC|MC|QC) oleh QA\b/i;
+    const tally = Object.fromEntries(depts.map(d => [d, []]));
+
+    wipData.forEach(entry => {
+      const match = (entry.nama_tahapan || '').trim().match(stepPattern);
+      if (!match) return;
+      if (!entry.IdleStartDate || entry.EndDate) return;
+
+      const reachedAt = parseSQLDateTimeForDisplay(entry.IdleStartDate);
+      // A StartDate here is rare (QA document steps normally only ever get an
+      // IdleStartDate), but when present it means QA has actually picked the doc up.
+      const startedAt = parseSQLDateTimeForDisplay(entry.StartDate);
+
+      tally[match[1].toUpperCase()].push({
+        key: `${entry.Product_ID}|${entry.Batch_No}|${entry.Batch_Date}`,
+        productId: entry.Product_ID,
+        productName: entry.Product_Name,
+        batchNo: entry.Batch_No,
+        batchDate: entry.Batch_Date,
+        stepName: (entry.nama_tahapan || '').trim(),
+        reachedAt,
+        startedAt,
+        daysWaiting: reachedAt ? (calculateCalendarDaysTo(reachedAt, referenceDate) || 0) : 0,
+        daysWorked: startedAt ? (calculateCalendarDaysTo(startedAt, referenceDate) || 0) : null,
+      });
+    });
+
+    return depts.map(dept => {
+      // Longest-waiting first: that is the queue order that matters to a planner.
+      const batches = tally[dept].sort((a, b) => b.daysWaiting - a.daysWaiting);
+      return {
+        dept,
+        batches,
+        count: batches.length,
+        oldestDays: batches.length ? batches[0].daysWaiting : 0,
+      };
+    });
+  }, [wipData, referenceDate]);
+
+  // The QA backlog is an internal planning metric — only PL and NT see it.
+  const canSeeQaBacklog = ['PL', 'NT'].includes(user?.emp_DeptID);
   // Monthly Output data (batch releases per month)
   const monthlyOutputData = {
     labels: monthlyBatchData.map(d => d.month),
@@ -3028,7 +3085,7 @@ const QualityDashboard = () => {
                   </button>
                 </div>
               </div>
-              <div style={{ position: 'relative', height: '250px', minHeight: '250px' }}>
+              <div style={{ position: 'relative', height: '200px', minHeight: '200px' }}>
                 <div className={`chart-card-content ${currentView === 'monthly' ? 'fade-in' : 'fade-out'}`}>
                   <Bar data={monthlyOutputData} options={monthlyOutputOptions} key={`monthly-${sidebarMinimized}`} />
                 </div>
@@ -3113,6 +3170,38 @@ const QualityDashboard = () => {
               </div>
             )}
           </div>
+
+          {/* QA Document Backlog - restricted to PL and NT */}
+          {canSeeQaBacklog && (
+            <div className="qa-backlog-section">
+              <div className="qa-backlog-header">
+                <h3>QA Document Backlog</h3>
+                <span className="qa-backlog-subtitle">
+                  Documents that have reached QA but are not finished yet
+                </span>
+              </div>
+              <div className="qa-backlog-grid">
+                {qaBacklog.map(({ dept, count, oldestDays }) => (
+                  <button
+                    key={dept}
+                    type="button"
+                    className={`qa-backlog-card ${count === 0 ? 'is-clear' : ''}`}
+                    onClick={() => count > 0 && setQaBacklogModalDept(dept)}
+                    disabled={count === 0}
+                    title={count > 0 ? `View the ${count} pending ${dept} document${count === 1 ? '' : 's'}` : undefined}
+                  >
+                    <div className="qa-backlog-count">{count}</div>
+                    <div className="qa-backlog-info">
+                      <div className="qa-backlog-dept">{dept}</div>
+                      <div className="qa-backlog-meta">
+                        {count === 0 ? 'nothing pending' : `longest ${oldestDays}d`}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* WIP Speedometers Section */}
           <div ref={wipSectionRef} className="quality-wip-section">
@@ -3918,6 +4007,111 @@ const QualityDashboard = () => {
       )}
 
       {/* WIP Stage Modal */}
+      {/* QA Document Backlog details (PL / NT only) */}
+      {qaBacklogModalDept && (
+        <Modal
+          open={!!qaBacklogModalDept}
+          title={`QA Document Backlog - ${qaBacklogModalDept}`}
+          onClose={() => setQaBacklogModalDept(null)}
+        >
+          {(() => {
+            const group = qaBacklog.find(g => g.dept === qaBacklogModalDept);
+            const batches = group?.batches || [];
+            const inProgress = batches.filter(b => b.startedAt).length;
+            const fmt = d => (d ? d.toLocaleDateString('en-GB') : 'N/A');
+
+            return (
+              <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+                <div style={{
+                  marginBottom: '16px',
+                  padding: '12px',
+                  background: 'linear-gradient(135deg, #4f8cff15, #4f8cff05)',
+                  borderRadius: '8px',
+                  borderLeft: '4px solid #4f8cff',
+                }}>
+                  <div style={{ fontSize: '0.9rem', color: '#6c757d', marginBottom: '4px' }}>
+                    <strong>Step:</strong> Cek Dokumen {qaBacklogModalDept} oleh QA
+                  </div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: '600', color: '#4f8cff' }}>
+                    {batches.length} document{batches.length !== 1 ? 's' : ''} pending
+                    <span style={{ color: inProgress > 0 ? '#e67e22' : '#9ca3af', marginLeft: '8px', fontSize: '0.9rem' }}>
+                      ({inProgress} being worked on)
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {batches.map(batch => (
+                    <div
+                      key={batch.key}
+                      style={{
+                        padding: '12px 14px',
+                        background: 'white',
+                        border: '1px solid #e5e7eb',
+                        borderLeft: `4px solid ${batch.startedAt ? '#e67e22' : '#4f8cff'}`,
+                        borderRadius: '8px',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: '1rem', fontWeight: '700', color: '#2c3e50' }}>
+                            {batch.batchNo}
+                          </div>
+                          <div style={{ fontSize: '0.85rem', color: '#6c757d' }}>
+                            {batch.productName || batch.productId}
+                          </div>
+                        </div>
+                        <span style={{
+                          flexShrink: 0,
+                          padding: '3px 10px',
+                          borderRadius: '4px',
+                          fontSize: '0.75rem',
+                          fontWeight: '700',
+                          backgroundColor: batch.startedAt ? '#fde8d0' : '#fef3c7',
+                          color: batch.startedAt ? '#9a4a06' : '#92400e',
+                        }}>
+                          {batch.startedAt ? 'In Progress' : 'Not Started'}
+                        </span>
+                      </div>
+
+                      <div style={{
+                        marginTop: '10px',
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                        gap: '8px',
+                        fontSize: '0.8rem',
+                      }}>
+                        <div>
+                          <div style={{ color: '#9ca3af' }}>Reached QA</div>
+                          <div style={{ color: '#374151', fontWeight: '600' }}>
+                            {fmt(batch.reachedAt)} · {batch.daysWaiting}d ago
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ color: '#9ca3af' }}>Worked on by QA</div>
+                          <div style={{ color: batch.startedAt ? '#374151' : '#9ca3af', fontWeight: '600' }}>
+                            {batch.startedAt
+                              ? `${fmt(batch.startedAt)} · ${batch.daysWorked}d`
+                              : 'Not picked up yet'}
+                          </div>
+                        </div>
+                        {batch.stepName !== `Cek Dokumen ${qaBacklogModalDept} oleh QA` && (
+                          <div>
+                            <div style={{ color: '#9ca3af' }}>Step</div>
+                            <div style={{ color: '#374151', fontWeight: '600' }}>{batch.stepName}</div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+        </Modal>
+      )}
+
       {wipStageModalOpen && selectedWipStageData && (
         <Modal
           open={wipStageModalOpen}
