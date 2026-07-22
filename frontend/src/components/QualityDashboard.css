@@ -327,6 +327,17 @@ body.sidebar-minimized .quality-charts-container.sidebar-minimized {
   border-left-color: #10b981;
 }
 
+/* A full set is a different kind of queue entry -- a whole batch ready to be
+   closed out -- so it reads apart from the single-document buckets. */
+.qa-backlog-card.is-fullset {
+  border-left-color: #7c3aed;
+  background: #faf5ff;
+}
+
+.qa-backlog-card.is-fullset.is-clear {
+  border-left-color: #10b981;
+}
+
 .qa-backlog-info {
   display: flex;
   flex-direction: column;
@@ -349,6 +360,11 @@ body.sidebar-minimized .quality-charts-container.sidebar-minimized {
   color: #4f8cff;
 }
 
+.qa-backlog-card.is-fullset .qa-backlog-count {
+  color: #7c3aed;
+}
+
+/* Empty beats every other state: keep the green "clear" read last. */
 .qa-backlog-card.is-clear .qa-backlog-count {
   color: #10b981;
 }

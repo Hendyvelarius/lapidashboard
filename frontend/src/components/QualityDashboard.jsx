@@ -4,6 +4,7 @@ import { Chart as ChartJS, ArcElement, BarElement, CategoryScale, LinearScale, L
 import { Bar, Line, Doughnut } from 'react-chartjs-2';
 import Sidebar from './Sidebar';
 import Modal from './Modal';
+import WipStepReason from './WipStepReason';
 import DashboardLoading from './DashboardLoading';
 import ContextualHelpModal from './ContextualHelpModal';
 import { useHelp } from '../context/HelpContext';
@@ -2183,6 +2184,14 @@ const QualityDashboard = () => {
     setWipStageModalOpen(true);
   };
 
+  // Every WIP row belonging to one batch, across all stages. Matched on the full
+  // key because a Batch_No on its own is not unique across products.
+  const batchSteps = (batch) => wipData.filter(e =>
+    e.Batch_No === batch.batchNo
+    && e.Product_ID === batch.productId
+    && e.Batch_Date === batch.batchDate
+  );
+
   // Handle task details click
   const handleWipTaskDetailsClick = (batch, stageName, color) => {
     // Sort tasks by urutan (chronological process order)
@@ -2197,6 +2206,11 @@ const QualityDashboard = () => {
       batchDate: batch.batchDate,
       stageName: stageName,
       tasks: sortedTasks,
+      // Every step of the batch, not just this stage's. A step's Prev_Step routinely
+      // names a step from an earlier stage ('Cek Dokumen PN oleh QA' waits on
+      // 'Penyerahaan PPI ke QA', which is Kemas Sekunder), so the stage-scoped list
+      // cannot resolve prerequisites.
+      allSteps: batchSteps(batch),
       color: color,
     });
     setWipTaskModalOpen(true);
@@ -2351,8 +2365,13 @@ const QualityDashboard = () => {
   // Get WIP stages data for Quality dashboard (QC, Mikro, QA for both PN1 and PN2)
   const wipStages = processQualityWIPData(wipData);
 
-  // QA document backlog: per originating department (PN, PC, MC, QC), how many
-  // documents have arrived at QA but have not been finished by QA yet.
+  // QA document backlog: per originating department (PN, MC, QC), how many
+  // documents have arrived at QA but have not been finished by QA yet, plus a
+  // FULL SET bucket for batches whose PN, MC *and* QC documents have all reached
+  // QA — those are ready to be closed out end-to-end.
+  //
+  // PC is deliberately excluded everywhere: it is not counted on its own and it
+  // is not required for a batch to qualify as a full set.
   //
   // "Arrived at QA" is the step *before* "Cek Dokumen <dept> oleh QA" being complete,
   // which is exactly what IdleStartDate on that step records (see getWIPData step 7).
@@ -2360,38 +2379,107 @@ const QualityDashboard = () => {
   // used: QA document steps never populate it (see stageBoundaries.js), so a step with
   // an IdleStartDate and no EndDate is sitting in QA's queue.
   //
+  // A full set stays a full set until QA has finished *all three* — clearing one
+  // document must not spill the batch back into the per-department buckets.
+  //
   // Names are matched by prefix, not equality, because some batches carry a numbered
   // variant of the step ('Cek Dokumen PN oleh QA 76').
   const qaBacklog = React.useMemo(() => {
-    const depts = ['PN', 'PC', 'MC', 'QC'];
-    const stepPattern = /^Cek Dokumen (PN|PC|MC|QC) oleh QA\b/i;
-    const tally = Object.fromEntries(depts.map(d => [d, []]));
+    const depts = ['PN', 'MC', 'QC'];
+    const stepPattern = /^Cek Dokumen (PN|MC|QC) oleh QA\b/i;
+
+    // Every QA document step is collected, finished ones included: they are what
+    // tells a full set apart from a batch that simply never got there, and they
+    // drive the per-document status lights in the modal.
+    const byBatch = new Map();
 
     wipData.forEach(entry => {
       const match = (entry.nama_tahapan || '').trim().match(stepPattern);
       if (!match) return;
-      if (!entry.IdleStartDate || entry.EndDate) return;
 
+      const dept = match[1].toUpperCase();
+      const key = `${entry.Product_ID}|${entry.Batch_No}|${entry.Batch_Date}`;
       const reachedAt = parseSQLDateTimeForDisplay(entry.IdleStartDate);
+      const endedAt = parseSQLDateTimeForDisplay(entry.EndDate);
       // A StartDate here is rare (QA document steps normally only ever get an
       // IdleStartDate), but when present it means QA has actually picked the doc up.
       const startedAt = parseSQLDateTimeForDisplay(entry.StartDate);
 
-      tally[match[1].toUpperCase()].push({
-        key: `${entry.Product_ID}|${entry.Batch_No}|${entry.Batch_Date}`,
-        productId: entry.Product_ID,
-        productName: entry.Product_Name,
-        batchNo: entry.Batch_No,
-        batchDate: entry.Batch_Date,
+      if (!byBatch.has(key)) {
+        byBatch.set(key, {
+          key,
+          productId: entry.Product_ID,
+          productName: entry.Product_Name,
+          batchNo: entry.Batch_No,
+          batchDate: entry.Batch_Date,
+          docs: {},
+        });
+      }
+
+      byBatch.get(key).docs[dept] = {
+        key: `${key}|${dept}`,
+        dept,
         stepName: (entry.nama_tahapan || '').trim(),
+        // done   - QA has finished it
+        // pending - it reached QA and is still in the queue
+        // waiting - it has not reached QA at all yet
+        status: entry.EndDate ? 'done' : (entry.IdleStartDate ? 'pending' : 'waiting'),
         reachedAt,
         startedAt,
+        endedAt,
         daysWaiting: reachedAt ? (calculateCalendarDaysTo(reachedAt, referenceDate) || 0) : 0,
         daysWorked: startedAt ? (calculateCalendarDaysTo(startedAt, referenceDate) || 0) : null,
-      });
+      };
     });
 
-    return depts.map(dept => {
+    const tally = { PN: [], MC: [], QC: [], 'FULL SET': [] };
+
+    byBatch.forEach(batch => {
+      const { docs, ...batchInfo } = batch;
+      // A stable three-slot view of the batch, so the lights can show a document
+      // that has no step row at all as "not reached".
+      const all = depts.map(d => docs[d] || {
+        key: `${batch.key}|${d}`,
+        dept: d,
+        status: 'waiting',
+        reachedAt: null,
+        startedAt: null,
+        endedAt: null,
+        daysWaiting: 0,
+        daysWorked: null,
+      });
+
+      const arrived = all.filter(d => d.status !== 'waiting');
+      const pending = all.filter(d => d.status === 'pending');
+      if (pending.length === 0) return; // nothing left for QA to do on this batch
+
+      if (arrived.length === depts.length) {
+        // The set became actionable when the *last* of the three landed, so that
+        // is the date the ageing is measured from.
+        const reachedAt = all.reduce(
+          (latest, d) => (d.reachedAt && (!latest || d.reachedAt > latest) ? d.reachedAt : latest),
+          null,
+        );
+        const startedAt = all.reduce(
+          (earliest, d) => (d.startedAt && (!earliest || d.startedAt < earliest) ? d.startedAt : earliest),
+          null,
+        );
+
+        tally['FULL SET'].push({
+          ...batchInfo,
+          docs: all,
+          reachedAt,
+          startedAt,
+          daysWaiting: reachedAt ? (calculateCalendarDaysTo(reachedAt, referenceDate) || 0) : 0,
+          daysWorked: startedAt ? (calculateCalendarDaysTo(startedAt, referenceDate) || 0) : null,
+        });
+        return;
+      }
+
+      pending.forEach(doc => tally[doc.dept].push({ ...batchInfo, ...doc, docs: all }));
+    });
+
+    return [...depts, 'FULL SET'].map(dept => {
       // Longest-waiting first: that is the queue order that matters to a planner.
       const batches = tally[dept].sort((a, b) => b.daysWaiting - a.daysWaiting);
       return {
@@ -3185,16 +3273,22 @@ const QualityDashboard = () => {
                   <button
                     key={dept}
                     type="button"
-                    className={`qa-backlog-card ${count === 0 ? 'is-clear' : ''}`}
+                    className={`qa-backlog-card ${count === 0 ? 'is-clear' : ''} ${dept === 'FULL SET' ? 'is-fullset' : ''}`}
                     onClick={() => count > 0 && setQaBacklogModalDept(dept)}
                     disabled={count === 0}
-                    title={count > 0 ? `View the ${count} pending ${dept} document${count === 1 ? '' : 's'}` : undefined}
+                    title={count > 0
+                      ? (dept === 'FULL SET'
+                        ? `View the ${count} batch${count === 1 ? '' : 'es'} where PN, MC and QC have all reached QA`
+                        : `View the ${count} pending ${dept} document${count === 1 ? '' : 's'}`)
+                      : undefined}
                   >
                     <div className="qa-backlog-count">{count}</div>
                     <div className="qa-backlog-info">
                       <div className="qa-backlog-dept">{dept}</div>
                       <div className="qa-backlog-meta">
-                        {count === 0 ? 'nothing pending' : `longest ${oldestDays}d`}
+                        {count === 0
+                          ? (dept === 'FULL SET' ? 'no full sets' : 'nothing pending')
+                          : `longest ${oldestDays}d`}
                       </div>
                     </div>
                   </button>
@@ -4017,23 +4111,36 @@ const QualityDashboard = () => {
           {(() => {
             const group = qaBacklog.find(g => g.dept === qaBacklogModalDept);
             const batches = group?.batches || [];
+            const isFullSet = qaBacklogModalDept === 'FULL SET';
             const inProgress = batches.filter(b => b.startedAt).length;
             const fmt = d => (d ? d.toLocaleDateString('en-GB') : 'N/A');
+            const accent = isFullSet ? '#7c3aed' : '#4f8cff';
+            // Traffic-light read on each of the three documents: green once QA has
+            // closed it, amber while it sits in QA's queue, red before it arrives.
+            const docLight = {
+              done: { dot: '#16a34a', bg: '#dcfce7', text: '#15803d', label: 'completed by QA' },
+              pending: { dot: '#eab308', bg: '#fef9c3', text: '#a16207', label: 'reached QA, still pending' },
+              waiting: { dot: '#ef4444', bg: '#fee2e2', text: '#b91c1c', label: 'not reached QA yet' },
+            };
 
             return (
               <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
                 <div style={{
                   marginBottom: '16px',
                   padding: '12px',
-                  background: 'linear-gradient(135deg, #4f8cff15, #4f8cff05)',
+                  background: `linear-gradient(135deg, ${accent}15, ${accent}05)`,
                   borderRadius: '8px',
-                  borderLeft: '4px solid #4f8cff',
+                  borderLeft: `4px solid ${accent}`,
                 }}>
                   <div style={{ fontSize: '0.9rem', color: '#6c757d', marginBottom: '4px' }}>
-                    <strong>Step:</strong> Cek Dokumen {qaBacklogModalDept} oleh QA
+                    {isFullSet
+                      ? <><strong>Step:</strong> Cek Dokumen PN, MC and QC oleh QA - all three have reached QA</>
+                      : <><strong>Step:</strong> Cek Dokumen {qaBacklogModalDept} oleh QA</>}
                   </div>
-                  <div style={{ fontSize: '1.1rem', fontWeight: '600', color: '#4f8cff' }}>
-                    {batches.length} document{batches.length !== 1 ? 's' : ''} pending
+                  <div style={{ fontSize: '1.1rem', fontWeight: '600', color: accent }}>
+                    {isFullSet
+                      ? `${batches.length} batch${batches.length !== 1 ? 'es' : ''} with a full set pending`
+                      : `${batches.length} document${batches.length !== 1 ? 's' : ''} pending`}
                     <span style={{ color: inProgress > 0 ? '#e67e22' : '#9ca3af', marginLeft: '8px', fontSize: '0.9rem' }}>
                       ({inProgress} being worked on)
                     </span>
@@ -4048,7 +4155,7 @@ const QualityDashboard = () => {
                         padding: '12px 14px',
                         background: 'white',
                         border: '1px solid #e5e7eb',
-                        borderLeft: `4px solid ${batch.startedAt ? '#e67e22' : '#4f8cff'}`,
+                        borderLeft: `4px solid ${batch.startedAt ? '#e67e22' : accent}`,
                         borderRadius: '8px',
                         boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
                       }}
@@ -4083,9 +4190,44 @@ const QualityDashboard = () => {
                         fontSize: '0.8rem',
                       }}>
                         <div>
-                          <div style={{ color: '#9ca3af' }}>Reached QA</div>
+                          <div style={{ color: '#9ca3af' }}>
+                            {isFullSet ? 'Set completed' : 'Reached QA'}
+                          </div>
                           <div style={{ color: '#374151', fontWeight: '600' }}>
                             {fmt(batch.reachedAt)} · {batch.daysWaiting}d ago
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ color: '#9ca3af' }}>Documents</div>
+                          <div style={{ display: 'flex', gap: '6px', marginTop: '2px' }}>
+                            {batch.docs.map(doc => {
+                              const light = docLight[doc.status];
+                              return (
+                                <span
+                                  key={doc.key}
+                                  title={`${doc.dept}: ${light.label}${doc.reachedAt ? ` · reached ${fmt(doc.reachedAt)}` : ''}`}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    padding: '2px 7px',
+                                    borderRadius: '999px',
+                                    fontSize: '0.7rem',
+                                    fontWeight: '700',
+                                    color: light.text,
+                                    backgroundColor: light.bg,
+                                  }}
+                                >
+                                  <span style={{
+                                    width: '7px',
+                                    height: '7px',
+                                    borderRadius: '50%',
+                                    backgroundColor: light.dot,
+                                  }} />
+                                  {doc.dept}
+                                </span>
+                              );
+                            })}
                           </div>
                         </div>
                         <div>
@@ -4096,7 +4238,7 @@ const QualityDashboard = () => {
                               : 'Not picked up yet'}
                           </div>
                         </div>
-                        {batch.stepName !== `Cek Dokumen ${qaBacklogModalDept} oleh QA` && (
+                        {!isFullSet && batch.stepName !== `Cek Dokumen ${qaBacklogModalDept} oleh QA` && (
                           <div>
                             <div style={{ color: '#9ca3af' }}>Step</div>
                             <div style={{ color: '#374151', fontWeight: '600' }}>{batch.stepName}</div>
@@ -4441,6 +4583,8 @@ const QualityDashboard = () => {
                           </div>
                         </div>
                       </div>
+
+                      <WipStepReason task={task} tasks={selectedWipTaskData.allSteps} />
                     </div>
                   );
                 })}

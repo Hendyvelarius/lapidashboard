@@ -16,6 +16,7 @@ import {
 import DashboardLoading from './DashboardLoading';
 import Sidebar from './Sidebar';
 import Modal from './Modal';
+import WipStepReason from './WipStepReason';
 import ContextualHelpModal from './ContextualHelpModal';
 import { useHelp } from '../context/HelpContext';
 import { useAuth } from '../context/AuthContext';
@@ -2735,6 +2736,14 @@ const ProductionDashboard = () => {
   };
 
   // Handle task details click
+  // Every WIP row belonging to one batch, across all stages. Matched on the full
+  // key because a Batch_No on its own is not unique across products.
+  const batchSteps = (batch) => rawWipData.filter(e =>
+    e.Batch_No === batch.batchNo
+    && e.Product_ID === batch.productId
+    && e.Batch_Date === batch.batchDate
+  );
+
   const handleTaskDetailsClick = (batch, stageName, color) => {
     // Sort tasks by urutan (chronological process order)
     const sortedTasks = [...batch.entries].sort((a, b) => {
@@ -2748,6 +2757,11 @@ const ProductionDashboard = () => {
       batchDate: batch.batchDate,
       stageName: stageName,
       tasks: sortedTasks,
+      // Every step of the batch, not just this stage's. A step's Prev_Step routinely
+      // names a step from an earlier stage ('Cek Dokumen PN oleh QA' waits on
+      // 'Penyerahaan PPI ke QA', which is Kemas Sekunder), so the stage-scoped list
+      // cannot resolve prerequisites.
+      allSteps: batchSteps(batch),
       color: color,
     });
     setTaskModalOpen(true);
@@ -5138,6 +5152,8 @@ const ProductionDashboard = () => {
                           </div>
                         </div>
                       </div>
+
+                      <WipStepReason task={task} tasks={selectedTaskData.allSteps} />
                     </div>
                   );
                 })}
