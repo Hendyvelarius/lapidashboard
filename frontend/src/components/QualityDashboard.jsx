@@ -2589,36 +2589,32 @@ const QualityDashboard = () => {
     }
   };
 
-  // Daily Output data (batch releases per day - last 30 days)
+  // Daily Output data (batch releases per day - current month).
+  // Same stacked-bar treatment and palette as Monthly Released, so switching between
+  // the two views reads as the same chart at a different resolution.
   const dailyOutputData = {
     labels: dailyBatchData.map(d => `${d.day}`),
     datasets: [
       {
         label: 'ETH',
         data: dailyBatchData.map(d => d.eth),
+        backgroundColor: 'rgba(147, 51, 234, 0.8)',
         borderColor: '#9333ea',
-        backgroundColor: 'rgba(147, 51, 234, 0.1)',
-        borderWidth: 2,
-        tension: 0.4,
-        fill: true
+        borderWidth: 1
       },
       {
         label: 'OTC',
         data: dailyBatchData.map(d => d.otc),
+        backgroundColor: 'rgba(79, 140, 255, 0.8)',
         borderColor: '#4f8cff',
-        backgroundColor: 'rgba(79, 140, 255, 0.1)',
-        borderWidth: 2,
-        tension: 0.4,
-        fill: true
+        borderWidth: 1
       },
       {
         label: 'Generik',
         data: dailyBatchData.map(d => d.generik),
+        backgroundColor: 'rgba(34, 197, 94, 0.8)',
         borderColor: '#22c55e',
-        backgroundColor: 'rgba(34, 197, 94, 0.1)',
-        borderWidth: 2,
-        tension: 0.4,
-        fill: true
+        borderWidth: 1
       }
     ]
   };
@@ -2641,6 +2637,7 @@ const QualityDashboard = () => {
     },
     scales: {
       x: {
+        stacked: true,
         grid: {
           display: false
         },
@@ -2654,6 +2651,7 @@ const QualityDashboard = () => {
         }
       },
       y: {
+        stacked: true,
         beginAtZero: true,
         suggestedMax: 20, // Default max of 20, will extend if data exceeds
         ticks: {
@@ -3178,7 +3176,7 @@ const QualityDashboard = () => {
                   <Bar data={monthlyOutputData} options={monthlyOutputOptions} key={`monthly-${sidebarMinimized}`} />
                 </div>
                 <div className={`chart-card-content ${currentView === 'daily' ? 'fade-in' : 'fade-out'}`}>
-                  <Line data={dailyOutputData} options={dailyOutputOptions} key={`daily-${sidebarMinimized}`} />
+                  <Bar data={dailyOutputData} options={dailyOutputOptions} key={`daily-${sidebarMinimized}`} />
                 </div>
               </div>
             </div>
