@@ -9,6 +9,7 @@ import DashboardLoading from './DashboardLoading';
 import ContextualHelpModal from './ContextualHelpModal';
 import { useHelp } from '../context/HelpContext';
 import { useAuth } from '../context/AuthContext';
+import { hasPageAccess } from '../config/AccessSettings';
 import { loadQualityCache, saveQualityCache, clearQualityCache, isQualityCacheValid } from '../utils/dashboardCache';
 import { calculateCalendarDaysToToday, calculateCalendarDaysTo, setHolidays } from '../utils/workingDays';
 import { USE_NEW_STAGE_LOGIC, GROUP_ORDER, groupStartFor, getStageMembership, computeDaysInStageForGroup } from '../utils/stageBoundaries';
@@ -2491,8 +2492,10 @@ const QualityDashboard = () => {
     });
   }, [wipData, referenceDate]);
 
-  // The QA backlog is an internal planning metric — only PL and NT see it.
-  const canSeeQaBacklog = ['PL', 'NT'].includes(user?.emp_DeptID);
+  // The QA backlog is visible to anyone with access to this (quality product)
+  // dashboard. Since the page itself is already gated by the 'quality' page
+  // access rules, we reuse that same check as the single source of truth.
+  const canSeeQaBacklog = hasPageAccess('quality', user);
   // Monthly Output data (batch releases per month)
   const monthlyOutputData = {
     labels: monthlyBatchData.map(d => d.month),

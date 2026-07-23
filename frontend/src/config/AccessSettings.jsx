@@ -201,6 +201,10 @@ export const PAGE_ACCESS = {
       { department: 'PC', jobLevel: 'SPV' },
       { department: 'PC', jobLevel: 'OFC' },
 
+      // PN1 / PN2 - accessible for MGR
+      { department: 'PN1', jobLevel: 'MGR' },
+      { department: 'PN2', jobLevel: 'MGR' },
+
        { department: 'MS', jobLevel: 'MGR' },
        { department: 'DS', jobLevel: 'DIR' },
        { department: 'HQ', jobLevel: 'HO' },
