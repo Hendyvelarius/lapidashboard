@@ -12,6 +12,7 @@ import { loadLinePN2Cache, saveLinePN2Cache, clearLinePN2Cache, isLinePN2CacheVa
 import { calculateCalendarDaysToToday, setHolidays } from '../utils/workingDays';
 import { USE_NEW_STAGE_LOGIC, GROUP_ORDER, groupStartFor, getStageMembership, computeDaysInStageForGroup } from '../utils/stageBoundaries';
 import { apiUrl, apiUrlWithRefresh } from '../api';
+import { sediaanLabel } from '../config/sediaanGroups';
 import './LinePN2Dashboard.css';
 
 ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend);
@@ -3524,7 +3525,7 @@ const LinePN2Dashboard = () => {
                             borderRadius: '4px',
                             display: 'inline-block',
                           }}>
-                            {batch.jenisSediaan}
+                            {sediaanLabel(batch.jenisSediaan)}
                           </div>
                         )}
                       </div>

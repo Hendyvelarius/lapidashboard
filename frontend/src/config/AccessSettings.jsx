@@ -52,7 +52,7 @@ export const PAGE_ACCESS = {
   // Production Dashboard
   'production': {
     requireAuth: true,
-    allowedDepartments: ['HQ', 'HC', 'PL', 'HC'], // Full access for these departments
+    allowedDepartments: ['HQ', 'HC', 'PL', 'HC', 'DS'], // Full access for these departments
     allowedUserIds: ['HWA'], // Specific users who always have access
     allowedJobLevels: [], // No general job level restriction
     specificCombinations: [
@@ -108,10 +108,11 @@ export const PAGE_ACCESS = {
   // per sediaan). Access mirrors the 'summary' dashboard.
   'dept-production': {
     requireAuth: true,
-    allowedDepartments: ['NT', 'PL', 'PC', 'HC'],
+    allowedDepartments: ['NT', 'PL', 'PC', 'HC', 'DS'],
     allowedUserIds: ['JDV', 'HWA'],
     allowedJobLevels: [],
     specificCombinations: [
+      { department: 'DS', jobLevel: 'DIR' },
       { department: 'MS', jobLevel: 'MGR' },
       { department: 'HQ', jobLevel: 'HO' },
     ],
@@ -120,7 +121,7 @@ export const PAGE_ACCESS = {
   // Line PN1 Dashboard
   'line-pn1': {
     requireAuth: true,
-    allowedDepartments: ['HQ', 'PL', 'NT', 'HC'], // Full access for these departments
+    allowedDepartments: ['HQ', 'PL', 'NT', 'HC', 'DS'], // Full access for these departments
     allowedUserIds: ['HWA'], // Specific users who always have access
     allowedJobLevels: [], // No general job level restriction
     specificCombinations: [
@@ -146,7 +147,7 @@ export const PAGE_ACCESS = {
   // Line PN2 Dashboard
   'line-pn2': {
     requireAuth: true,
-    allowedDepartments: ['HQ', 'PL', 'NT', 'HC'], // Full access for these departments
+    allowedDepartments: ['HQ', 'PL', 'NT', 'HC', 'DS'], // Full access for these departments
     allowedUserIds: ['HWA'], // Specific users who always have access
     allowedJobLevels: [], // No general job level restriction
     specificCombinations: [
@@ -172,7 +173,7 @@ export const PAGE_ACCESS = {
 
   'quality': {
     requireAuth: true,
-    allowedDepartments: ['HQ', 'PL', 'NT', 'HC'], // Full access for these departments
+    allowedDepartments: ['HQ', 'PL', 'NT', 'HC', 'DS'], // Full access for these departments
     allowedUserIds: ['HWA'], // Specific users who always have access
     allowedJobLevels: [], // No general job level restriction
     specificCombinations: [
@@ -205,6 +206,7 @@ export const PAGE_ACCESS = {
       { department: 'PN2', jobLevel: 'MGR' },
 
        { department: 'MS', jobLevel: 'MGR' },
+       { department: 'DS', jobLevel: 'DIR' },
        { department: 'HQ', jobLevel: 'HO' },
     ],
   },
@@ -212,7 +214,7 @@ export const PAGE_ACCESS = {
   // QC (Quality Control) Dashboard
   'quality-control': {
     requireAuth: true,
-    allowedDepartments: ['PL'],
+    allowedDepartments: ['PL','DS'],
     allowedUserIds: ['HWA', 'GWN', 'DNY', '1526'],
     allowedJobLevels: [],
     specificCombinations: [
@@ -227,7 +229,7 @@ export const PAGE_ACCESS = {
   // WIP Report Page
   'wip': {
     requireAuth: true,
-    allowedDepartments: ['NT', 'PL', 'PC', 'HC'],
+    allowedDepartments: ['NT', 'PL', 'PC', 'HC', 'DS'],
     allowedUserIds: ['JDV', 'HWA'],
     allowedJobLevels: [],
     specificCombinations: [],
@@ -236,7 +238,7 @@ export const PAGE_ACCESS = {
   // PCT Reports (Monthly and Yearly)
   'pct-reports': {
     requireAuth: true,
-    allowedDepartments: ['NT', 'PL', 'PC', 'HC'],
+    allowedDepartments: ['NT', 'PL', 'PC', 'HC', 'DS'],
     allowedUserIds: ['JDV', 'HWA'],
     allowedJobLevels: [],
     specificCombinations: [],
@@ -245,10 +247,11 @@ export const PAGE_ACCESS = {
   // Summary Dashboard
   'summary': {
     requireAuth: true,
-    allowedDepartments: ['NT', 'PL', 'PC', 'HC'],
+    allowedDepartments: ['NT', 'PL', 'PC', 'HC', 'DS'],
     allowedUserIds: ['JDV', 'HWA'],
     allowedJobLevels: [],
     specificCombinations: [
+      { department: 'DS', jobLevel: 'DIR' },
       { department: 'MS', jobLevel: 'MGR' },
       { department: 'HQ', jobLevel: 'HO' },
     ],
@@ -257,7 +260,7 @@ export const PAGE_ACCESS = {
   // Stock Forecast Dashboard
   'stock-forecast': {
     requireAuth: true,
-    allowedDepartments: ['NT', 'PL', 'PC', 'HC'],
+    allowedDepartments: ['NT', 'PL', 'PC', 'HC', 'DS'],
     allowedUserIds: ['JDV', 'HWA'],
     allowedJobLevels: [],
     specificCombinations: [],
@@ -277,7 +280,7 @@ export const PAGE_ACCESS = {
   // Reports Page
   'reports': {
     requireAuth: true,
-    allowedDepartments: ['NT', 'PL', 'PC', 'HC', 'QC', 'MC', 'QA'],
+    allowedDepartments: ['NT', 'PL', 'PC', 'HC', 'DS', 'QC', 'MC', 'QA'],
     allowedUserIds: ['JDV', 'HWA'],
     allowedJobLevels: [],
     specificCombinations: [],
@@ -286,7 +289,7 @@ export const PAGE_ACCESS = {
   // Beta Page (legacy)
   'beta': {
     requireAuth: true,
-    allowedDepartments: ['NT', 'PL', 'PC', 'HC'],
+    allowedDepartments: ['NT', 'PL', 'PC', 'HC', 'DS'],
     allowedUserIds: ['JDV', 'HWA'],
     allowedJobLevels: [],
     specificCombinations: [],

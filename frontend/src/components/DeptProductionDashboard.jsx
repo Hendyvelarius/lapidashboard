@@ -6,6 +6,7 @@ import { Play, Pause, ChevronDown } from 'lucide-react';
 import Sidebar from './Sidebar';
 import DashboardLoading from './DashboardLoading';
 import { apiUrlWithRefresh, fetchWithTimeout } from '../api';
+import { SEDIAAN_ORDER, sediaanLabel, shortSediaan, sortSediaan } from '../config/sediaanGroups';
 import './DeptProductionDashboard.css';
 
 // NOTE: ChartDataLabels is registered *locally* per <Bar> (via the plugins prop),
@@ -41,20 +42,8 @@ const PALETTE = [
   '#8a5f7a', '#7d8ca0', '#a58f4f', '#6f9a7d',
 ];
 
-// Shorter, still-clear display labels for the long sediaan names (charts get
-// cramped otherwise). Anything not listed shows as-is. Full name stays in
-// tooltips / title attributes.
-const SHORT_SEDIAAN = {
-  'Tablet Biasa Kapsul': 'Tablet Kapsul',
-  'Tablet Effervescent': 'Tablet EV',
-  'Serbuk Effervescent': 'Serbuk EV',
-  'Probiotik & Hormon': 'Prob & Hormon',
-  'Kapsul Lunak': 'Kaps Lunak',
-  'Suppositoria': 'Suppo',
-  'Pangan Olahan': 'Pangan',
-  'Soft Capsule': 'Soft Cap',
-};
-const shortSediaan = (s) => SHORT_SEDIAAN[s] || s;
+// Group vocabulary (labels, canonical order, sorting) is shared with the
+// Production dashboard — see frontend/src/config/sediaanGroups.js.
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -106,7 +95,6 @@ function useAggregate(rows, periods, metric, deptFilter) {
   return useMemo(() => {
     const cellMap = new Map();
     const totalMap = new Map();
-    const weight = new Map();
     const add = (map, key, r) => {
       const cur = map.get(key) || { num: 0, den: 0 };
       cur.num += metric.num(r); cur.den += metric.den(r); map.set(key, cur);
@@ -116,10 +104,8 @@ function useAggregate(rows, periods, metric, deptFilter) {
       const sediaan = r.Sediaan || 'Belum Ada';
       add(cellMap, `${sediaan}|${r.Periode}`, r);
       add(totalMap, sediaan, r);
-      const w = (Number(r.SumOutput) || 0) + (Number(r.YieldBatchCount) || 0) + (Number(r.SumTarget) || 0);
-      weight.set(sediaan, (weight.get(sediaan) || 0) + w);
     }
-    const sediaanList = [...weight.keys()].sort((a, b) => (weight.get(b) || 0) - (weight.get(a) || 0));
+    const sediaanList = sortSediaan(totalMap.keys());
     const cell = (s, p) => {
       const acc = cellMap.get(`${s}|${p}`);
       return acc ? metric.value(acc) : (metric.key === 'output' ? 0 : null);
@@ -135,10 +121,14 @@ function useAggregate(rows, periods, metric, deptFilter) {
   }, [rows, periods, metric, deptFilter]);
 }
 
+// Colors are pinned to the group itself (not to its rank in the data), so a
+// sediaan keeps the same hue across every chart, dept filter and refresh.
 function useColorMap(masterSediaan) {
   return useMemo(() => {
     const map = {};
-    masterSediaan.forEach((s, i) => { map[s] = PALETTE[i % PALETTE.length]; });
+    SEDIAAN_ORDER.forEach((s, i) => { map[s] = PALETTE[i]; });
+    let next = SEDIAAN_ORDER.length;
+    masterSediaan.forEach((s) => { if (!map[s]) map[s] = PALETTE[next++ % PALETTE.length]; });
     return map;
   }, [masterSediaan]);
 }
@@ -197,7 +187,7 @@ function MetricChart({ metric, rows, periods, deptFilter, chartMode, selectedSed
           callbacks: {
             label: (ctx) => {
               const v = ctx.parsed.y;
-              const name = bySediaan ? metric.label : ctx.dataset.label;
+              const name = bySediaan ? metric.label : sediaanLabel(ctx.dataset.label);
               return `${name}: ${v === null || v === undefined ? '-' : metric.format(v)}`;
             },
           },
@@ -278,7 +268,7 @@ function MetricTable({ metric, rows, periods, deptFilter, colorMap }) {
       <tbody>
         {tableRows.map((row) => (
           <tr key={row.sediaan}>
-            <td className="dp-sticky-col" title={row.sediaan}>
+            <td className="dp-sticky-col" title={sediaanLabel(row.sediaan)}>
               <span className="dp-dot" style={{ background: colorMap[row.sediaan] }} />
               <span className="dp-sed-name">{shortSediaan(row.sediaan)}</span>
             </td>
@@ -398,22 +388,23 @@ export default function DeptProductionDashboard() {
 
   const periods = outputYield.periods?.length ? outputYield.periods : fulfillment.periods;
 
+  // Every group present in either dataset, always in the canonical order.
   const masterSediaan = useMemo(() => {
-    const weight = new Map();
-    const bump = (s, w) => weight.set(s, (weight.get(s) || 0) + w);
-    for (const r of outputYield.rows) bump(r.Sediaan || 'Belum Ada', (Number(r.SumOutput) || 0) + (Number(r.BatchCount) || 0));
-    for (const r of fulfillment.rows) bump(r.Sediaan || 'Belum Ada', Number(r.SumTarget) || 0);
-    return [...weight.keys()].sort((a, b) => (weight.get(b) || 0) - (weight.get(a) || 0));
+    const seen = new Set();
+    for (const r of outputYield.rows) seen.add(r.Sediaan || 'Belum Ada');
+    for (const r of fulfillment.rows) seen.add(r.Sediaan || 'Belum Ada');
+    return sortSediaan(seen);
   }, [outputYield.rows, fulfillment.rows]);
 
   const colorMap = useColorMap(masterSediaan);
 
-  // Default: everything except "Belum Ada".
+  // Default: the seven official groups. Off-list leftovers ("Belum Ada",
+  // Granulat Dasar, ...) stay in the picker but start unchecked.
   const seededRef = useRef(false);
   useEffect(() => {
     if (!seededRef.current && masterSediaan.length) {
       seededRef.current = true;
-      setSelectedSediaan(new Set(masterSediaan.filter((s) => s !== 'Belum Ada')));
+      setSelectedSediaan(new Set(masterSediaan.filter((s) => SEDIAAN_ORDER.includes(s))));
     }
   }, [masterSediaan]);
 
@@ -477,7 +468,7 @@ export default function DeptProductionDashboard() {
                     <div className="dp-chips">
                       {masterSediaan.map((s) => (
                         <button key={s} className={`dp-chip${selectedSediaan.has(s) ? ' active' : ''}`}
-                          onClick={() => toggleSediaan(s)} title={s}
+                          onClick={() => toggleSediaan(s)} title={sediaanLabel(s)}
                           style={selectedSediaan.has(s) ? { borderColor: colorMap[s], background: `${colorMap[s]}1f` } : undefined}>
                           <span className="dp-dot" style={{ background: colorMap[s] }} />
                           {shortSediaan(s)}
@@ -500,7 +491,7 @@ export default function DeptProductionDashboard() {
           {/* Shared chip legend strip */}
           <div className="dp-legend-strip">
             {masterSediaan.filter((s) => selectedSediaan.has(s)).map((s) => (
-              <span key={s} className="dp-legend-item" title={s}>
+              <span key={s} className="dp-legend-item" title={sediaanLabel(s)}>
                 <span className="dp-dot" style={{ background: colorMap[s] }} />{shortSediaan(s)}
               </span>
             ))}

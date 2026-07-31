@@ -12,6 +12,7 @@ import { loadLinePN1Cache, saveLinePN1Cache, clearLinePN1Cache, isLinePN1CacheVa
 import { calculateCalendarDaysToToday, setHolidays } from '../utils/workingDays';
 import { USE_NEW_STAGE_LOGIC, GROUP_ORDER, groupStartFor, getStageMembership, computeDaysInStageForGroup } from '../utils/stageBoundaries';
 import { apiUrl, apiUrlWithRefresh } from '../api';
+import { sediaanLabel } from '../config/sediaanGroups';
 import './LinePN1Dashboard.css';
 
 ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend);
@@ -3520,7 +3521,7 @@ const LinePN1Dashboard = () => {
                             borderRadius: '4px',
                             display: 'inline-block',
                           }}>
-                            {batch.jenisSediaan}
+                            {sediaanLabel(batch.jenisSediaan)}
                           </div>
                         )}
                       </div>

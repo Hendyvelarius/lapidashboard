@@ -30,8 +30,7 @@ Dashboard Produksi secara otomatis melakukan refresh setiap jam dan menampilkan 
 **Tabel Pendukung:**
 - `m_tahapan_group` - Mengelompokkan langkah-langkah individual menjadi tahap utama (Timbang, Proses, QC, Mikro, QA)
 - `m_product` - Nama dan detail produk
-- `m_product_pn_group` - Penugasan departemen (PN1/PN2) untuk setiap produk
-- `m_product_sediaan_produksi` - Jenis produk (Tablet, Kapsul, Sirup, dll.)
+- `m_product_pn_group` - Penugasan departemen (PN1/PN2, kolom `Group_Dept`) **dan** jenis sediaan (kolom `jenis_sediaan`) untuk setiap produk, per periode
 - `t_rfid_batch_card` - Batch aktif yang saat ini berstatus "Open" dalam produksi
 - `t_dnc_product` - Batch yang sudah dirilis/diselesaikan
 
@@ -46,6 +45,13 @@ Dashboard Produksi secara otomatis melakukan refresh setiap jam dan menampilkan 
 **Batch dikeluarkan dari WIP ketika:**
 - Tahap "Tempel Label Realese" memiliki EndDate
 - ATAU muncul di tabel `t_dnc_product` (batch yang sudah dirilis)
+- ATAU jenis sediaannya `Import FG` / `Toll Out` — produk ini tidak diproduksi di pabrik sendiri sehingga tidak punya proses produksi
+
+**Pengelompokan Jenis Sediaan:**
+- Sumbernya `m_product_pn_group.jenis_sediaan`, bukan lagi `m_product_sediaan_produksi`
+- Kelompok resmi: Liquid & DS, Injeksi, Tablet Biasa Kapsul, Tablet Salut, Probiotik & Hormon (+ Import FG & Toll Out yang dikecualikan dari WIP)
+- Dept (`Group_Dept`) mengikuti periode yang sedang dilihat, tetapi jenis sediaan selalu diambil dari periode **berjalan** — kolom `jenis_sediaan` baru mulai diisi pada periode 2026 07, jadi periode sebelumnya masih kosong
+- Produk yang `Group_Dept` atau `jenis_sediaan`-nya kosong akan muncul di peringatan "PN Group Missing!" di header dashboard
 
 **Perhitungan Durasi Tahap:**
 - Menggunakan `IdleStartDate` dari `t_alur_proses`
@@ -246,8 +252,7 @@ J: Batch telah:
 | `t_alur_proses` | Pelacakan proses produksi | Batch_No, nama_tahapan, StartDate, EndDate, IdleStartDate, Display |
 | `m_tahapan_group` | Pengelompokan tahap | kode_tahapan, tahapan_group |
 | `m_product` | Master produk | Product_ID, Product_Name |
-| `m_product_pn_group` | Penugasan departemen | Group_ProductID, Group_Dept, Group_Periode |
-| `m_product_sediaan_produksi` | Jenis produk | Product_ID, Jenis_Sediaan |
+| `m_product_pn_group` | Penugasan departemen + jenis sediaan | Group_ProductID, Group_Dept, jenis_sediaan, Group_Periode |
 | `t_rfid_batch_card` | Status batch | Batch_No, Batch_Status, isActive |
 | `t_dnc_product` | Batch yang dirilis | DNc_BatchNo, DNC_TempelLabel |
 | `m_product_otc` | Produk OTC | Product_ID |

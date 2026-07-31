@@ -18,6 +18,54 @@ function normalizeAsOf(asOf) {
   return isNaN(d.getTime()) ? null : d;
 }
 
+// ============================================================================
+// Sediaan grouping
+//
+// One vocabulary for the whole app: m_product_pn_group.jenis_sediaan, whose
+// values are Liquid & DS, Injeksi, Tablet Biasa Kapsul, Tablet Salut,
+// Probiotik & Hormon, Import FG and Toll Out. It supersedes both legacy
+// masters -- m_product_sediaan_produksi and m_alur_jenis_sediaan_produk --
+// which held finer-grained, partly stale values (BFS, Licaps, Sachet, steril,
+// Tablet Oros, Tube, ...) and left many products unclassified.
+//
+// IMPORTANT: jenis_sediaan is only populated from period '2026 07' onward;
+// every earlier Group_Periode row has it NULL. So the group is ALWAYS joined on
+// the current period, even in 12-month/rolling/as-of views -- joining on the
+// row's own period would return nothing for anything older. Group_Dept has no
+// such gap and stays period-accurate wherever the caller needs that.
+// ============================================================================
+
+/** JOIN predicate pinning an m_product_pn_group alias to the current period. */
+const pnGroupCurrentPeriode = (alias = 'g') =>
+  `REPLACE(${alias}.Group_Periode, ' ', '') = CONVERT(NVARCHAR(6), GETDATE(), 112)`;
+
+/** Normalised sediaan group for an m_product_pn_group alias (blank -> fallback). */
+const sediaanExpr = (alias = 'g', fallback = 'Belum Ada') =>
+  `ISNULL(NULLIF(LTRIM(RTRIM(${alias}.jenis_sediaan)), ''), '${fallback}')`;
+
+/** Full LEFT JOIN clause for the current-period grouping row. */
+const sediaanJoin = (productIdExpr, alias = 'g') =>
+  `LEFT JOIN m_product_pn_group ${alias}
+           ON ${alias}.Group_ProductID = ${productIdExpr}
+          AND ${pnGroupCurrentPeriode(alias)}`;
+
+/**
+ * Product_ID -> sediaan group map for the current period, used where the
+ * grouping cannot be done with a join (i.e. stored-procedure result sets).
+ */
+async function getCurrentSediaanGroupMap(db) {
+  const result = await db.request().query(`
+    SELECT g.Group_ProductID AS ProductID, ${sediaanExpr()} AS Sediaan
+    FROM m_product_pn_group g
+    WHERE ${pnGroupCurrentPeriode()}
+  `);
+  const map = new Map();
+  for (const r of result.recordset) {
+    if (r.ProductID != null) map.set(String(r.ProductID).trim(), r.Sediaan);
+  }
+  return map;
+}
+
 async function getFulfillmentPerDept() {
   const db = await connect();
   const result = await db.request().query(`EXEC sp_Dashboard_OF1 'SummaryTotalPerDept';`);
@@ -110,9 +158,9 @@ async function getProductCycleTime() {
       fa.Product_Name,
       fa.Batch_No,
       fa.Batch_Date,
-      -- Join m_alur_jenis_sediaan_produk for Jenis_Sediaan and Dept
-      ISNULL(ms.Jenis_Sediaan, 'Belum Ada') AS Kategori,
-      ISNULL(ms.Dept, 'Belum Ada') AS Dept,
+      -- Sediaan group + dept from m_product_pn_group (current period)
+      ${sediaanExpr()} AS Kategori,
+      ISNULL(NULLIF(LTRIM(RTRIM(g.Group_Dept)), ''), 'Belum Ada') AS Dept,
       MIN(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%timbang bb%' THEN fa.EndDate END) AS SelesaiTimbang,
       MAX(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%tempel label%' THEN fa.EndDate END) AS SelesaiLabel,
       -- Using DATEDIFF for calendar days calculation (no exclusions)
@@ -122,8 +170,8 @@ async function getProductCycleTime() {
         MAX(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%tempel label%' THEN fa.EndDate END)
       ) AS PCT
     FROM FinalAlur fa
-    LEFT JOIN m_alur_jenis_sediaan_produk ms ON fa.Product_ID = ms.Product_ID
-    GROUP BY fa.Product_ID, fa.Product_Name, fa.Batch_No, fa.Batch_Date, ms.Jenis_Sediaan, ms.Dept
+    ${sediaanJoin('fa.Product_ID')}
+    GROUP BY fa.Product_ID, fa.Product_Name, fa.Batch_No, fa.Batch_Date, g.jenis_sediaan, g.Group_Dept
     HAVING MIN(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%timbang bb%' THEN fa.EndDate END) IS NOT NULL
        AND MAX(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%tempel label%' THEN fa.EndDate END) IS NOT NULL
   `;
@@ -161,9 +209,9 @@ async function getProductCycleTimeYearly() {
       fa.Product_Name,
       fa.Batch_No,
       fa.Batch_Date,
-      -- Join m_alur_jenis_sediaan_produk for Jenis_Sediaan and Dept
-      ISNULL(ms.Jenis_Sediaan, 'Belum Ada') AS Kategori,
-      ISNULL(ms.Dept, 'Belum Ada') AS Dept,
+      -- Sediaan group + dept from m_product_pn_group (current period)
+      ${sediaanExpr()} AS Kategori,
+      ISNULL(NULLIF(LTRIM(RTRIM(g.Group_Dept)), ''), 'Belum Ada') AS Dept,
       MIN(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%timbang bb%' THEN fa.EndDate END) AS SelesaiTimbang,
       MAX(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%tempel label%' THEN fa.EndDate END) AS SelesaiLabel,
       -- Using DATEDIFF for calendar days calculation (no exclusions)
@@ -173,8 +221,8 @@ async function getProductCycleTimeYearly() {
         MAX(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%tempel label%' THEN fa.EndDate END)
       ) AS PCT
     FROM FinalAlur fa
-    LEFT JOIN m_alur_jenis_sediaan_produk ms ON fa.Product_ID = ms.Product_ID
-    GROUP BY fa.Product_ID, fa.Product_Name, fa.Batch_No, fa.Batch_Date, ms.Jenis_Sediaan, ms.Dept
+    ${sediaanJoin('fa.Product_ID')}
+    GROUP BY fa.Product_ID, fa.Product_Name, fa.Batch_No, fa.Batch_Date, g.jenis_sediaan, g.Group_Dept
     HAVING MIN(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%timbang bb%' THEN fa.EndDate END) IS NOT NULL
        AND MAX(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%tempel label%' THEN fa.EndDate END) IS NOT NULL
   `;
@@ -191,11 +239,11 @@ async function getOrderFulfillment() {
 async function getStockReport() {
   const db = await connect();
   const result = await db.request().query(`
-    SELECT 
+    SELECT
       trmh.*,
-      ms.Jenis_Sediaan AS Kategori
+      ${sediaanExpr('g', 'Belum Ada')} AS Kategori
     FROM temp_Report_ManHours trmh
-    LEFT JOIN m_alur_jenis_sediaan_produk ms ON trmh.Product_ID = ms.Product_ID
+    ${sediaanJoin('trmh.Product_ID')}
   `);
   return result.recordset;
 }
@@ -783,14 +831,23 @@ async function getWIPData(asOf = null) {
     FROM #tmpData t
     LEFT JOIN m_tahapan_group grp ON t.kode_tahapan = grp.kode_tahapan;
 
+    -- Dept is period-accurate: a product can move between PN1/PN2 month to month.
     UPDATE t SET t.Group_Dept = gp.Group_Dept
     FROM #tmpData t
     LEFT JOIN m_product_pn_group gp ON gp.Group_ProductID = t.Product_ID
       AND REPLACE(gp.Group_Periode, ' ', '') = CONVERT(varchar(6), ${anchor}, 112);
 
-    UPDATE t SET t.Jenis_Sediaan = s.Jenis_Sediaan
+    -- Sediaan group is pinned to the CURRENT period, never the anchor: PPIC only
+    -- started filling m_product_pn_group.jenis_sediaan from period 2026 07, so an
+    -- anchor-period join would return NULL for every historical ("as of") month.
+    UPDATE t SET t.Jenis_Sediaan = gs.jenis_sediaan
     FROM #tmpData t
-    LEFT JOIN m_product_sediaan_produksi s ON s.Product_ID = t.Product_ID;
+    LEFT JOIN m_product_pn_group gs ON gs.Group_ProductID = t.Product_ID
+      AND REPLACE(gs.Group_Periode, ' ', '') = CONVERT(varchar(6), GETDATE(), 112);
+
+    -- Import FG and Toll Out are not made in our factory, so they have no
+    -- production process to show: drop them from every WIP roll-up.
+    DELETE FROM #tmpData WHERE LTRIM(RTRIM(Jenis_Sediaan)) IN ('Import FG', 'Toll Out');
 
     -- Step 7: Update IdleStartDate berdasarkan prev step
     -- A step only becomes "idle" (queued/waiting for the stage) once EVERY one of its
@@ -905,11 +962,11 @@ async function getPCTSummary() {
         WHERE b2.Product_ID = bd.Product_ID
         FOR XML PATH(''), TYPE
       ).value('.', 'NVARCHAR(MAX)'), 1, 2, '') AS Batch_Nos,
-      ISNULL(ms.Dept, 'Belum Ada') AS Dept,
-      ISNULL(ms.Jenis_Sediaan, 'Belum Ada') AS Kategori
+      ISNULL(NULLIF(LTRIM(RTRIM(g.Group_Dept)), ''), 'Belum Ada') AS Dept,
+      ${sediaanExpr()} AS Kategori
     FROM BatchDetails bd
-    LEFT JOIN m_alur_jenis_sediaan_produk ms ON ms.Product_ID = bd.Product_ID
-    GROUP BY bd.Product_ID, bd.Product_Name, ms.Dept, ms.Jenis_Sediaan
+    ${sediaanJoin('bd.Product_ID')}
+    GROUP BY bd.Product_ID, bd.Product_Name, g.Group_Dept, g.jenis_sediaan
     ORDER BY bd.Product_ID
   `;
   
@@ -970,6 +1027,23 @@ async function getReleasedBatches() {
   return result.recordset;
 }
 
+/**
+ * Finished-goods batch releases for the year, one row per released batch.
+ *
+ * Dated by DNC_TempelLabel -- the moment the label was physically affixed, i.e. the
+ * batch has cleared quarantine in full and can be moved to the warehouse. That is the
+ * event the Quality dashboard reports on, and it is a later step than the QA approval
+ * (Process_Date, still returned as ApprovalDate); the two usually fall on the same day
+ * but not always.
+ *
+ * WarehouseQty is how many units of the batch the warehouse actually received, taken
+ * from the BPHP. It normally equals DNC_Diluluskan; a gap means part of the batch was
+ * held back (stability samples, partial reject).
+ *
+ * Note this is a different question from getReleasedBatches() above, which the line
+ * dashboards use for their current-month OF1 tracking and which still keys on
+ * Process_Date -- do not merge the two without checking those dashboards.
+ */
 async function getReleasedBatchesYTD(asOf = null) {
   const db = await connect();
 
@@ -980,20 +1054,34 @@ async function getReleasedBatchesYTD(asOf = null) {
   const request = db.request();
   let cutoffClause = '';
   if (normalizeAsOf(asOf)) {
-    cutoffClause = 'AND Process_Date <= @asOf';
+    cutoffClause = 'AND p.DNC_TempelLabel <= @asOf';
     request.input('asOf', sql.DateTime, normalizeAsOf(asOf));
   }
 
   const query = `
     SELECT
-      DNc_ProductID,
-      DNc_BatchNo,
-      DNC_Diluluskan,
-      dnc_status,
-      Process_Date
-    FROM t_dnc_product
-    WHERE dnc_status = 'DILULUSKAN'
-      AND YEAR(Process_Date) = ${refYear}
+      p.DNc_ProductID,
+      p.DNc_BatchNo,
+      p.DNC_Diluluskan,
+      p.DNC_ditolak,
+      p.dnc_status,
+      p.DNC_TempelLabel AS ReleaseDate,
+      p.Process_Date    AS ApprovalDate,
+      rc.WarehouseQty,
+      rc.WarehouseDate
+    FROM t_dnc_product p
+    OUTER APPLY (
+      SELECT SUM(d.BPHP_Jumlah) AS WarehouseQty,
+             MAX(CONVERT(DATE, s.Process_Date)) AS WarehouseDate
+      FROM t_BPHP_Detail d
+      INNER JOIN t_BPHP_Status s
+        ON s.BPHP_No = d.BPHP_No AND s.Approver_No = 3 AND s.isReject = 0
+      WHERE d.BPHP_ProductID = p.DNc_ProductID
+        AND d.BPHP_BatchNo = p.DNc_BatchNo
+    ) rc
+    WHERE p.dnc_status = 'DILULUSKAN'
+      AND p.DNC_TempelLabel IS NOT NULL
+      AND YEAR(p.DNC_TempelLabel) = ${refYear}
       ${cutoffClause}
   `;
 
@@ -2318,7 +2406,8 @@ async function getExpiredMaterials() {
 // ============================================================================
 // Dept Production Dashboard
 // Rolling last-N-months (default 13) breakdown of Output, Yield and Order
-// Fulfillment, split by production line (PN1/PN2) and bentuk sediaan.
+// Fulfillment, split by production line (PN1/PN2) and sediaan group
+// (see the "Sediaan grouping" helpers at the top of this file).
 // ============================================================================
 
 /**
@@ -2356,7 +2445,7 @@ async function getDeptProductionOutputYield(monthsBack = 13) {
     SELECT
       CAST(h.Periode AS VARCHAR(6))                       AS Periode,
       ISNULL(NULLIF(LTRIM(RTRIM(h.Group_PNCategory_Dept)), ''), 'Other') AS Dept,
-      ISNULL(s.Jenis_Sediaan, 'Belum Ada')               AS Sediaan,
+      ${sediaanExpr()}                                   AS Sediaan,
       COUNT(*)                                           AS BatchCount,
       SUM(ISNULL(h.Output_Actual, 0))                    AS SumOutput,
       SUM(ISNULL(h.Batch_Size_Std, 0))                   AS SumBatchSize,
@@ -2367,13 +2456,13 @@ async function getDeptProductionOutputYield(monthsBack = 13) {
       SUM(CASE WHEN h.Rendemen_Actual > 0 AND h.Rendemen_Actual <= 150 THEN h.Rendemen_Actual ELSE 0 END) AS SumRendemenActual,
       SUM(CASE WHEN h.Rendemen_Actual > 0 AND h.Rendemen_Actual <= 150 THEN ISNULL(h.Rendemen_Std, 0) ELSE 0 END) AS SumRendemenStd
     FROM t_COGS_HPP_Actual_Header h
-    LEFT JOIN m_product_sediaan_produksi s ON s.Product_ID = h.DNc_ProductID
+    ${sediaanJoin('h.DNc_ProductID')}
     WHERE h.Calculation_Status = 'COMPLETED'
       AND h.LOB NOT IN ('GRANULATE', 'FG')
       AND CAST(h.Periode AS VARCHAR(6)) IN (${inList})
     GROUP BY CAST(h.Periode AS VARCHAR(6)),
              ISNULL(NULLIF(LTRIM(RTRIM(h.Group_PNCategory_Dept)), ''), 'Other'),
-             ISNULL(s.Jenis_Sediaan, 'Belum Ada')
+             ${sediaanExpr()}
     ORDER BY Periode, Dept, Sediaan
   `;
 
@@ -2403,31 +2492,39 @@ async function getDeptProductionFulfillment(monthsBack = 13) {
     const histQuery = `
       SELECT
         CAST(t.periode AS VARCHAR(6))                    AS Periode,
-        ISNULL(NULLIF(LTRIM(RTRIM(g.Group_Dept)), ''), 'Other') AS Dept,
-        ISNULL(s.Jenis_Sediaan, 'Belum Ada')            AS Sediaan,
+        ISNULL(NULLIF(LTRIM(RTRIM(gd.Group_Dept)), ''), 'Other') AS Dept,
+        ${sediaanExpr()}                                AS Sediaan,
         SUM(ISNULL(t.target, 0))                        AS SumTarget,
         SUM(ISNULL(t.[release], 0))                     AS SumRelease
       FROM r_target_of1_dashboard t
-      LEFT JOIN m_product_sediaan_produksi s ON s.Product_ID = t.product_id
-      LEFT JOIN m_Product_PN_Group g
-             ON g.Group_ProductID = t.product_id
-            AND g.Group_Periode = LEFT(CAST(t.periode AS VARCHAR(6)), 4) + ' ' + RIGHT(CAST(t.periode AS VARCHAR(6)), 2)
+      -- Dept stays period-accurate (a product can move line month to month) ...
+      LEFT JOIN m_Product_PN_Group gd
+             ON gd.Group_ProductID = t.product_id
+            AND gd.Group_Periode = LEFT(CAST(t.periode AS VARCHAR(6)), 4) + ' ' + RIGHT(CAST(t.periode AS VARCHAR(6)), 2)
+      -- ... while the sediaan group is pinned to the current period.
+      ${sediaanJoin('t.product_id')}
       WHERE CAST(t.periode AS VARCHAR(6)) IN (${inList})
       GROUP BY CAST(t.periode AS VARCHAR(6)),
-               ISNULL(NULLIF(LTRIM(RTRIM(g.Group_Dept)), ''), 'Other'),
-               ISNULL(s.Jenis_Sediaan, 'Belum Ada')
+               ISNULL(NULLIF(LTRIM(RTRIM(gd.Group_Dept)), ''), 'Other'),
+               ${sediaanExpr()}
     `;
     const histResult = await db.request().query(histQuery);
     rows.push(...histResult.recordset);
   }
 
   // --- Running current month, live from the OF1 dashboard SP ---
+  // The SP's own `pengelompokan` column is NOT used: it carries legacy sediaan
+  // values (Sachet, Kapsul, Soft Capsule, ...) that don't line up with the
+  // m_product_pn_group groups the rest of this dashboard is built on.
   try {
-    const rawResult = await db.request().query(`EXEC sp_Dashboard_OF1 'RAW';`);
+    const [rawResult, sediaanMap] = await Promise.all([
+      db.request().query(`EXEC sp_Dashboard_OF1 'RAW';`),
+      getCurrentSediaanGroupMap(db),
+    ]);
     const agg = new Map(); // key: Dept||Sediaan
     for (const r of rawResult.recordset) {
       const dept = (r.Group_Dept && String(r.Group_Dept).trim()) || 'Other';
-      const sediaan = (r.pengelompokan && String(r.pengelompokan).trim()) || 'Belum Ada';
+      const sediaan = sediaanMap.get(String(r.Product_ID || '').trim()) || 'Belum Ada';
       const key = `${dept}||${sediaan}`;
       const cur = agg.get(key) || { SumTarget: 0, SumRelease: 0 };
       cur.SumTarget += Number(r.jlhTarget) || 0;

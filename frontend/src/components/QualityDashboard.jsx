@@ -5,6 +5,7 @@ import { Bar, Line, Doughnut } from 'react-chartjs-2';
 import Sidebar from './Sidebar';
 import Modal from './Modal';
 import WipStepReason from './WipStepReason';
+import ReleaseBreakdownCard from './ReleaseBreakdownCard';
 import DashboardLoading from './DashboardLoading';
 import ContextualHelpModal from './ContextualHelpModal';
 import { useHelp } from '../context/HelpContext';
@@ -14,6 +15,7 @@ import { loadQualityCache, saveQualityCache, clearQualityCache, isQualityCacheVa
 import { calculateCalendarDaysToToday, calculateCalendarDaysTo, setHolidays } from '../utils/workingDays';
 import { USE_NEW_STAGE_LOGIC, GROUP_ORDER, groupStartFor, getStageMembership, computeDaysInStageForGroup } from '../utils/stageBoundaries';
 import { apiUrl, apiUrlWithRefresh } from '../api';
+import { sediaanLabel } from '../config/sediaanGroups';
 import './QualityDashboard.css';
 import './QCDashboard.css';
 
@@ -702,8 +704,14 @@ const QualityDashboard = () => {
       try {
         // Try to load cached data first
         const cachedData = loadQualityCache();
-        
-        if (cachedData) {
+
+        // Released batches gained ReleaseDate (label-affixed) in place of Process_Date.
+        // A cache written before that would leave every release chart empty, so treat
+        // it as a miss and refetch.
+        const cacheHasReleaseDate = !cachedData?.ofActualData?.length
+          || cachedData.ofActualData[0].ReleaseDate !== undefined;
+
+        if (cachedData && cacheHasReleaseDate) {
           // Use cached data - no loading needed!
           setWipData(cachedData.wipData || []);
           setLeadTimeData(cachedData.leadTimeData || []);
@@ -1085,22 +1093,28 @@ const QualityDashboard = () => {
     const monthlyData = [];
     for (let month = 1; month <= 12; month++) {
       const monthBatches = { ETH: new Set(), OTC: new Set(), Generik: new Set() };
-      
+      // Units released alongside the batch counts -- the bars plot batches, but the
+      // tooltip and the breakdown modal report how many units those batches carried.
+      let units = 0;
+
       // Filter ofActualData for this month and year
       ofActualData.forEach(item => {
-        const releaseDate = parseSQLDateTime(item.Process_Date);
+        const releaseDate = parseSQLDateTime(item.ReleaseDate);
         if (!releaseDate) return;
-        
+
         if (releaseDate.getFullYear() === currentYear && releaseDate.getMonth() + 1 === month) {
           const productId = item.DNc_ProductID;
           const batchNo = item.DNc_BatchNo;
           const batchKey = `${productId}_${batchNo}`;
-          
+
           // Get category (includes all products from both PN1 and PN2)
           const category = productCategories[productId] || 'ETH';
-          
+
           if (category === 'ETH' || category === 'OTC' || category === 'Generik') {
-            monthBatches[category].add(batchKey);
+            if (!monthBatches[category].has(batchKey)) {
+              monthBatches[category].add(batchKey);
+              units += parseFloat(item.DNC_Diluluskan) || 0;
+            }
           }
         }
       });
@@ -1111,6 +1125,7 @@ const QualityDashboard = () => {
         otc: month <= currentMonth ? monthBatches.OTC.size : 0,
         generik: month <= currentMonth ? monthBatches.Generik.size : 0,
         total: month <= currentMonth ? (monthBatches.ETH.size + monthBatches.OTC.size + monthBatches.Generik.size) : 0,
+        units: month <= currentMonth ? Math.round(units) : 0,
         hasData: month <= currentMonth
       });
     }
@@ -1148,35 +1163,41 @@ const QualityDashboard = () => {
       date.setHours(0, 0, 0, 0);
       
       const dayBatches = { ETH: new Set(), OTC: new Set(), Generik: new Set() };
-      
+      // Units released alongside the batch counts -- see processMonthlyBatchReleases.
+      let units = 0;
+
       // Count unique batches released on this specific day
       ofActualData.forEach(item => {
-        const releaseDate = parseSQLDateTime(item.Process_Date);
+        const releaseDate = parseSQLDateTime(item.ReleaseDate);
         if (!releaseDate) return;
-        
+
         releaseDate.setHours(0, 0, 0, 0);
-        
+
         if (releaseDate.getTime() === date.getTime()) {
           const productId = item.DNc_ProductID;
           const batchNo = item.DNc_BatchNo;
           const batchKey = `${productId}_${batchNo}`;
-          
+
           // Get category (includes all products from both PN1 and PN2)
           const category = productCategories[productId] || 'ETH';
-          
+
           if (category === 'ETH' || category === 'OTC' || category === 'Generik') {
-            dayBatches[category].add(batchKey);
+            if (!dayBatches[category].has(batchKey)) {
+              dayBatches[category].add(batchKey);
+              units += parseFloat(item.DNC_Diluluskan) || 0;
+            }
           }
         }
       });
-      
+
       dailyData.push({
         day: day,
         actualDate: date, // Store actual date for tooltip
         eth: dayBatches.ETH.size,
         otc: dayBatches.OTC.size,
         generik: dayBatches.Generik.size,
-        total: dayBatches.ETH.size + dayBatches.OTC.size + dayBatches.Generik.size
+        total: dayBatches.ETH.size + dayBatches.OTC.size + dayBatches.Generik.size,
+        units: Math.round(units)
       });
     }
 
@@ -1293,7 +1314,7 @@ const QualityDashboard = () => {
     ofActualData.forEach(item => {
       const productId = item.DNc_ProductID;
       const batchNo = String(item.DNc_BatchNo || '');
-      const processDate = item.Process_Date;
+      const processDate = item.ReleaseDate;
       const batchKey = `${productId}-${batchNo}`;
 
       // Only count batches that are in the target OF list
@@ -1705,17 +1726,19 @@ const QualityDashboard = () => {
       Generik: []
     };
 
-    // Count batches released in the target period
-    const batchesByProduct = {}; // { productId: Set of batch keys }
+    // One entry per product, carrying the individual batches released in the period so
+    // the modal can expand them. A batch key is only counted once: the same batch can
+    // appear twice in t_dnc_product when a small remainder is released separately later.
+    const byProduct = {}; // { productId: { ..., seen: Set of batch keys } }
 
     ofActualData.forEach(item => {
-      const releaseDate = parseSQLDateTime(item.Process_Date);
+      const releaseDate = parseSQLDateTime(item.ReleaseDate);
       if (!releaseDate) return;
-      
+
       let matchesPeriod = false;
-      
+
       if (isMonthly) {
-        matchesPeriod = releaseDate.getFullYear() === targetDate.year && 
+        matchesPeriod = releaseDate.getFullYear() === targetDate.year &&
                        (releaseDate.getMonth() + 1) === targetDate.month;
       } else {
         releaseDate.setHours(0, 0, 0, 0);
@@ -1723,30 +1746,47 @@ const QualityDashboard = () => {
         targetDateMidnight.setHours(0, 0, 0, 0);
         matchesPeriod = releaseDate.getTime() === targetDateMidnight.getTime();
       }
-      
-      if (matchesPeriod) {
-        const productId = item.DNc_ProductID;
-        const batchNo = item.DNc_BatchNo;
-        const batchKey = `${productId}_${batchNo}`;
-        
-        if (!batchesByProduct[productId]) {
-          batchesByProduct[productId] = new Set();
-        }
-        batchesByProduct[productId].add(batchKey);
+
+      if (!matchesPeriod) return;
+
+      const productId = item.DNc_ProductID;
+      const batchNo = item.DNc_BatchNo;
+      const batchKey = `${productId}_${batchNo}`;
+
+      if (!byProduct[productId]) {
+        byProduct[productId] = {
+          productId: productId,
+          productName: productNames[productId] || `Product ${productId}`,
+          batches: 0,
+          units: 0,
+          batchList: [],
+          seen: new Set()
+        };
       }
+
+      const product = byProduct[productId];
+      if (product.seen.has(batchKey)) return;
+      product.seen.add(batchKey);
+
+      const released = Math.round(parseFloat(item.DNC_Diluluskan) || 0);
+      const warehouse = Math.round(parseFloat(item.WarehouseQty) || 0);
+
+      product.batches += 1;
+      product.units += released;
+      product.batchList.push({
+        batchNo: batchNo,
+        released: released,
+        warehouse: warehouse
+      });
     });
 
     // Convert to array format grouped by category
-    Object.keys(batchesByProduct).forEach(productId => {
-      const batchCount = batchesByProduct[productId].size;
-      if (batchCount > 0) {
-        const itemCategory = productCategories[productId] || 'ETH';
-        productsByCategory[itemCategory].push({
-          productId: productId,
-          productName: productNames[productId] || `Product ${productId}`,
-          batches: batchCount
-        });
-      }
+    Object.values(byProduct).forEach(product => {
+      if (product.batches === 0) return;
+      delete product.seen;
+      product.batchList.sort((a, b) => String(a.batchNo).localeCompare(String(b.batchNo)));
+      const itemCategory = productCategories[product.productId] || 'ETH';
+      productsByCategory[itemCategory].push(product);
     });
 
     // Sort each category by batch count descending
@@ -1754,13 +1794,18 @@ const QualityDashboard = () => {
       productsByCategory[category].sort((a, b) => b.batches - a.batches);
     });
 
-    // Calculate totals per category
+    // Calculate totals per category (batches, with units carried alongside)
     const categoryTotals = {};
+    const categoryUnits = {};
     let grandTotal = 0;
+    let grandUnits = 0;
     Object.keys(productsByCategory).forEach(category => {
       const total = productsByCategory[category].reduce((sum, p) => sum + p.batches, 0);
+      const units = productsByCategory[category].reduce((sum, p) => sum + p.units, 0);
       categoryTotals[category] = total;
+      categoryUnits[category] = units;
       grandTotal += total;
+      grandUnits += units;
     });
 
     const modalData = {
@@ -1768,7 +1813,9 @@ const QualityDashboard = () => {
       fullDate: fullDate,
       productsByCategory: productsByCategory,
       categoryTotals: categoryTotals,
+      categoryUnits: categoryUnits,
       grandTotal: grandTotal,
+      grandUnits: grandUnits,
       viewType: isMonthly ? 'Monthly' : 'Daily',
       isBatchData: true // Flag to indicate this is batch data, not units
     };
@@ -1844,7 +1891,7 @@ const QualityDashboard = () => {
       const productId = item.DNc_ProductID;
       const batchNo = String(item.DNc_BatchNo || ''); // Convert to string for comparison
       const quantity = parseFloat(item.DNC_Diluluskan) || 0;
-      const processDate = item.Process_Date;
+      const processDate = item.ReleaseDate;
 
       // Parse date
       if (processDate) {
@@ -2616,7 +2663,11 @@ const QualityDashboard = () => {
             tooltipItems.forEach(item => {
               total += item.parsed.y;
             });
-            return 'Total: ' + total + ' batch' + (total !== 1 ? 'es' : '');
+            const units = monthlyBatchData[tooltipItems[0].dataIndex]?.units || 0;
+            return [
+              'Total: ' + total + ' batch' + (total !== 1 ? 'es' : ''),
+              units.toLocaleString() + ' units released'
+            ];
           },
           label: function(context) {
             const count = context.parsed.y;
@@ -2741,7 +2792,11 @@ const QualityDashboard = () => {
             tooltipItems.forEach(item => {
               total += item.parsed.y;
             });
-            return 'Total: ' + total + ' batch' + (total !== 1 ? 'es' : '');
+            const units = dailyBatchData[tooltipItems[0].dataIndex]?.units || 0;
+            return [
+              'Total: ' + total + ' batch' + (total !== 1 ? 'es' : ''),
+              units.toLocaleString() + ' units released'
+            ];
           }
         }
       }
@@ -3378,7 +3433,7 @@ const QualityDashboard = () => {
       {outputModalOpen && outputModalData && (
         <Modal
           open={outputModalOpen}
-          title={`${outputModalData.viewType} Production Breakdown`}
+          title={`${outputModalData.viewType} Release Breakdown`}
           onClose={() => setOutputModalOpen(false)}
         >
           <div style={{ padding: '0 10px' }}>
@@ -3403,7 +3458,7 @@ const QualityDashboard = () => {
                 {outputModalData.grandTotal.toLocaleString()}
               </div>
               <div style={{ fontSize: '14px', opacity: 0.9 }}>
-                {outputModalData.isBatchData ? 'Total Batches Released' : 'Total Units Produced'}
+                {`Batches released · ${outputModalData.grandUnits.toLocaleString()} units to warehouse`}
               </div>
             </div>
 
@@ -3424,389 +3479,15 @@ const QualityDashboard = () => {
               marginBottom: '10px',
               alignItems: 'start'
             }}>
-              {/* ETH Category Card */}
-              {outputModalData.productsByCategory.ETH && outputModalData.productsByCategory.ETH.length > 0 && (
-                <div style={{
-                  border: '2px solid #10b981',
-                  borderRadius: '12px',
-                  overflow: 'hidden',
-                  backgroundColor: 'white',
-                  boxShadow: '0 4px 12px rgba(16, 185, 129, 0.15)',
-                  transition: 'transform 0.2s, box-shadow 0.2s',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  maxHeight: '500px'
-                }}>
-                  {/* Category Header */}
-                  <div style={{
-                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                    padding: '16px 20px',
-                    color: 'white',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    flexShrink: 0
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <span style={{ fontSize: '20px' }}>💊</span>
-                      <span style={{ fontSize: '18px', fontWeight: '600' }}>ETH Products</span>
-                    </div>
-                    <div style={{
-                      backgroundColor: 'rgba(255, 255, 255, 0.25)',
-                      padding: '6px 14px',
-                      borderRadius: '20px',
-                      fontSize: '14px',
-                      fontWeight: '600'
-                    }}>
-                      {outputModalData.categoryTotals.ETH.toLocaleString()} units
-                    </div>
-                  </div>
-                  
-                  {/* Products Table */}
-                  <div style={{ 
-                    padding: '20px',
-                    overflowY: 'auto',
-                    flexGrow: 1
-                  }}>
-                    <table style={{ 
-                      width: '100%', 
-                      borderCollapse: 'separate',
-                      borderSpacing: '0'
-                    }}>
-                      <thead>
-                        <tr style={{
-                          backgroundColor: '#f0fdf4',
-                          borderBottom: '2px solid #10b981'
-                        }}>
-                          <th style={{
-                            padding: '12px 16px',
-                            textAlign: 'left',
-                            fontSize: '13px',
-                            fontWeight: '600',
-                            color: '#065f46',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.5px'
-                          }}>Product Name</th>
-                          <th style={{
-                            padding: '12px 16px',
-                            textAlign: 'right',
-                            fontSize: '13px',
-                            fontWeight: '600',
-                            color: '#065f46',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.5px'
-                          }}>{outputModalData.isBatchData ? 'Batches' : 'Units'}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {outputModalData.productsByCategory.ETH.length === 0 ? (
-                          <tr>
-                            <td colSpan="2" style={{
-                              padding: '40px 16px',
-                              textAlign: 'center',
-                              color: '#9ca3af',
-                              fontSize: '14px'
-                            }}>
-                              No ETH products produced
-                            </td>
-                          </tr>
-                        ) : (
-                          outputModalData.productsByCategory.ETH.map((product, idx) => (
-                            <tr key={idx} style={{
-                              borderBottom: idx < outputModalData.productsByCategory.ETH.length - 1 ? '1px solid #e5e7eb' : 'none',
-                              transition: 'background-color 0.15s'
-                            }}
-                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
-                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
-                              <td style={{
-                                padding: '14px 16px',
-                                fontSize: '14px',
-                                color: '#1f2937'
-                              }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  <span style={{
-                                    width: '6px',
-                                    height: '6px',
-                                    borderRadius: '50%',
-                                    backgroundColor: '#10b981',
-                                    display: 'inline-block'
-                                  }}></span>
-                                  {product.productName}
-                                </div>
-                              </td>
-                              <td style={{
-                                padding: '14px 16px',
-                                textAlign: 'right',
-                                fontSize: '15px',
-                                fontWeight: '600',
-                                color: '#059669'
-                              }}>
-                                {(product.batches || product.units).toLocaleString()}
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {/* OTC Category Card */}
-              {outputModalData.productsByCategory.OTC && outputModalData.productsByCategory.OTC.length > 0 && (
-                <div style={{
-                  border: '2px solid #3b82f6',
-                  borderRadius: '12px',
-                  overflow: 'hidden',
-                  backgroundColor: 'white',
-                  boxShadow: '0 4px 12px rgba(59, 130, 246, 0.15)',
-                  transition: 'transform 0.2s, box-shadow 0.2s',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  maxHeight: '500px'
-                }}>
-                  {/* Category Header */}
-                  <div style={{
-                    background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                    padding: '16px 20px',
-                    color: 'white',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    flexShrink: 0
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <span style={{ fontSize: '20px' }}>🏪</span>
-                      <span style={{ fontSize: '18px', fontWeight: '600' }}>OTC Products</span>
-                    </div>
-                    <div style={{
-                      backgroundColor: 'rgba(255, 255, 255, 0.25)',
-                      padding: '6px 14px',
-                      borderRadius: '20px',
-                      fontSize: '14px',
-                      fontWeight: '600'
-                    }}>
-                      {outputModalData.categoryTotals.OTC.toLocaleString()} units
-                    </div>
-                  </div>
-                  
-                  {/* Products Table */}
-                  <div style={{ 
-                    padding: '20px',
-                    overflowY: 'auto',
-                    flexGrow: 1
-                  }}>
-                    <table style={{ 
-                      width: '100%', 
-                      borderCollapse: 'separate',
-                      borderSpacing: '0'
-                    }}>
-                      <thead>
-                        <tr style={{
-                          backgroundColor: '#eff6ff',
-                          borderBottom: '2px solid #3b82f6'
-                        }}>
-                          <th style={{
-                            padding: '12px 16px',
-                            textAlign: 'left',
-                            fontSize: '13px',
-                            fontWeight: '600',
-                            color: '#1e40af',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.5px'
-                          }}>Product Name</th>
-                          <th style={{
-                            padding: '12px 16px',
-                            textAlign: 'right',
-                            fontSize: '13px',
-                            fontWeight: '600',
-                            color: '#1e40af',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.5px'
-                          }}>{outputModalData.isBatchData ? 'Batches' : 'Units'}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {outputModalData.productsByCategory.OTC.length === 0 ? (
-                          <tr>
-                            <td colSpan="2" style={{
-                              padding: '40px 16px',
-                              textAlign: 'center',
-                              color: '#9ca3af',
-                              fontSize: '14px'
-                            }}>
-                              No OTC products produced
-                            </td>
-                          </tr>
-                        ) : (
-                          outputModalData.productsByCategory.OTC.map((product, idx) => (
-                            <tr key={idx} style={{
-                              borderBottom: idx < outputModalData.productsByCategory.OTC.length - 1 ? '1px solid #e5e7eb' : 'none',
-                              transition: 'background-color 0.15s'
-                            }}
-                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
-                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
-                              <td style={{
-                                padding: '14px 16px',
-                                fontSize: '14px',
-                                color: '#1f2937'
-                              }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  <span style={{
-                                    width: '6px',
-                                    height: '6px',
-                                    borderRadius: '50%',
-                                    backgroundColor: '#3b82f6',
-                                    display: 'inline-block'
-                                  }}></span>
-                                  {product.productName}
-                                </div>
-                              </td>
-                              <td style={{
-                                padding: '14px 16px',
-                                textAlign: 'right',
-                                fontSize: '15px',
-                                fontWeight: '600',
-                                color: '#2563eb'
-                              }}>
-                                {(product.batches || product.units).toLocaleString()}
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {/* Generik Category Card */}
-              {outputModalData.productsByCategory.Generik && outputModalData.productsByCategory.Generik.length > 0 && (
-                <div style={{
-                  border: '2px solid #22c55e',
-                  borderRadius: '12px',
-                  overflow: 'hidden',
-                  backgroundColor: 'white',
-                  boxShadow: '0 4px 12px rgba(34, 197, 94, 0.15)',
-                  transition: 'transform 0.2s, box-shadow 0.2s',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  maxHeight: '500px'
-                }}>
-                  {/* Category Header */}
-                  <div style={{
-                    background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
-                    padding: '16px 20px',
-                    color: 'white',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    flexShrink: 0
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <span style={{ fontSize: '20px' }}>🧪</span>
-                      <span style={{ fontSize: '18px', fontWeight: '600' }}>Generik Products</span>
-                    </div>
-                    <div style={{
-                      backgroundColor: 'rgba(255, 255, 255, 0.25)',
-                      padding: '6px 14px',
-                      borderRadius: '20px',
-                      fontSize: '14px',
-                      fontWeight: '600'
-                    }}>
-                      {outputModalData.categoryTotals.Generik.toLocaleString()} units
-                    </div>
-                  </div>
-                  
-                  {/* Products Table */}
-                  <div style={{ 
-                    padding: '20px',
-                    overflowY: 'auto',
-                    flexGrow: 1
-                  }}>
-                    <table style={{ 
-                      width: '100%', 
-                      borderCollapse: 'separate',
-                      borderSpacing: '0'
-                    }}>
-                      <thead>
-                        <tr style={{
-                          backgroundColor: '#f0fdf4',
-                          borderBottom: '2px solid #22c55e'
-                        }}>
-                          <th style={{
-                            padding: '12px 16px',
-                            textAlign: 'left',
-                            fontSize: '13px',
-                            fontWeight: '600',
-                            color: '#166534',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.5px'
-                          }}>Product Name</th>
-                          <th style={{
-                            padding: '12px 16px',
-                            textAlign: 'right',
-                            fontSize: '13px',
-                            fontWeight: '600',
-                            color: '#166534',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.5px'
-                          }}>{outputModalData.isBatchData ? 'Batches' : 'Units'}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {outputModalData.productsByCategory.Generik.length === 0 ? (
-                          <tr>
-                            <td colSpan="2" style={{
-                              padding: '40px 16px',
-                              textAlign: 'center',
-                              color: '#9ca3af',
-                              fontSize: '14px'
-                            }}>
-                              No Generik products produced
-                            </td>
-                          </tr>
-                        ) : (
-                          outputModalData.productsByCategory.Generik.map((product, idx) => (
-                            <tr key={idx} style={{
-                              borderBottom: idx < outputModalData.productsByCategory.Generik.length - 1 ? '1px solid #e5e7eb' : 'none',
-                              transition: 'background-color 0.15s'
-                            }}
-                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
-                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
-                              <td style={{
-                                padding: '14px 16px',
-                                fontSize: '14px',
-                                color: '#1f2937'
-                              }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  <span style={{
-                                    width: '6px',
-                                    height: '6px',
-                                    borderRadius: '50%',
-                                    backgroundColor: '#22c55e',
-                                    display: 'inline-block'
-                                  }}></span>
-                                  {product.productName}
-                                </div>
-                              </td>
-                              <td style={{
-                                padding: '14px 16px',
-                                textAlign: 'right',
-                                fontSize: '15px',
-                                fontWeight: '600',
-                                color: '#16a34a'
-                              }}>
-                                {(product.batches || product.units).toLocaleString()}
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
+              {['ETH', 'OTC', 'Generik'].map(category => (
+                <ReleaseBreakdownCard
+                  key={category}
+                  category={category}
+                  products={outputModalData.productsByCategory[category]}
+                  totalBatches={outputModalData.categoryTotals[category]}
+                  totalUnits={outputModalData.categoryUnits[category]}
+                />
+              ))}
             </div>
 
             {/* No Data Message */}
@@ -4401,7 +4082,7 @@ const QualityDashboard = () => {
                             borderRadius: '4px',
                             display: 'inline-block',
                           }}>
-                            {batch.jenisSediaan}
+                            {sediaanLabel(batch.jenisSediaan)}
                           </div>
                         )}
                       </div>

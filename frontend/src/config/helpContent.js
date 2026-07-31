@@ -914,25 +914,28 @@ export const helpContent = {
             details: [
               'Monthly Released: total batch yang di-release per bulan sepanjang tahun berjalan (YTD)',
               'Daily Released: batch yang di-release per hari pada bulan berjalan (MTD)',
-              'Released = batch yang sudah lulus Quality Control dan siap dikirim',
+              'Released = batch yang sudah lulus QC, ditempel label, dan siap dipindah ke gudang',
+              'Batang grafik menghitung batch; jumlah unitnya muncul di tooltip dan di rincian',
               'Auto-rotate: Bar chart (Monthly) & Line chart (Daily) bergantian otomatis'
             ]
           },
           {
             subtitle: 'Bagaimana Cara Menghitungnya?',
-            description: 'Dihitung dari jumlah batch yang berstatus "DILULUSKAN", berdasarkan tanggal pelulusannya.',
+            description: 'Dihitung dari batch berstatus "DILULUSKAN", berdasarkan tanggal label ditempel — saat batch keluar penuh dari karantina dan boleh dipindah ke gudang.',
             details: [
               'Released = batch dengan status "DILULUSKAN" (lulus QC)',
-              'Daily = jumlah batch dilulus per tanggal pada bulan berjalan',
-              'Monthly = jumlah batch dilulus per bulan sepanjang tahun berjalan',
-              'Tanggal acuan adalah tanggal proses pelulusan'
+              'Tanggal acuan adalah tanggal tempel label (DNC_TempelLabel), bukan tanggal persetujuan QA',
+              'Daily = jumlah batch per tanggal pada bulan berjalan; Monthly = per bulan sepanjang tahun berjalan',
+              'Satu batch hanya dihitung sekali walau pelulusannya tercatat lebih dari satu kali',
+              'Klik salah satu hari/bulan untuk rincian per produk, lalu klik produk untuk melihat tiap batch-nya'
             ]
           },
           {
             subtitle: 'Sumber Data',
-            description: 'Data berasal dari catatan pelulusan batch oleh Quality Control.',
+            description: 'Data berasal dari catatan pelulusan batch oleh Quality Control, dilengkapi jumlah unit yang diterima gudang.',
             details: [
-              'Catatan Pelulusan Batch (t_dnc_product): batch berstatus "DILULUSKAN" beserta tanggal pelulusannya'
+              'Catatan Pelulusan Batch (t_dnc_product): batch "DILULUSKAN", tanggal tempel label & jumlah unit diluluskan',
+              'Laporan Hasil Produksi / BPHP (t_bphp_detail, t_bphp_status): jumlah unit tiap batch yang masuk gudang, ditampilkan di rincian batch'
             ]
           }
         ]
