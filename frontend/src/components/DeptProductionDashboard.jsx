@@ -176,6 +176,9 @@ function MetricChart({ metric, rows, periods, deptFilter, chartMode, selectedSed
       if (stacked) return 'auto';
       return shown.length <= 3;
     };
+    // A combined total only means something for the stacked (additive) chart,
+    // and only adds information when more than one sediaan is on screen.
+    const showTotal = stacked && shown.length > 1;
     return {
       responsive: true, maintainAspectRatio: false,
       animation: { duration: 300 },
@@ -190,7 +193,20 @@ function MetricChart({ metric, rows, periods, deptFilter, chartMode, selectedSed
               const name = bySediaan ? metric.label : sediaanLabel(ctx.dataset.label);
               return `${name}: ${v === null || v === undefined ? '-' : metric.format(v)}`;
             },
+            // Stacked output only: the per-month sum of every visible sediaan.
+            // Averages/ratios (yield, OF) are not additive, so no footer there.
+            footer: showTotal
+              ? (items) => {
+                const total = items.reduce((sum, it) => sum + (Number(it.parsed.y) || 0), 0);
+                return `Σ  TOTAL   ${metric.format(total)}`;
+              }
+              : undefined,
           },
+          // Set apart from the series rows: a gap, no colour box, and an
+          // accented uppercase Σ line so it reads as a sum at a glance.
+          footerColor: '#fbbf24',
+          footerFont: { size: 12, weight: '700' },
+          footerMarginTop: 10,
         },
         datalabels: {
           display: labelDisplay,
