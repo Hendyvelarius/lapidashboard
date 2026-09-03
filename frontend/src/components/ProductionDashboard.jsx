@@ -17,6 +17,7 @@ import DashboardLoading from './DashboardLoading';
 import Sidebar from './Sidebar';
 import Modal from './Modal';
 import WipStepReason from './WipStepReason';
+import ProductionMonitoringModal from './ProductionMonitoringModal';
 import ContextualHelpModal from './ContextualHelpModal';
 import { useHelp } from '../context/HelpContext';
 import { sediaanLabel, sediaanRank } from '../config/sediaanGroups';
@@ -849,6 +850,7 @@ const ProductionDashboard = () => {
   const [excelTypeModalOpen, setExcelTypeModalOpen] = useState(false); // Excel type selection modal
   const [exportModalOpen, setExportModalOpen] = useState(false); // WIP Excel export modal
   const [pctExportModalOpen, setPctExportModalOpen] = useState(false); // PCT Excel export modal
+  const [monitoringExportModalOpen, setMonitoringExportModalOpen] = useState(false); // Production Monitoring Excel export modal
   const [pctExportLoading, setPctExportLoading] = useState(false); // PCT export loading state
   const [exportSettings, setExportSettings] = useState({
     line: 'both', // 'PN1', 'PN2', or 'both'
@@ -5465,6 +5467,43 @@ const ProductionDashboard = () => {
                 </div>
               </div>
             </button>
+
+            {/* Production Monitoring Export Option */}
+            <button
+              onClick={() => {
+                setExcelTypeModalOpen(false);
+                setMonitoringExportModalOpen(true);
+              }}
+              style={{
+                padding: '16px 20px',
+                backgroundColor: '#faf5ff',
+                border: '2px solid #7c3aed',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                textAlign: 'left',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.backgroundColor = '#f3e8ff';
+                e.target.style.borderColor = '#6d28d9';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.backgroundColor = '#faf5ff';
+                e.target.style.borderColor = '#7c3aed';
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ fontSize: '1.5rem' }}>📋</span>
+                <div>
+                  <div style={{ fontWeight: '600', color: '#6d28d9', fontSize: '1rem', marginBottom: '4px' }}>
+                    Production Monitoring
+                  </div>
+                  <div style={{ color: '#6b7280', fontSize: '0.85rem' }}>
+                    Per-batch milestone dates by period, line and jenis sediaan
+                  </div>
+                </div>
+              </div>
+            </button>
           </div>
           
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
@@ -5635,6 +5674,12 @@ const ProductionDashboard = () => {
           </div>
         </div>
       </Modal>
+
+      {/* Production Monitoring Excel Export Modal */}
+      <ProductionMonitoringModal
+        open={monitoringExportModalOpen}
+        onClose={() => setMonitoringExportModalOpen(false)}
+      />
 
       {/* PCT Excel Export Modal */}
       <Modal

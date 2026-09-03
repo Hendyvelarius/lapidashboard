@@ -2542,4 +2542,262 @@ async function getDeptProductionFulfillment(monthsBack = 13) {
   return { periods, rows };
 }
 
-module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTBreakdownLegacy, getPCTBreakdownV2, getPCTSummary, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getTahapanGroupCategories, getTahapanGroupAssignments, bulkUpsertTahapanGroups, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getQCSummary, getFGQCInProcess, getFGQCByPeriod, getFGQCCompletedByPeriod, getFGQCSummary, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig, getExpiredMaterials, getDeptProductionOutputYield, getDeptProductionFulfillment};
+// ============================================================================
+// Production Monitoring export
+//
+// One row per batch whose production actually started inside the requested
+// window, with the milestone dates the production managers track by hand today.
+//
+// The window is on the *production start*, not the batch date: the first real
+// processing step (Granulasi / Mixing / Filling / Cetak / Coating), with
+// preparation, changeover, cleaning and gowning-sterilisation steps skipped so
+// the date lands on when the batch genuinely went into process.
+//
+// Batch numbers recycle every ten years (product + seq + last digit of year),
+// so every join carries Batch_Date alongside Product_ID and Batch_No.
+// ============================================================================
+
+/** Steps that sit inside a processing group but are preparation, not production. */
+const PREP_STEP_CODES = [121, 119, 244, 221]; // Sterilisasi Baju, cuci flip off, CIP SIP, Pengeringan Maize Starch
+/**
+ * The Kemas Primer group is mostly not packing: it also holds material receipt,
+ * six sampling steps, changeover, cleaning, and bulk metal-detection ("Sortir
+ * dan Deteksi Logam Ruahan", 886 batches in 2026). The actual packing steps are
+ * the ones named "KP Solid ..." / "Kemas Primer Solid ...", so match on that
+ * rather than blocklisting codes -- a blocklist silently admits any new
+ * non-packing code added to the group.
+ */
+const IS_KEMAS_PRIMER = (a) => `(${a}.nama_tahapan LIKE 'KP %'
+    OR ${a}.nama_tahapan LIKE 'Kemas Primer%')`;
+
+/**
+ * Renders one pengolahan slot as "V rev 08". The revision is the batch's own
+ * Reg_PPI_Revisi from the production-order register -- the revision that was in
+ * force when the PPI was issued -- and it applies to pengolahan only.
+ * An unnamed formula (a lone space) is left bare so the marker stays readable.
+ */
+const PP_TOKEN = (col) => `${col} + CASE
+            WHEN LTRIM(RTRIM(${col})) = '' THEN ''
+            WHEN NULLIF(LTRIM(RTRIM(ISNULL(rh.Reg_PPI_Revisi, ''))), '') IS NULL THEN ''
+            ELSE ' rev ' + LTRIM(RTRIM(rh.Reg_PPI_Revisi))
+          END`;
+/** The four "Cek Dokumen ... oleh QA" checks. */
+const QA_DOC_CODES = [167, 168, 169, 197];
+
+const NOT_PREP_NAME = (alias) => `
+      ${alias}.nama_tahapan NOT LIKE 'Persiapan%'
+  AND ${alias}.nama_tahapan NOT LIKE 'Change Over%'
+  AND ${alias}.nama_tahapan NOT LIKE 'Clean%'
+  AND ${alias}.nama_tahapan NOT LIKE 'Approve%'
+  AND ${alias}.nama_tahapan NOT LIKE 'Terima%'
+  AND ${alias}.nama_tahapan NOT LIKE 'Pengiriman%'
+  AND ${alias}.nama_tahapan NOT LIKE 'Penyiapan%'`;
+
+// m_tahapan_group is too coarse to separate the process milestones the report
+// needs: its 'Granulasi' group holds the solid-line Mixing steps as well, and
+// its 'Filling' group mixes capsule filling (a processing step) with bottle,
+// vial and sachet filling (primary packaging). So these are matched by name.
+const IS_GRANULASI = (a) => `(${a}.nama_tahapan LIKE 'Granulasi%'
+    OR ${a}.nama_tahapan LIKE 'Slugging%'
+    OR ${a}.nama_tahapan LIKE 'Pengayakan Slug%'
+    OR ${a}.nama_tahapan LIKE 'Pengeringan [0-9]%')`;
+const IS_MIXING = (a) => `${a}.nama_tahapan LIKE 'Mixing%'`;
+const IS_FILL_KAPSUL = (a) => `${a}.nama_tahapan LIKE 'Fill%kapsul%'`;
+
+/** Product categories (jenis sediaan) used by the Production Monitoring filter. */
+async function getProductCategoryGroups() {
+  const db = await connect();
+  const result = await db.request().query(`
+    SELECT h.ID_master, h.pengelompokan, COUNT(d.Product_id) AS ProductCount
+    FROM   m_product_pc_group_header h
+    LEFT JOIN m_product_pc_group_detail d ON d.ID_master = h.ID_master
+    GROUP BY h.ID_master, h.pengelompokan
+    ORDER BY h.pengelompokan
+  `);
+  return result.recordset;
+}
+
+/**
+ * @param {string} from    'YYYY-MM-DD' inclusive
+ * @param {string} to      'YYYY-MM-DD' inclusive
+ * @param {string} dept    'ALL' | 'PN1' | 'PN2'
+ * @param {number[]} groupIds  m_product_pc_group_header.ID_master; empty = all
+ */
+async function getProductionMonitoring(from, to, dept = 'ALL', groupIds = []) {
+  const db = await connect();
+  const request = db.request();
+  request.input('from', sql.Date, from);
+  request.input('to', sql.Date, to);
+  request.input('dept', sql.NVarChar(10), dept || 'ALL');
+
+  // Group ids are validated as integers by the controller; inlining keeps the
+  // query plan simple on SQL Server 2008 (no table-valued parameters here).
+  const groupFilter = groupIds.length
+    ? `AND pcg.ID_master IN (${groupIds.join(', ')})`
+    : '';
+
+  const query = `
+    WITH steps AS (
+        SELECT  a.Product_ID, a.Batch_No, a.Batch_Date,
+                a.kode_tahapan, a.nama_tahapan, a.Urutan, a.No_urut, a.seq_id,
+                a.StartDate, a.EndDate, g.tahapan_group
+        FROM    t_alur_proses a
+        LEFT JOIN m_tahapan_group g ON g.kode_tahapan = CAST(a.kode_tahapan AS NVARCHAR(20))
+        WHERE   LEN(a.Batch_Date) = 10 AND ISDATE(a.Batch_Date) = 1
+    ),
+    prod AS (
+        SELECT  Product_ID, Batch_No, Batch_Date, StartDate,
+                ROW_NUMBER() OVER (PARTITION BY Product_ID, Batch_No, Batch_Date
+                                   ORDER BY Urutan, No_urut, seq_id) AS rn
+        FROM    steps
+        WHERE   tahapan_group IN ('Granulasi', 'Mixing', 'Filling', 'Cetak', 'Coating')
+          AND   StartDate IS NOT NULL
+          AND   StartDate < DATEADD(day, 1, @to)
+          AND   kode_tahapan NOT IN (${PREP_STEP_CODES.join(', ')})
+          AND ${NOT_PREP_NAME('steps')}
+    ),
+    base AS (
+        SELECT Product_ID, Batch_No, Batch_Date, StartDate AS ProsesProduksi
+        FROM   prod
+        WHERE  rn = 1 AND StartDate >= @from
+    )
+    SELECT
+        b.Product_ID,
+        ISNULL(mp.Product_Name, b.Product_ID)                AS ProductName,
+        b.Batch_No                                           AS BatchNo,
+        rh.Reg_Date                                          AS TurunPPI,
+        -- Formula reads PP; KP; KS. The factory treats Pengolahan Inti and
+        -- Pengolahan Salut as one thing, so the two collapse into a single PP
+        -- slot; only when they genuinely differ does it expand back to four.
+        -- Same convention in all three slots: '-' = no formula assigned (no PPI
+        -- row), ' ' = row exists but the formula is unnamed. For PP the '-'
+        -- appears only when neither pengolahan section is registered.
+        --
+        -- The revision is the batch's own Reg_PPI_Revisi, i.e. the revision in
+        -- force when the PPI was issued. It belongs to pengolahan only, so KP
+        -- and KS carry no "rev". (m_PPI_Header.PPI_Revisi is the master's
+        -- *current* revision and disagrees with the register on 31% of batches,
+        -- so it must not be used here.)
+        CASE
+          WHEN f.pp_a IS NULL AND f.pp_b IS NULL THEN '-'
+          WHEN f.pp_a IS NULL THEN ${PP_TOKEN('f.pp_b')}
+          WHEN f.pp_b IS NULL THEN ${PP_TOKEN('f.pp_a')}
+          -- SQL Server ignores trailing spaces when comparing, which is what we
+          -- want here: two unnamed sections count as the same formula.
+          WHEN f.pp_a = f.pp_b THEN ${PP_TOKEN('f.pp_a')}
+          ELSE ${PP_TOKEN('f.pp_a')} + '; ' + ${PP_TOKEN('f.pp_b')}
+        END + '; ' + ISNULL(f.pk_a, '-') + '; ' + ISNULL(f.pk_b, '-')
+                                                             AS FormulaPPI,
+        gr.d                                                 AS Granulasi,
+        mx.d                                                 AS Mixing,
+        fk.d                                                 AS FillingKapsul,
+        ct.d                                                 AS Cetak,
+        co.d                                                 AS Coating,
+        ISNULL(kp.d, fl.d)                                   AS KemasPrimer,
+        ISNULL(qcp.d, qcs.d)                                 AS SampleQC,
+        ISNULL(ISNULL(mcp.d, mcs.d), mck.d)                  AS SampleMC,
+        qa.d                                                 AS PengujianQA,
+        rel.d                                                AS ReleaseDate,
+        ISNULL(pn.Group_Dept, '')                            AS Line,
+        ISNULL(pcg.pengelompokan, '')                        AS Sediaan
+    FROM base b
+    LEFT JOIN m_Product mp ON mp.Product_ID = b.Product_ID
+    LEFT JOIN t_register_perintah_produksi_header rh
+           ON rh.Reg_ProductID = b.Product_ID
+          AND rh.Reg_BatchNo   = b.Batch_No
+          AND rh.Reg_BatchDate = b.Batch_Date
+    LEFT JOIN (
+        SELECT  Reg_ProductID, Reg_BatchNo, Reg_BatchDate,
+                MAX(CASE WHEN typ = 'PP' AND seg = 'A' THEN code END) AS pp_a,
+                MAX(CASE WHEN typ = 'PP' AND seg = 'B' THEN code END) AS pp_b,
+                MAX(CASE WHEN typ = 'PK' AND seg = 'A' THEN code END) AS pk_a,
+                MAX(CASE WHEN typ = 'PK' AND seg = 'B' THEN code END) AS pk_b
+        FROM (
+            SELECT  d.Reg_ProductID, d.Reg_BatchNo, d.Reg_BatchDate,
+                    CASE WHEN d.Reg_PPIId LIKE '%/PP/%' THEN 'PP'
+                         WHEN d.Reg_PPIId LIKE '%/PK/%' THEN 'PK' END AS typ,
+                    UPPER(SUBSTRING(d.Reg_PPIId, CHARINDEX('/', d.Reg_PPIId) - 1, 1)) AS seg,
+                    -- The bare formula code; a single space when the section is
+                    -- registered but its formula is unnamed (distinct from NULL
+                    -- = no section at all). The revision is added later, and to
+                    -- the pengolahan slot only.
+                    MAX(CASE WHEN LTRIM(RTRIM(ISNULL(d.Reg_PPISubID, ''))) = '' THEN ' '
+                             ELSE LTRIM(RTRIM(d.Reg_PPISubID)) END) AS code
+            FROM    t_register_perintah_produksi_detail d
+            WHERE   d.Reg_PPIId <> '' AND CHARINDEX('/', d.Reg_PPIId) > 1
+            GROUP BY d.Reg_ProductID, d.Reg_BatchNo, d.Reg_BatchDate,
+                     CASE WHEN d.Reg_PPIId LIKE '%/PP/%' THEN 'PP'
+                          WHEN d.Reg_PPIId LIKE '%/PK/%' THEN 'PK' END,
+                     UPPER(SUBSTRING(d.Reg_PPIId, CHARINDEX('/', d.Reg_PPIId) - 1, 1))
+        ) x
+        WHERE typ IS NOT NULL AND seg IN ('A', 'B')
+        GROUP BY Reg_ProductID, Reg_BatchNo, Reg_BatchDate
+    ) f ON f.Reg_ProductID = b.Product_ID AND f.Reg_BatchNo = b.Batch_No AND f.Reg_BatchDate = b.Batch_Date
+    OUTER APPLY (SELECT MIN(s.StartDate) d FROM steps s
+                 WHERE s.Product_ID=b.Product_ID AND s.Batch_No=b.Batch_No AND s.Batch_Date=b.Batch_Date
+                   AND ${IS_GRANULASI('s')}
+                   AND s.kode_tahapan NOT IN (${PREP_STEP_CODES.join(', ')})
+                   AND ${NOT_PREP_NAME('s')}) gr
+    OUTER APPLY (SELECT MIN(s.StartDate) d FROM steps s
+                 WHERE s.Product_ID=b.Product_ID AND s.Batch_No=b.Batch_No AND s.Batch_Date=b.Batch_Date
+                   AND ${IS_MIXING('s')} AND ${NOT_PREP_NAME('s')}) mx
+    OUTER APPLY (SELECT MIN(s.StartDate) d FROM steps s
+                 WHERE s.Product_ID=b.Product_ID AND s.Batch_No=b.Batch_No AND s.Batch_Date=b.Batch_Date
+                   AND ${IS_FILL_KAPSUL('s')} AND ${NOT_PREP_NAME('s')}) fk
+    OUTER APPLY (SELECT MIN(s.StartDate) d FROM steps s
+                 WHERE s.Product_ID=b.Product_ID AND s.Batch_No=b.Batch_No AND s.Batch_Date=b.Batch_Date
+                   AND s.tahapan_group='Cetak' AND ${NOT_PREP_NAME('s')}) ct
+    OUTER APPLY (SELECT MIN(s.StartDate) d FROM steps s
+                 WHERE s.Product_ID=b.Product_ID AND s.Batch_No=b.Batch_No AND s.Batch_Date=b.Batch_Date
+                   AND s.tahapan_group='Coating' AND ${NOT_PREP_NAME('s')}) co
+    OUTER APPLY (SELECT MIN(s.StartDate) d FROM steps s
+                 WHERE s.Product_ID=b.Product_ID AND s.Batch_No=b.Batch_No AND s.Batch_Date=b.Batch_Date
+                   AND s.tahapan_group='Kemas Primer'
+                   AND ${IS_KEMAS_PRIMER('s')}
+                   AND ${NOT_PREP_NAME('s')}) kp
+    -- Liquids and injectables have no separate Kemas Primer step: filling into
+    -- the bottle or vial IS the primary packaging, so Filling stands in for it.
+    OUTER APPLY (SELECT MIN(s.StartDate) d FROM steps s
+                 WHERE s.Product_ID=b.Product_ID AND s.Batch_No=b.Batch_No AND s.Batch_Date=b.Batch_Date
+                   AND s.tahapan_group='Filling'
+                   AND NOT ${IS_FILL_KAPSUL('s')}   -- capsule filling is processing, not packing
+                   AND s.kode_tahapan NOT IN (${PREP_STEP_CODES.join(', ')})
+                   AND ${NOT_PREP_NAME('s')}) fl
+    -- Sample handover: the lab pickup is the handover proper; fall back to the
+    -- PN-side sampling step for batches where no pickup was recorded. MC has a
+    -- third form, Sampling Mikro, used by families that record neither of the
+    -- other two -- tried last so it never overrides a real pickup.
+    OUTER APPLY (SELECT MIN(s.StartDate) d FROM steps s WHERE s.Product_ID=b.Product_ID AND s.Batch_No=b.Batch_No AND s.Batch_Date=b.Batch_Date AND s.kode_tahapan=138) qcp
+    OUTER APPLY (SELECT MIN(s.StartDate) d FROM steps s WHERE s.Product_ID=b.Product_ID AND s.Batch_No=b.Batch_No AND s.Batch_Date=b.Batch_Date AND s.kode_tahapan=226) qcs
+    OUTER APPLY (SELECT MIN(s.StartDate) d FROM steps s WHERE s.Product_ID=b.Product_ID AND s.Batch_No=b.Batch_No AND s.Batch_Date=b.Batch_Date AND s.kode_tahapan=194) mcp
+    OUTER APPLY (SELECT MIN(s.StartDate) d FROM steps s WHERE s.Product_ID=b.Product_ID AND s.Batch_No=b.Batch_No AND s.Batch_Date=b.Batch_Date AND s.kode_tahapan=227) mcs
+    -- Sampling Mikro is the same handover under a different step code, used by
+    -- product families that never record 194 or 227.
+    OUTER APPLY (SELECT MIN(s.StartDate) d FROM steps s WHERE s.Product_ID=b.Product_ID AND s.Batch_No=b.Batch_No AND s.Batch_Date=b.Batch_Date AND s.kode_tahapan=198) mck
+    -- Latest of the four QA document checks, using whichever are present: 468
+    -- batches in 2026 were released with only three recorded (Cek Dokumen MC is
+    -- the usual omission), so demanding all four would blank out finished batches.
+    OUTER APPLY (SELECT MAX(s.StartDate) d FROM steps s
+                 WHERE s.Product_ID=b.Product_ID AND s.Batch_No=b.Batch_No AND s.Batch_Date=b.Batch_Date
+                   AND s.kode_tahapan IN (${QA_DOC_CODES.join(', ')}) AND s.StartDate IS NOT NULL) qa
+    OUTER APPLY (SELECT MAX(s.EndDate) d FROM steps s WHERE s.Product_ID=b.Product_ID AND s.Batch_No=b.Batch_No AND s.Batch_Date=b.Batch_Date AND s.kode_tahapan=170) rel
+    -- Line assignment follows the period the batch actually went into process.
+    LEFT JOIN m_Product_PN_Group pn
+           ON pn.Group_ProductID = b.Product_ID
+          AND REPLACE(pn.Group_Periode, ' ', '') = CONVERT(NVARCHAR(6), b.ProsesProduksi, 112)
+    LEFT JOIN (
+        SELECT d.Product_id, MIN(h.pengelompokan) AS pengelompokan, MIN(h.ID_master) AS ID_master
+        FROM   m_product_pc_group_detail d
+        JOIN   m_product_pc_group_header h ON h.ID_master = d.ID_master
+        GROUP BY d.Product_id
+    ) pcg ON pcg.Product_id = b.Product_ID
+    WHERE (@dept = 'ALL' OR ISNULL(pn.Group_Dept, '') = @dept)
+      ${groupFilter}
+    ORDER BY b.ProsesProduksi, ProductName, b.Batch_No
+  `;
+
+  const result = await request.query(query);
+  return result.recordset;
+}
+
+module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTBreakdownLegacy, getPCTBreakdownV2, getPCTSummary, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getTahapanGroupCategories, getTahapanGroupAssignments, bulkUpsertTahapanGroups, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getQCSummary, getFGQCInProcess, getFGQCByPeriod, getFGQCCompletedByPeriod, getFGQCSummary, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig, getExpiredMaterials, getDeptProductionOutputYield, getDeptProductionFulfillment, getProductionMonitoring, getProductCategoryGroups};

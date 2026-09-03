@@ -4,3 +4,6 @@
 # OS / editor cruft
 Thumbs.db
 .DS_Store
+
+# Generated report exports
+exports/

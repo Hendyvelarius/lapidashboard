@@ -836,4 +836,52 @@ async function getDeptProductionFulfillment(req, res) {
   }
 }
 
-module.exports = { getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getPCTSummary, getOrderFulfillment, getStockReport, getofsummary, getPCTBreakdown, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getTahapanGroupCategories, getTahapanGroupAssignments, bulkUpsertTahapanGroups, getQCSummary, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getFGQCSummary, getFGQCInProcess, getFGQCByPeriod, getFGQCCompletedByPeriod, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig, getExpiredMaterials, getDeptProductionOutputYield, getDeptProductionFulfillment };
+// Controller for /productionMonitoring
+// Query params: from=YYYY-MM-DD, to=YYYY-MM-DD, dept=ALL|PN1|PN2, groups=1,5,6
+async function getProductionMonitoring(req, res) {
+  try {
+    const isDate = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(new Date(v).getTime());
+    const { from, to } = req.query;
+    if (!isDate(from) || !isDate(to)) {
+      return res.status(400).json({ success: false, error: 'from and to are required as YYYY-MM-DD' });
+    }
+    if (from > to) {
+      return res.status(400).json({ success: false, error: 'from must not be after to' });
+    }
+
+    const dept = ['PN1', 'PN2'].includes(req.query.dept) ? req.query.dept : 'ALL';
+    const groups = String(req.query.groups || '')
+      .split(',')
+      .map((g) => parseInt(g, 10))
+      .filter((g) => Number.isInteger(g) && g > 0);
+
+    const data = await getCachedData(
+      `productionMonitoring:${from}:${to}:${dept}:${groups.slice().sort((a, b) => a - b).join('-')}`,
+      () => SqlModel.getProductionMonitoring(from, to, dept, groups),
+      CACHE_TTL.SHORT,
+      shouldSkipCache(req)
+    );
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching Production Monitoring:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+// Controller for /productCategoryGroups
+async function getProductCategoryGroups(req, res) {
+  try {
+    const data = await getCachedData(
+      'productCategoryGroups',
+      () => SqlModel.getProductCategoryGroups(),
+      CACHE_TTL.LONG,
+      shouldSkipCache(req)
+    );
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching Product Category Groups:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+module.exports = { getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getPCTSummary, getOrderFulfillment, getStockReport, getofsummary, getPCTBreakdown, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getTahapanGroupCategories, getTahapanGroupAssignments, bulkUpsertTahapanGroups, getQCSummary, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getFGQCSummary, getFGQCInProcess, getFGQCByPeriod, getFGQCCompletedByPeriod, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig, getExpiredMaterials, getDeptProductionOutputYield, getDeptProductionFulfillment, getProductionMonitoring, getProductCategoryGroups };
