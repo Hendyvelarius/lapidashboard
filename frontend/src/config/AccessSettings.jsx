@@ -52,7 +52,7 @@ export const PAGE_ACCESS = {
   // Production Dashboard
   'production': {
     requireAuth: true,
-    allowedDepartments: ['HQ', 'HC', 'PL', 'HC', 'DS'], // Full access for these departments
+    allowedDepartments: ['HQ', 'PL', 'DS'], // Full access for these departments
     allowedUserIds: ['HWA'], // Specific users who always have access
     allowedJobLevels: [], // No general job level restriction
     specificCombinations: [
