@@ -884,4 +884,47 @@ async function getProductCategoryGroups(req, res) {
   }
 }
 
-module.exports = { getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getPCTSummary, getOrderFulfillment, getStockReport, getofsummary, getPCTBreakdown, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getTahapanGroupCategories, getTahapanGroupAssignments, bulkUpsertTahapanGroups, getQCSummary, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getFGQCSummary, getFGQCInProcess, getFGQCByPeriod, getFGQCCompletedByPeriod, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig, getExpiredMaterials, getDeptProductionOutputYield, getDeptProductionFulfillment, getProductionMonitoring, getProductCategoryGroups };
+// Controller for /productionOutput
+// Query params: from=YYYYMM, to=YYYYMM (both inclusive)
+async function getProductionOutput(req, res) {
+  try {
+    const isPeriod = (v) => typeof v === 'string' && /^\d{4}(0[1-9]|1[0-2])$/.test(v);
+    const { from, to } = req.query;
+    if (!isPeriod(from) || !isPeriod(to)) {
+      return res.status(400).json({ success: false, error: 'from and to are required as YYYYMM' });
+    }
+    if (from > to) {
+      return res.status(400).json({ success: false, error: 'from must not be after to' });
+    }
+
+    const data = await getCachedData(
+      `productionOutput:${from}:${to}`,
+      () => SqlModel.getProductionOutput(from, to),
+      CACHE_TTL.LONG,
+      shouldSkipCache(req)
+    );
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching Production Output:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+// Controller for /productionOutputRange -- the periods the source table covers,
+// used to bound the month pickers.
+async function getProductionOutputRange(req, res) {
+  try {
+    const data = await getCachedData(
+      'productionOutputRange',
+      () => SqlModel.getProductionOutputRange(),
+      CACHE_TTL.LONG,
+      shouldSkipCache(req)
+    );
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching Production Output range:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+module.exports = { getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getPCTSummary, getOrderFulfillment, getStockReport, getofsummary, getPCTBreakdown, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getTahapanGroupCategories, getTahapanGroupAssignments, bulkUpsertTahapanGroups, getQCSummary, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getFGQCSummary, getFGQCInProcess, getFGQCByPeriod, getFGQCCompletedByPeriod, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig, getExpiredMaterials, getDeptProductionOutputYield, getDeptProductionFulfillment, getProductionMonitoring, getProductCategoryGroups, getProductionOutput, getProductionOutputRange };

@@ -10,6 +10,7 @@ import ContextualHelpModal from './ContextualHelpModal';
 import { useHelp } from '../context/HelpContext';
 import { useAuth } from '../context/AuthContext';
 import OF1TargetModal from './OF1TargetModal';
+import ProductionOutputModal from './ProductionOutputModal';
 import './SummaryDashboard.css';
 
 // Register Chart.js components
@@ -4185,6 +4186,7 @@ function SummaryDashboard() {
 
   // State for export
   const [exporting, setExporting] = useState(false);
+  const [productionOutputOpen, setProductionOutputOpen] = useState(false); // Production Output export modal
 
   // Export current data to Excel
   const handleExportExcel = async () => {
@@ -6964,7 +6966,30 @@ function SummaryDashboard() {
             
             {/* Right: Actions */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              {/* Export Excel Button */}
+              {/* Production Output Export Button */}
+              <button
+                onClick={() => setProductionOutputOpen(true)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '6px 12px',
+                  background: 'rgba(255, 255, 255, 0.2)',
+                  border: '1px solid rgba(255, 255, 255, 0.3)',
+                  borderRadius: '6px',
+                  color: 'white',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+                title="Export production output per product, by month or year"
+              >
+                <span>📦</span>
+                <span>Production Output</span>
+              </button>
+
+              {/* Raw Data Sheet Button */}
               <button
                 onClick={handleExportExcel}
                 disabled={exporting}
@@ -6983,7 +7008,7 @@ function SummaryDashboard() {
                   opacity: exporting ? 0.6 : 1,
                   transition: 'all 0.2s'
                 }}
-                title="Export all raw data to Excel file"
+                title="Export all raw dashboard data to Excel"
               >
                 {exporting ? (
                   <>
@@ -7001,7 +7026,7 @@ function SummaryDashboard() {
                 ) : (
                   <>
                     <span>📊</span>
-                    <span>Export Excel</span>
+                    <span>Raw Data Sheet</span>
                   </>
                 )}
               </button>
@@ -8456,6 +8481,11 @@ function SummaryDashboard() {
       <OF1TargetModal
         isOpen={of1TargetModalOpen}
         onClose={() => setOf1TargetModalOpen(false)}
+      />
+
+      <ProductionOutputModal
+        open={productionOutputOpen}
+        onClose={() => setProductionOutputOpen(false)}
       />
     </div>
   );

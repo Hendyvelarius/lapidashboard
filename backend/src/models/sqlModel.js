@@ -2800,4 +2800,142 @@ async function getProductionMonitoring(from, to, dept = 'ALL', groupIds = []) {
   return result.recordset;
 }
 
-module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTBreakdownLegacy, getPCTBreakdownV2, getPCTSummary, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getTahapanGroupCategories, getTahapanGroupAssignments, bulkUpsertTahapanGroups, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getQCSummary, getFGQCInProcess, getFGQCByPeriod, getFGQCCompletedByPeriod, getFGQCSummary, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig, getExpiredMaterials, getDeptProductionOutputYield, getDeptProductionFulfillment, getProductionMonitoring, getProductCategoryGroups};
+// ============================================================================
+// Production Output export
+//
+// Output per product per month from tmp_spLapProduksi_GWN_ReleaseQA, the QA
+// release report table. Periode is the Dnc_Tempellabel month, so this is a
+// RELEASE-basis figure, and the table reaches back to 2017 01 -- much further
+// than t_dnc_product (empty before 2022) or t_COGS_HPP_Actual_Header (2025+).
+//
+// Granulat batches are excluded: granulat is an intermediate consumed by the
+// finished product, so counting it would double-count. That also matches the
+// Line Metrics dashboard, which filters LOB = GRANULATE.
+// ============================================================================
+
+/** Earliest period the source table holds. */
+const PRODUCTION_OUTPUT_MIN_PERIOD = '201701';
+
+/**
+ * @param {string} fromPeriod 'YYYYMM' inclusive
+ * @param {string} toPeriod   'YYYYMM' inclusive
+ */
+async function getProductionOutput(fromPeriod, toPeriod) {
+  const db = await connect();
+  const request = db.request();
+  request.input('fromPeriod', sql.NVarChar(6), fromPeriod);
+  request.input('toPeriod', sql.NVarChar(6), toPeriod);
+
+  const query = `
+    WITH src AS (
+        SELECT  LTRIM(RTRIM(g.Group_productid))        AS Product_ID,
+                LEFT(g.Periode, 4)                     AS Tahun,
+                CAST(RIGHT(LTRIM(RTRIM(g.Periode)), 2) AS INT) AS Bulan,
+                g.Product_Name                         AS GWN_Name,
+                ISNULL(g.Output, 0)                    AS Qty
+        FROM    tmp_spLapProduksi_GWN_ReleaseQA g
+        WHERE   g.Periode IS NOT NULL
+          AND   LEN(LTRIM(RTRIM(g.Periode))) = 7
+          AND   g.Product_Name NOT LIKE 'GRANULAT%'
+          AND   g.Group_productid NOT LIKE N'ä%'
+          AND   g.Group_productid NOT LIKE N'ë%'
+          AND   REPLACE(LTRIM(RTRIM(g.Periode)), ' ', '') BETWEEN @fromPeriod AND @toPeriod
+    ),
+    agg AS (
+        SELECT  Product_ID, Tahun, Bulan,
+                MAX(GWN_Name) AS GWN_Name, SUM(Qty) AS Qty, COUNT(*) AS Batches
+        FROM    src
+        GROUP BY Product_ID, Tahun, Bulan
+    ),
+    -- Packing unit actually used on the BPHP hand-overs (modal, all history)
+    unit AS (
+        SELECT Product_ID, BPHP_Unit
+        FROM ( SELECT LTRIM(RTRIM(d.BPHP_ProductID)) AS Product_ID,
+                      LTRIM(RTRIM(d.BPHP_JumlahUnitID)) AS BPHP_Unit,
+                      ROW_NUMBER() OVER (PARTITION BY LTRIM(RTRIM(d.BPHP_ProductID))
+                                         ORDER BY COUNT(*) DESC) AS rn
+               FROM   t_BPHP_Detail d
+               WHERE  NULLIF(LTRIM(RTRIM(d.BPHP_JumlahUnitID)), '') IS NOT NULL
+               GROUP BY LTRIM(RTRIM(d.BPHP_ProductID)), LTRIM(RTRIM(d.BPHP_JumlahUnitID))
+             ) x WHERE rn = 1
+    ),
+    -- Toll-in registration is year-accurate: the HNA master carries monthly periods.
+    tollin AS (
+        SELECT DISTINCT LTRIM(RTRIM(product_id)) AS Product_ID, LEFT(periode, 4) AS Tahun
+        FROM   m_product_tollin_HNA
+    ),
+    lob_yr AS (
+        SELECT Group_ProductID AS Product_ID, Periode AS Tahun, MAX(LOB) AS LOB
+        FROM   vw_COGS_Product_Group WHERE LOB IS NOT NULL
+        GROUP BY Group_ProductID, Periode
+    ),
+    -- vw_COGS_Product_Group only covers 2024 onward, so the earliest known
+    -- classification is carried back to the older years.
+    lob_first AS (
+        SELECT Product_ID, LOB
+        FROM ( SELECT Group_ProductID AS Product_ID, LOB,
+                      ROW_NUMBER() OVER (PARTITION BY Group_ProductID ORDER BY Periode ASC) rn
+               FROM vw_COGS_Product_Group WHERE LOB IS NOT NULL ) y
+        WHERE rn = 1
+    )
+    SELECT
+        a.Product_ID                                          AS ProductID,
+        ISNULL(NULLIF(LTRIM(RTRIM(p.Product_Name)), ''),
+               LTRIM(RTRIM(a.GWN_Name)))                      AS ProductName,
+        ISNULL(s.Sediaan_Nama, '(belum ditentukan)')          AS BentukSediaan,
+        ISNULL(NULLIF(u.BPHP_Unit, ''),
+               LOWER(NULLIF(LEFT(LTRIM(p.Product_Kemasan),
+                     CHARINDEX(' ', LTRIM(p.Product_Kemasan) + ' ') - 1), ''))) AS Kemasan,
+        -- Units per Kemasan. The unit follows the dosage form: 100 tablet per
+        -- kotak, but 1 botol per kotak for liquids (mL only in the description).
+        p.Product_VolumeInBox                                 AS IsiPerKemasan,
+        LTRIM(RTRIM(p.Product_Unit))                          AS SatuanIsi,
+        LTRIM(RTRIM(p.Product_Kemasan))                       AS KeteranganKemasan,
+        CASE
+          WHEN g.jenis_sediaan = 'Import FG'      THEN 'Import'
+          WHEN g.jenis_sediaan = 'Toll Out'       THEN 'Toll Out'
+          WHEN ti.Product_ID IS NOT NULL          THEN 'Toll In'
+          WHEN ISNULL(ly.LOB, lf.LOB) = 'GENERIK' THEN 'Generic'
+          WHEN ISNULL(ly.LOB, lf.LOB) = 'OTC'     THEN 'OTC'
+          WHEN ISNULL(ly.LOB, lf.LOB) = 'ETHICAL' THEN 'Ethical'
+          WHEN ISNULL(ly.LOB, lf.LOB) = 'EXPORT'  THEN 'Export'
+          WHEN otc.Product_ID IS NOT NULL         THEN 'OTC'
+          WHEN UPPER(ISNULL(p.Product_Name, a.GWN_Name)) LIKE '%GENERIK%'
+            OR UPPER(ISNULL(p.Product_Name, a.GWN_Name)) LIKE '%GENERIC%' THEN 'Generic'
+          WHEN p.jenis_prod = 'OTC'               THEN 'OTC'
+          ELSE 'Ethical'
+        END                                                   AS LOB,
+        a.Tahun                                               AS Tahun,
+        a.Bulan                                               AS Bulan,
+        a.Qty                                                 AS JumlahUnit,
+        a.Batches                                             AS JumlahBatch
+    FROM        agg a
+    LEFT JOIN   m_Product          p   ON p.Product_ID      = a.Product_ID
+    LEFT JOIN   m_Product_Sediaan  s   ON s.Sediaan_Kode    = p.Product_BentukSediaan
+    LEFT JOIN   m_product_pn_group g   ON g.Group_ProductID = a.Product_ID
+                                      AND REPLACE(g.Group_Periode, ' ', '') = CONVERT(NVARCHAR(6), GETDATE(), 112)
+    LEFT JOIN   m_product_otc      otc ON otc.Product_ID    = a.Product_ID
+    LEFT JOIN   unit               u   ON u.Product_ID      = a.Product_ID
+    LEFT JOIN   tollin             ti  ON ti.Product_ID     = a.Product_ID AND ti.Tahun = a.Tahun
+    LEFT JOIN   lob_yr             ly  ON ly.Product_ID     = a.Product_ID AND ly.Tahun = a.Tahun
+    LEFT JOIN   lob_first          lf  ON lf.Product_ID     = a.Product_ID
+    ORDER BY    a.Tahun, a.Bulan, ProductName
+  `;
+
+  const result = await request.query(query);
+  return result.recordset;
+}
+
+/** Earliest and latest period the source table currently holds. */
+async function getProductionOutputRange() {
+  const db = await connect();
+  const result = await db.request().query(`
+    SELECT MIN(REPLACE(LTRIM(RTRIM(Periode)), ' ', '')) AS MinPeriode,
+           MAX(REPLACE(LTRIM(RTRIM(Periode)), ' ', '')) AS MaxPeriode
+    FROM   tmp_spLapProduksi_GWN_ReleaseQA
+    WHERE  Periode IS NOT NULL AND LEN(LTRIM(RTRIM(Periode))) = 7
+  `);
+  return result.recordset[0] || { MinPeriode: PRODUCTION_OUTPUT_MIN_PERIOD, MaxPeriode: null };
+}
+
+module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTBreakdownLegacy, getPCTBreakdownV2, getPCTSummary, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getTahapanGroupCategories, getTahapanGroupAssignments, bulkUpsertTahapanGroups, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getQCSummary, getFGQCInProcess, getFGQCByPeriod, getFGQCCompletedByPeriod, getFGQCSummary, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig, getExpiredMaterials, getDeptProductionOutputYield, getDeptProductionFulfillment, getProductionMonitoring, getProductCategoryGroups, getProductionOutput, getProductionOutputRange};

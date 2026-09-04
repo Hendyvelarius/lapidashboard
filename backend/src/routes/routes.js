@@ -62,6 +62,10 @@ router.get('/lostSales', SqlController.getLostSales);
 router.get('/ota', SqlController.getOTA);
 router.get('/material', SqlController.getMaterial);
 
+// Routing Production Output export
+router.get('/productionOutput', SqlController.getProductionOutput);
+router.get('/productionOutputRange', SqlController.getProductionOutputRange);
+
 // Routing Production Monitoring export
 router.get('/productionMonitoring', SqlController.getProductionMonitoring);
 router.get('/productCategoryGroups', SqlController.getProductCategoryGroups);
