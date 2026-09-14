@@ -171,6 +171,12 @@
 .report-card-group {
   position: relative;
 }
+/* The hovered card's transform makes it a stacking context, so the popup's
+   z-index only competes inside the card. Lift the whole open card above its
+   siblings, or a popup taller than the card is covered by the next row. */
+.report-card-group.open {
+  z-index: 200;
+}
 .group-popup {
   position: absolute;
   top: 0;

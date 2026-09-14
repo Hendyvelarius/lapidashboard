@@ -82,7 +82,7 @@ function GroupCard({ card, onItemClick }) {
 
   return (
     <div
-      className="report-card report-card-group"
+      className={`report-card report-card-group${open ? " open" : ""}`}
       ref={cardRef}
       tabIndex={0}
       role="button"
