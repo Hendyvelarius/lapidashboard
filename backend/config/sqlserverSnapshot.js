@@ -29,12 +29,23 @@ const snapshotConfig = {
 
 // Dedicated connection pool for snapshots (singleton)
 let snapshotPool = null;
+// In-flight connect, shared by concurrent callers. Without this, parallel first
+// requests each saw a not-yet-connected pool, closed it and opened another,
+// failing the earlier callers with "Connection is closed".
+let snapshotConnecting = null;
 
 async function connectSnapshot() {
+  if (snapshotPool && snapshotPool.connected) {
+    return snapshotPool;
+  }
+  if (!snapshotConnecting) {
+    snapshotConnecting = openSnapshotPool().finally(() => { snapshotConnecting = null; });
+  }
+  return snapshotConnecting;
+}
+
+async function openSnapshotPool() {
   try {
-    if (snapshotPool && snapshotPool.connected) {
-      return snapshotPool;
-    }
 
     if (snapshotPool) {
       try {

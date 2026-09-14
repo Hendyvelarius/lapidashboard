@@ -60,6 +60,16 @@ class MemoryCache {
   }
 
   /**
+   * Delete every key starting with the given prefix
+   * @param {string} prefix - Key prefix
+   */
+  deleteByPrefix(prefix) {
+    for (const key of this.cache.keys()) {
+      if (key.startsWith(prefix)) this.cache.delete(key);
+    }
+  }
+
+  /**
    * Clear expired items from the cache
    */
   clearExpired() {

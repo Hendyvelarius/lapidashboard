@@ -2938,4 +2938,514 @@ async function getProductionOutputRange() {
   return result.recordset[0] || { MinPeriode: PRODUCTION_OUTPUT_MIN_PERIOD, MaxPeriode: null };
 }
 
-module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTBreakdownLegacy, getPCTBreakdownV2, getPCTSummary, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getTahapanGroupCategories, getTahapanGroupAssignments, bulkUpsertTahapanGroups, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getQCSummary, getFGQCInProcess, getFGQCByPeriod, getFGQCCompletedByPeriod, getFGQCSummary, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig, getExpiredMaterials, getDeptProductionOutputYield, getDeptProductionFulfillment, getProductionMonitoring, getProductCategoryGroups, getProductionOutput, getProductionOutputRange};
+
+// ============================================================================
+// Batches Report (Laporan Turun PPI)
+//
+// One row per batch whose PPI came down inside the requested window, with the
+// three PPI sections side by side: pengolahan (BB), kemas primer (BKP) and
+// kemas sekunder (BKS). Each section carries its formula, its material
+// availability, the date the PPI came down and the date the material was
+// actually cut from stock.
+//
+// The sections are told apart by the PPI id, e.g. "323A/2026/PP/PS": the letter
+// before the first slash is the segment and the third slash-delimited part is
+// the type. PP is pengolahan -- both its segments, inti and salut, collapse
+// into the single BB slot -- while PK segment A is kemas primer and PK segment
+// B is kemas sekunder. t_Bon_Keluar_Bahan_Awal_Header.MR_PPIid uses the same
+// coding, which is what ties a material issue back to its section.
+//
+// Batch numbers recycle every ten years (product + seq + last digit of year),
+// so every join carries Batch_Date alongside Product_ID and Batch_No.
+// ============================================================================
+
+/** Material issues before this stock period belong to a closed stock era. */
+const BON_STOCK_PERIODE_FLOOR = '2025 05';
+/** Items that never gate a batch: process aids and QC/lab placeholders. */
+const BON_EXCLUDED_ITEMS = "'IN 068', 'IN 065', 'CQ', 'EI'";
+/**
+ * How far back to look for batches that still hold a claim on today's stock.
+ * Older batches have either been issued their material or been abandoned, and
+ * would only add noise to the queue that decides who draws stock first.
+ */
+const DEMAND_LOOKBACK_MONTHS = 6;
+
+/** Maps a PPI id -- from the register or from a material issue -- to a section. */
+const SECTION_EXPR = (col) => `
+        CASE WHEN CHARINDEX('/', ${col}) < 2 THEN NULL
+             WHEN ${col} LIKE '%/PP/%' THEN 'BB'
+             WHEN ${col} LIKE '%/PK/%'
+                  AND UPPER(SUBSTRING(${col}, CHARINDEX('/', ${col}) - 1, 1)) = 'A' THEN 'BKP'
+             WHEN ${col} LIKE '%/PK/%'
+                  AND UPPER(SUBSTRING(${col}, CHARINDEX('/', ${col}) - 1, 1)) = 'B' THEN 'BKS'
+        END`;
+
+/**
+ * A quantity restated in the unit t_Item_Stock_Position counts in, which is the
+ * item master's own unit. PPI lines and material issues are written in the unit
+ * the operator works in, so kg and L have to be scaled to the g / mL the stock
+ * is held in -- 57 open issue lines currently read "L" against a gram item.
+ */
+const TO_STOCK_UNIT = (qty, unit, masterUnit) => `
+        (${qty}) * CASE
+            WHEN LOWER(LTRIM(RTRIM(ISNULL(${unit}, '')))) = 'kg' THEN 1000.0
+            WHEN LOWER(LTRIM(RTRIM(ISNULL(${unit}, '')))) = 'l'
+                 AND LOWER(LTRIM(RTRIM(ISNULL(${masterUnit}, '')))) IN ('g', 'ml') THEN 1000.0
+            ELSE 1.0
+        END`;
+
+/** The material-issue rows that count as a real claim on stock. */
+const BON_SCOPE = `
+            a.MR_StockPeriode >= '${BON_STOCK_PERIODE_FLOOR}'
+        AND c.MR_Type <> '135'
+        AND c.MR_ItemType <> 'FG'
+        AND a.MR_ItemID NOT IN (${BON_EXCLUDED_ITEMS})`;
+
+/**
+ * Products that are intermediates in practice but that no master flag catches.
+ *
+ * CQ (Water for Injection, ampul @ 1 mL) is made in-house purely as a diluent
+ * for other products -- the same role a pelarut plays -- but the master types
+ * it 'FG' with sediaan "injeksi cair", so neither test below finds it. The
+ * material-side exclusion list treats CQ the same way.
+ *
+ * Deliberately narrow: EI sits in that same material-side list but is a real
+ * retail pack (kotak duplex @ 10 vial), so it stays in the report.
+ */
+const EXCLUDED_PRODUCT_IDS = "'CQ'";
+
+/**
+ * Excludes intermediates -- products made only to be consumed by another
+ * product's batch, never packed and sold on their own.
+ *
+ * There are two kinds and the master flags them differently. Granulat carries
+ * Product_Type = 'IN'. Pelarut does not -- it is typed 'FG' -- and is only
+ * identifiable by its dosage form, sediaan code 30 = "pelarut"; the ampul is
+ * then drawn as a packaging item by its parent's kemas sekunder section, which
+ * is why H4 (PELARUT LAMESON) shows up as a material on LAMESON's own batches.
+ *
+ * Both belong out of the report: an intermediate has no packing of its own, so
+ * its BKP and BKS columns read against material that was never really its own
+ * and produce the impossible "pengolahan not started, packing finished".
+ *
+ * The two master flags agree exactly with the GRANULAT%/PELARUT% naming across
+ * the whole product master (11 products, no disagreement either way), so the
+ * flags are used rather than the names -- a renamed product stays classified.
+ *
+ * Note this filters what the report SHOWS, not what competes for stock: an
+ * intermediate batch really does consume raw material, so it stays in the
+ * allocation queue or its parent products would look better supplied than
+ * they are.
+ */
+const NOT_INTERMEDIATE = (productAlias, sediaanAlias, productIdExpr) => `(
+            ISNULL(${productAlias}.Product_Type, '') <> 'IN'
+        AND LOWER(LTRIM(RTRIM(ISNULL(${sediaanAlias}.Sediaan_Nama, '')))) <> 'pelarut'
+        AND LTRIM(RTRIM(${productIdExpr})) NOT IN (${EXCLUDED_PRODUCT_IDS})
+        )`;
+
+/** "A rev 01" -- the revision is the batch's own, and applies to pengolahan only. */
+const formulaToken = (code, rev) => {
+  const c = code == null ? '' : String(code);
+  if (!c.trim()) return ' ';
+  return rev && String(rev).trim() ? `${c} rev ${String(rev).trim()}` : c;
+};
+
+/**
+ * Renders the pengolahan slot. The factory treats Pengolahan Inti and Salut as
+ * one thing, so the two segments collapse into a single formula; only when they
+ * genuinely differ does the cell show both. '-' = no pengolahan section
+ * registered, a lone space = registered but the formula is unnamed.
+ */
+function pengolahanFormula(ppA, ppB, rev) {
+  if (ppA == null && ppB == null) return '-';
+  if (ppA == null) return formulaToken(ppB, rev);
+  if (ppB == null) return formulaToken(ppA, rev);
+  // Trailing spaces are insignificant here: two unnamed sections are one formula.
+  if (ppA.trim() === ppB.trim()) return formulaToken(ppA, rev);
+  return `${formulaToken(ppA, rev)}; ${formulaToken(ppB, rev)}`;
+}
+
+/**
+ * Walks the outstanding material demand in PPI order and reports, per batch
+ * section, which items the stock on hand no longer covers.
+ *
+ * Stock is finite and shared, so this is a queue rather than a per-batch
+ * lookup: the batch whose PPI came down first draws first, and a batch that
+ * cannot be covered in full still takes what is there -- the material is
+ * already booked to it -- leaving the batch behind it short as well. That is
+ * the behaviour the manual report describes, where two later batches for the
+ * same item both read "Stok 0".
+ *
+ * @param {Array} demand  { pid, bn, bd, section, item, Qty, TurunPPI }, outstanding only
+ * @param {Map}   saldo   item -> quantity on hand, already net of non-batch bookings
+ * @returns {Map} 'pid|bn|bd|section' -> item codes that fall short
+ */
+function allocateStock(demand, saldo) {
+  const remaining = new Map(saldo);
+  const shortages = new Map();
+
+  // PPI order, with product and batch as a stable tie-break so two runs over
+  // the same window always hand the stock to the same batch.
+  const ordered = demand.slice().sort((a, b) => {
+    const ta = a.TurunPPI ? new Date(a.TurunPPI).getTime() : Infinity;
+    const tb = b.TurunPPI ? new Date(b.TurunPPI).getTime() : Infinity;
+    if (ta !== tb) return ta - tb;
+    if (a.pid !== b.pid) return a.pid < b.pid ? -1 : 1;
+    if (a.bn !== b.bn) return a.bn < b.bn ? -1 : 1;
+    return a.section < b.section ? -1 : a.section > b.section ? 1 : 0;
+  });
+
+  for (const d of ordered) {
+    const have = remaining.get(d.item) || 0;
+    if (have >= d.Qty) {
+      remaining.set(d.item, have - d.Qty);
+      continue;
+    }
+    remaining.set(d.item, 0);
+    const key = `${d.pid}|${d.bn}|${d.bd}|${d.section}`;
+    const list = shortages.get(key);
+    if (list) { if (!list.includes(d.item)) list.push(d.item); }
+    else shortages.set(key, [d.item]);
+  }
+  return shortages;
+}
+
+/**
+ * @param {string} from 'YYYY-MM-DD' inclusive -- on the PPI issue date
+ * @param {string} to   'YYYY-MM-DD' inclusive
+ */
+async function getBatchesReport(from, to) {
+  const db = await connect();
+
+  // --- Batches in the window, with their formula and milestone columns -------
+  const batchReq = db.request();
+  batchReq.input('from', sql.Date, from);
+  batchReq.input('to', sql.Date, to);
+  // Staged in temp tables for the same reason the demand query is: every CTE
+  // here is referenced more than once, and SQL Server 2008 re-evaluates a CTE
+  // per reference. The status columns matter most -- computing them with an
+  // OUTER APPLY per batch cost ~18ms a batch, so a YTD window took ~50s; the
+  // set-based join below does the same work for 2867 batches in under a second.
+  const batchRows = (await batchReq.query(`
+    SET NOCOUNT ON;
+
+    -- The batches in the window, minus the products that are not reportable.
+    SELECT  h.Reg_ProductID                AS pid,
+            h.Reg_BatchNo                  AS bn,
+            h.Reg_BatchDate                AS bd,
+            MIN(h.Reg_Date)                AS TurunPPI,
+            MIN(h.Reg_ManufDate)           AS MfgDate,
+            MIN(h.Reg_ExpDate)             AS ExpDate,
+            MAX(h.HET_Satuan)              AS HETPrimer,
+            MAX(h.HET_Kotak)               AS HETSekunder,
+            MAX(h.Reg_PPI_Revisi)          AS rev
+    INTO    #hdr
+    FROM    t_Register_Perintah_Produksi_Header h
+    LEFT JOIN m_Product mp ON mp.Product_ID = h.Reg_ProductID
+    LEFT JOIN m_Product_Sediaan ms ON ms.Sediaan_Kode = mp.Product_BentukSediaan
+    WHERE   h.Reg_Date >= @from
+      AND   h.Reg_Date <  DATEADD(day, 1, @to)
+      AND   LEN(h.Reg_BatchDate) = 10
+      AND ${NOT_INTERMEDIATE('mp', 'ms', 'h.Reg_ProductID')}
+    GROUP BY h.Reg_ProductID, h.Reg_BatchNo, h.Reg_BatchDate;
+    CREATE CLUSTERED INDEX ix_hdr ON #hdr (pid, bn, bd);
+
+    -- One row per registered PPI section, keyed on type and segment so the two
+    -- pengolahan segments stay apart until the formula is rendered.
+    SELECT  d.Reg_ProductID AS pid, d.Reg_BatchNo AS bn, d.Reg_BatchDate AS bd,
+            CASE WHEN d.Reg_PPIId LIKE '%/PP/%' THEN 'PP'
+                 WHEN d.Reg_PPIId LIKE '%/PK/%' THEN 'PK' END AS typ,
+            UPPER(SUBSTRING(d.Reg_PPIId, CHARINDEX('/', d.Reg_PPIId) - 1, 1)) AS seg,
+            -- The bare formula code; a single space when the section is
+            -- registered but its formula is unnamed (distinct from NULL = no
+            -- section at all).
+            MAX(CASE WHEN LTRIM(RTRIM(ISNULL(d.Reg_PPISubID, ''))) = '' THEN ' '
+                     ELSE LTRIM(RTRIM(d.Reg_PPISubID)) END) AS code,
+            -- Sections are usually registered in one sitting, but not always on
+            -- the same day -- around 5% of batches have a packing section
+            -- registered later than pengolahan -- so each slot keeps its own
+            -- date rather than sharing the header's.
+            MIN(d.Process_Date)            AS turun,
+            MAX(d.Reg_BatchSize)           AS bs,
+            MAX(d.Reg_BatchSizeUnitID)     AS uom
+    INTO    #sec
+    FROM    t_Register_Perintah_Produksi_Detail d
+    JOIN    #hdr h ON h.pid = d.Reg_ProductID AND h.bn = d.Reg_BatchNo AND h.bd = d.Reg_BatchDate
+    WHERE   d.Reg_PPIId <> '' AND CHARINDEX('/', d.Reg_PPIId) > 1
+    GROUP BY d.Reg_ProductID, d.Reg_BatchNo, d.Reg_BatchDate,
+             CASE WHEN d.Reg_PPIId LIKE '%/PP/%' THEN 'PP'
+                  WHEN d.Reg_PPIId LIKE '%/PK/%' THEN 'PK' END,
+             UPPER(SUBSTRING(d.Reg_PPIId, CHARINDEX('/', d.Reg_PPIId) - 1, 1));
+
+    SELECT  pid, bn, bd,
+            MAX(CASE WHEN typ = 'PP' AND seg = 'A' THEN code END) AS pp_a,
+            MAX(CASE WHEN typ = 'PP' AND seg = 'B' THEN code END) AS pp_b,
+            MAX(CASE WHEN typ = 'PK' AND seg = 'A' THEN code END) AS pk_a,
+            MAX(CASE WHEN typ = 'PK' AND seg = 'B' THEN code END) AS pk_b,
+            MIN(CASE WHEN typ = 'PP'               THEN turun END) AS turun_bb,
+            MIN(CASE WHEN typ = 'PK' AND seg = 'A' THEN turun END) AS turun_bkp,
+            MIN(CASE WHEN typ = 'PK' AND seg = 'B' THEN turun END) AS turun_bks,
+            MAX(bs) AS bs, MAX(uom) AS uom
+    INTO    #flat
+    FROM    #sec
+    WHERE   typ IS NOT NULL AND seg IN ('A', 'B')
+    GROUP BY pid, bn, bd;
+    CREATE CLUSTERED INDEX ix_flat ON #flat (pid, bn, bd);
+
+    -- Tanggal potong stock: when the warehouse actually handed the material
+    -- over, per section, earliest line wins.
+    SELECT  x.pid, x.bn, x.bd,
+            MIN(CASE WHEN x.section = 'BB'  THEN x.st END) AS PotongBB,
+            MIN(CASE WHEN x.section = 'BKP' THEN x.st END) AS PotongBKP,
+            MIN(CASE WHEN x.section = 'BKS' THEN x.st END) AS PotongBKS
+    INTO    #cut
+    FROM (
+        SELECT  c.MR_ProductID AS pid, c.MR_BatchNo AS bn, c.MR_BatchDate AS bd,
+                ${SECTION_EXPR('c.MR_PPIid')} AS section,
+                a.MR_SerahTerima AS st
+        FROM    t_Bon_Keluar_Bahan_Awal_Detail a
+        JOIN    t_Bon_Keluar_Bahan_Awal_Header c ON c.MR_No = a.MR_No
+        JOIN    #hdr h ON h.pid = c.MR_ProductID AND h.bn = c.MR_BatchNo AND h.bd = c.MR_BatchDate
+        WHERE ${BON_SCOPE}
+          AND   a.MI_Amount > 0
+          AND   a.MR_SerahTerima IS NOT NULL
+    ) x
+    GROUP BY x.pid, x.bn, x.bd;
+    CREATE CLUSTERED INDEX ix_cut ON #cut (pid, bn, bd);
+
+    -- Production status in one pass: the first genuine processing step, and the
+    -- QA release. Batches that have not been touched at all get no row here and
+    -- fall through the LEFT JOIN below as 'Belum'.
+    SELECT  h.pid, h.bn, h.bd,
+            MIN(CASE WHEN g.tahapan_group IN ('Granulasi', 'Mixing', 'Filling', 'Cetak', 'Coating')
+                      AND a.kode_tahapan NOT IN (${PREP_STEP_CODES.join(', ')})
+                      AND (${NOT_PREP_NAME('a')})
+                     THEN a.StartDate END)                    AS Started,
+            MAX(CASE WHEN a.kode_tahapan = 170 THEN a.EndDate END) AS Released
+    INTO    #st
+    FROM    #hdr h
+    JOIN    t_alur_proses a ON a.Product_ID = h.pid AND a.Batch_No = h.bn AND a.Batch_Date = h.bd
+    LEFT JOIN m_tahapan_group g ON g.kode_tahapan = CAST(a.kode_tahapan AS NVARCHAR(20))
+    GROUP BY h.pid, h.bn, h.bd;
+    CREATE CLUSTERED INDEX ix_st ON #st (pid, bn, bd);
+
+    SELECT
+        h.pid                                          AS ProductID,
+        ISNULL(NULLIF(LTRIM(RTRIM(p.Product_Name)), ''), h.pid) AS ProductName,
+        h.bn                                           AS BatchNo,
+        h.bd                                           AS BatchDate,
+        -- Belum = PPI issued, nothing running yet; WIP = in process; Selesai =
+        -- QA release recorded. The first-real-step definition is the one
+        -- Production Monitoring uses, so the two reports agree on when a batch
+        -- went live.
+        CASE WHEN st.Released IS NOT NULL THEN 'Selesai'
+             WHEN st.Started  IS NOT NULL THEN 'WIP'
+             ELSE 'Belum' END                          AS BatchStatus,
+        f.pp_a                                         AS pp_a,
+        f.pp_b                                         AS pp_b,
+        f.pk_a                                         AS FormulaKemasPrimer,
+        f.pk_b                                         AS FormulaKemasSekunder,
+        h.rev                                          AS PPIRevisi,
+        -- A handful of batches (~4%) are packing-only and register no
+        -- pengolahan section. They still have a PPI date, so the column falls
+        -- back to the header's; sec_bb is what says whether the section exists,
+        -- and it is that -- not the date -- that gates availability.
+        ISNULL(f.turun_bb, h.TurunPPI)                 AS TurunPPIProses,
+        f.turun_bb                                     AS sec_bb,
+        f.turun_bkp                                    AS TurunPPIKemasPrimer,
+        f.turun_bks                                    AS TurunPPIKemasSekunder,
+        cut.PotongBB                                   AS PotongStockBB,
+        cut.PotongBKP                                  AS PotongStockBKP,
+        cut.PotongBKS                                  AS PotongStockBKS,
+        h.ExpDate                                      AS ExpireDate,
+        h.MfgDate                                      AS MfgDate,
+        h.HETPrimer                                    AS HETPrimer,
+        h.HETSekunder                                  AS HETSekunder,
+        f.bs                                           AS BatchSize,
+        f.uom                                          AS UOM
+    FROM        #hdr h
+    LEFT JOIN   #flat f     ON f.pid = h.pid AND f.bn = h.bn AND f.bd = h.bd
+    LEFT JOIN   #cut cut    ON cut.pid = h.pid AND cut.bn = h.bn AND cut.bd = h.bd
+    LEFT JOIN   #st st      ON st.pid = h.pid AND st.bn = h.bn AND st.bd = h.bd
+    LEFT JOIN   m_Product p ON p.Product_ID = h.pid
+    ORDER BY    h.TurunPPI, ProductName, h.bn;
+
+    DROP TABLE #st; DROP TABLE #cut; DROP TABLE #flat; DROP TABLE #sec; DROP TABLE #hdr;
+  `)).recordset;
+
+  if (!batchRows.length) return [];
+
+  // --- Outstanding demand, stock on hand, and the bookings that precede it ---
+  //
+  // Demand is the PPI's own planned quantity until the warehouse writes a bon
+  // against it, at which point the bon's open lines take over -- they are what
+  // will actually be picked. A line already handed over drops off both sides:
+  // the stock position reflects it. Reading the PPI first is what makes the
+  // current month answerable at all -- two thirds of its material lines have no
+  // bon yet, and a bon-only reading would leave those batches blank.
+  //
+  // All three result sets come from one batch so they share a connection, and
+  // so the working sets can be staged in indexed temp tables. That staging is
+  // not decoration: m_Item_Manufacturing is a 4k-row heap with no index at all,
+  // and joining it row-by-row across six months of PPI lines costs ~9s on its
+  // own. SQL Server also re-evaluates a CTE at every reference, which the
+  // UNION ALL below would do twice over.
+  const sets = (await db.request().query(`
+    SET NOCOUNT ON;
+
+    -- Item -> the unit the stock position counts in.
+    SELECT  LTRIM(RTRIM(i.Item_ID)) AS item,
+            LOWER(LTRIM(RTRIM(ISNULL(i.Item_Unit, '')))) AS unit
+    INTO    #unit
+    FROM    m_Item_Manufacturing i;
+    CREATE CLUSTERED INDEX ix_unit ON #unit (item);
+
+    -- Every batch that can still draw on today's stock, with the PPI date that
+    -- fixes its place in the queue.
+    SELECT  h.Reg_ProductID AS pid, h.Reg_BatchNo AS bn, h.Reg_BatchDate AS bd,
+            MIN(h.Reg_Date) AS TurunPPI
+    INTO    #win
+    FROM    t_Register_Perintah_Produksi_Header h
+    WHERE   h.Reg_Date >= DATEADD(month, -${DEMAND_LOOKBACK_MONTHS}, GETDATE())
+      AND   LEN(h.Reg_BatchDate) = 10
+    GROUP BY h.Reg_ProductID, h.Reg_BatchNo, h.Reg_BatchDate;
+    CREATE CLUSTERED INDEX ix_win ON #win (pid, bn, bd);
+
+    -- What the PPI plans to consume, per section and item.
+    SELECT  d.Reg_ProductID AS pid, d.Reg_BatchNo AS bn, d.Reg_BatchDate AS bd,
+            ${SECTION_EXPR('d.Reg_PPIId')} AS section,
+            LTRIM(RTRIM(d.Reg_PPIItemID)) AS item,
+            SUM(${TO_STOCK_UNIT('d.Reg_PPIAmount', 'd.Reg_PPIItemUnitID', 'u.unit')}) AS qty
+    INTO    #need
+    FROM    t_Register_Perintah_Produksi_Detail d
+    JOIN    #win w ON w.pid = d.Reg_ProductID AND w.bn = d.Reg_BatchNo AND w.bd = d.Reg_BatchDate
+    LEFT JOIN #unit u ON u.item = LTRIM(RTRIM(d.Reg_PPIItemID))
+    WHERE   NULLIF(LTRIM(RTRIM(ISNULL(d.Reg_PPIItemID, ''))), '') IS NOT NULL
+      AND   LTRIM(RTRIM(d.Reg_PPIItemID)) NOT IN (${BON_EXCLUDED_ITEMS})
+      AND   d.Reg_PPIAmount > 0
+    GROUP BY d.Reg_ProductID, d.Reg_BatchNo, d.Reg_BatchDate,
+             ${SECTION_EXPR('d.Reg_PPIId')},
+             LTRIM(RTRIM(d.Reg_PPIItemID));
+    CREATE CLUSTERED INDEX ix_need ON #need (pid, bn, bd, section, item);
+
+    -- What the warehouse has booked but not yet handed over.
+    SELECT  c.MR_ProductID AS pid, c.MR_BatchNo AS bn, c.MR_BatchDate AS bd,
+            ${SECTION_EXPR('c.MR_PPIid')} AS section,
+            LTRIM(RTRIM(a.MR_ItemID)) AS item,
+            SUM(CASE WHEN a.MR_SerahTerima IS NULL THEN
+                    ${TO_STOCK_UNIT(
+                      'CASE WHEN a.MI_Amount > 0 THEN a.MI_Amount ELSE a.MR_Amount END',
+                      'a.MR_ItemUnit', 'u.unit')}
+                ELSE 0 END) AS open_qty
+    INTO    #bon
+    FROM    t_Bon_Keluar_Bahan_Awal_Detail a
+    JOIN    t_Bon_Keluar_Bahan_Awal_Header c ON c.MR_No = a.MR_No
+    JOIN    #win w ON w.pid = c.MR_ProductID AND w.bn = c.MR_BatchNo AND w.bd = c.MR_BatchDate
+    LEFT JOIN #unit u ON u.item = LTRIM(RTRIM(a.MR_ItemID))
+    WHERE ${BON_SCOPE}
+    GROUP BY c.MR_ProductID, c.MR_BatchNo, c.MR_BatchDate,
+             ${SECTION_EXPR('c.MR_PPIid')},
+             LTRIM(RTRIM(a.MR_ItemID));
+    CREATE CLUSTERED INDEX ix_bon ON #bon (pid, bn, bd, section, item);
+
+    -- (1) Outstanding demand.
+    SELECT  n.pid, n.bn, n.bd, n.section, n.item,
+            CASE WHEN b.item IS NOT NULL THEN b.open_qty ELSE n.qty END AS Qty,
+            w.TurunPPI
+    FROM        #need n
+    JOIN        #win w ON w.pid = n.pid AND w.bn = n.bn AND w.bd = n.bd
+    LEFT JOIN   #bon b ON b.pid = n.pid AND b.bn = n.bn AND b.bd = n.bd
+                      AND b.section = n.section AND b.item = n.item
+    WHERE   n.section IS NOT NULL
+      AND   (CASE WHEN b.item IS NOT NULL THEN b.open_qty ELSE n.qty END) > 0
+    UNION ALL
+    -- Items the warehouse booked that the PPI never listed -- a substitution or
+    -- a late addition. They draw on the same stock, so they belong in the queue.
+    SELECT  b.pid, b.bn, b.bd, b.section, b.item, b.open_qty AS Qty, w.TurunPPI
+    FROM        #bon b
+    JOIN        #win w ON w.pid = b.pid AND w.bn = b.bn AND w.bd = b.bd
+    LEFT JOIN   #need n ON n.pid = b.pid AND n.bn = b.bn AND n.bd = b.bd
+                       AND n.section = b.section AND n.item = b.item
+    WHERE   b.section IS NOT NULL AND n.item IS NULL AND b.open_qty > 0;
+
+    -- (2) Stock on hand for the current period.
+    SELECT  LTRIM(RTRIM(s.St_ItemID)) AS item,
+            SUM(s.St_AwalRelease + s.St_TerimaRelease
+                + s.St_TerimaLangsung + s.St_KeluarRelease) AS saldo
+    FROM    t_Item_Stock_Position s
+    WHERE   REPLACE(s.St_Periode, ' ', '') = CONVERT(NVARCHAR(6), GETDATE(), 112)
+    GROUP BY LTRIM(RTRIM(s.St_ItemID));
+
+    -- (3) Bons raised without a batch -- line trials, reworks, sampling. They
+    -- are committed but belong to no batch, so they come off the top of the
+    -- pool before any batch draws from it. Only recent approved ones stand.
+    SELECT  LTRIM(RTRIM(a.MR_ItemID)) AS item,
+            SUM(${TO_STOCK_UNIT(
+                  'CASE WHEN a.MI_Amount > 0 THEN a.MI_Amount ELSE a.MR_Amount END',
+                  'a.MR_ItemUnit', 'u.unit')}) AS qty
+    FROM    t_Bon_Keluar_Bahan_Awal_Detail a
+    JOIN    t_Bon_Keluar_Bahan_Awal_Header c ON c.MR_No = a.MR_No
+    JOIN    t_Bon_Keluar_Bahan_Awal_Status b ON b.MR_No = a.MR_No
+    LEFT JOIN #unit u ON u.item = LTRIM(RTRIM(a.MR_ItemID))
+    WHERE ${BON_SCOPE}
+      AND   a.MR_SerahTerima IS NULL
+      AND   ISNULL(c.MR_ProductID, '') = ''
+      AND   b.Approver_No = 1
+      AND   b.Process_Date >= DATEADD(month, -2, GETDATE())
+    GROUP BY LTRIM(RTRIM(a.MR_ItemID));
+
+    DROP TABLE #bon; DROP TABLE #need; DROP TABLE #win; DROP TABLE #unit;
+  `)).recordsets;
+
+  const [demandRows, saldoRows, nonBatchRows] = sets;
+
+  const saldo = new Map();
+  for (const r of saldoRows) saldo.set(r.item, r.saldo || 0);
+  for (const r of nonBatchRows) {
+    saldo.set(r.item, (saldo.get(r.item) || 0) - (r.qty || 0));
+  }
+
+  const shortages = allocateStock(demandRows, saldo);
+
+  /**
+   * The availability cell for one section. A section with nothing outstanding
+   * has either had its material cut already or was never going to need any.
+   */
+  const availability = (row, section, registered, potong) => {
+    if (!registered) return '';                  // section not registered at all
+    const short = shortages.get(`${row.ProductID}|${row.BatchNo}|${row.BatchDate}|${section}`);
+    if (short && short.length) return short.join(', ');
+    return potong ? 'SELESAI' : 'ALL OK';
+  };
+
+  return batchRows.map((r) => ({
+    ProductID: r.ProductID,
+    ProductName: r.ProductName,
+    BatchNo: r.BatchNo,
+    BatchDate: r.BatchDate,
+    BatchStatus: r.BatchStatus,
+
+    FormulaProses: pengolahanFormula(r.pp_a, r.pp_b, r.PPIRevisi),
+    KetersediaanBB: availability(r, 'BB', r.sec_bb, r.PotongStockBB),
+    TurunPPIProses: r.TurunPPIProses,
+    PotongStockBB: r.PotongStockBB,
+
+    FormulaKemasPrimer: r.FormulaKemasPrimer == null ? '-' : r.FormulaKemasPrimer,
+    KetersediaanBKP: availability(r, 'BKP', r.TurunPPIKemasPrimer, r.PotongStockBKP),
+    TurunPPIKemasPrimer: r.TurunPPIKemasPrimer,
+    PotongStockBKP: r.PotongStockBKP,
+
+    FormulaKemasSekunder: r.FormulaKemasSekunder == null ? '-' : r.FormulaKemasSekunder,
+    KetersediaanBKS: availability(r, 'BKS', r.TurunPPIKemasSekunder, r.PotongStockBKS),
+    TurunPPIKemasSekunder: r.TurunPPIKemasSekunder,
+    PotongStockBKS: r.PotongStockBKS,
+
+    ExpireDate: r.ExpireDate,
+    MfgDate: r.MfgDate,
+    HETPrimer: r.HETPrimer,
+    HETSekunder: r.HETSekunder,
+    BatchSize: r.BatchSize,
+    UOM: r.UOM,
+  }));
+}
+module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTBreakdownLegacy, getPCTBreakdownV2, getPCTSummary, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getTahapanGroupCategories, getTahapanGroupAssignments, bulkUpsertTahapanGroups, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getQCSummary, getFGQCInProcess, getFGQCByPeriod, getFGQCCompletedByPeriod, getFGQCSummary, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig, getExpiredMaterials, getDeptProductionOutputYield, getDeptProductionFulfillment, getProductionMonitoring, getProductCategoryGroups, getProductionOutput, getProductionOutputRange, getBatchesReport};

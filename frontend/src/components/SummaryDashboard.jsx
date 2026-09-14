@@ -11,6 +11,7 @@ import { useHelp } from '../context/HelpContext';
 import { useAuth } from '../context/AuthContext';
 import OF1TargetModal from './OF1TargetModal';
 import ProductionOutputModal from './ProductionOutputModal';
+import BatchesReportModal from './BatchesReportModal';
 import './SummaryDashboard.css';
 
 // Register Chart.js components
@@ -4187,6 +4188,7 @@ function SummaryDashboard() {
   // State for export
   const [exporting, setExporting] = useState(false);
   const [productionOutputOpen, setProductionOutputOpen] = useState(false); // Production Output export modal
+  const [batchesReportOpen, setBatchesReportOpen] = useState(false); // Batches Report (Laporan Turun PPI) export modal
 
   // Export current data to Excel
   const handleExportExcel = async () => {
@@ -6966,6 +6968,29 @@ function SummaryDashboard() {
             
             {/* Right: Actions */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {/* Batches Report (Laporan Turun PPI) Export Button */}
+              <button
+                onClick={() => setBatchesReportOpen(true)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '6px 12px',
+                  background: 'rgba(255, 255, 255, 0.2)',
+                  border: '1px solid rgba(255, 255, 255, 0.3)',
+                  borderRadius: '6px',
+                  color: 'white',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+                title="Export laporan turun PPI per batch: formula, ketersediaan material, tanggal turun PPI dan potong stock"
+              >
+                <span>🧾</span>
+                <span>Batches Report</span>
+              </button>
+
               {/* Production Output Export Button */}
               <button
                 onClick={() => setProductionOutputOpen(true)}
@@ -8486,6 +8511,11 @@ function SummaryDashboard() {
       <ProductionOutputModal
         open={productionOutputOpen}
         onClose={() => setProductionOutputOpen(false)}
+      />
+
+      <BatchesReportModal
+        open={batchesReportOpen}
+        onClose={() => setBatchesReportOpen(false)}
       />
     </div>
   );

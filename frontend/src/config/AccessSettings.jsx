@@ -104,6 +104,17 @@ export const PAGE_ACCESS = {
     ],
   },
 
+  // Processing Control Tower. Which processes a user sees is decided inside the
+  // page (frontend/src/config/controlTower.js): NT/PL/HQ/HD/MS/DS see everything,
+  // the owning departments see only their own steps. This list only gates entry.
+  'control-tower': {
+    requireAuth: true,
+    allowedDepartments: ['NT', 'PL', 'HQ', 'HD', 'MS', 'DS', 'PN1', 'PN2', 'PC', 'QC', 'QA', 'MC'],
+    allowedUserIds: ['HWA', 'JDV'],
+    allowedJobLevels: [],
+    specificCombinations: [],
+  },
+
   // Dept Production / "Line Metrics" Dashboard (Output / Yield / Order Fulfillment
   // per sediaan). Access mirrors the 'summary' dashboard.
   'dept-production': {

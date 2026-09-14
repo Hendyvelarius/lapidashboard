@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const SqlController = require('../controllers/SqlController');
 const SnapshotController = require('../controllers/SnapshotController');
+const ControlTowerController = require('../controllers/ControlTowerController');
 const { verifyToken } = require('../middleware/auth');
 
 // Authentication endpoint to verify and decode JWT token
@@ -66,6 +67,9 @@ router.get('/material', SqlController.getMaterial);
 router.get('/productionOutput', SqlController.getProductionOutput);
 router.get('/productionOutputRange', SqlController.getProductionOutputRange);
 
+// Routing Batches Report (Laporan Turun PPI) export
+router.get('/batchesReport', SqlController.getBatchesReport);
+
 // Routing Production Monitoring export
 router.get('/productionMonitoring', SqlController.getProductionMonitoring);
 router.get('/productCategoryGroups', SqlController.getProductCategoryGroups);
@@ -123,6 +127,19 @@ router.delete('/productType/:productId', SqlController.deleteProductType);      
 router.get('/tahapanGroupCategories', SqlController.getTahapanGroupCategories);    // Category picklist
 router.get('/tahapanGroupAssignments', SqlController.getTahapanGroupAssignments);  // All step -> category
 router.post('/tahapanGroups/bulk', SqlController.bulkUpsertTahapanGroups);         // Bulk assign
+
+// ============================================
+// Processing Control Tower Routes
+// ============================================
+router.get('/controlTower/live', ControlTowerController.getLive);              // last N hours + running steps
+router.get('/controlTower/alerts', ControlTowerController.getAlerts);          // deviation log for a window
+router.get('/controlTower/stats', ControlTowerController.getStats);            // counts per period for charts
+router.get('/controlTower/todo', ControlTowerController.getTodo);              // steps without a standard
+router.get('/controlTower/report', ControlTowerController.getReport);          // rows + acks for the workbook
+router.get('/controlTower/thresholds', ControlTowerController.getThresholds);
+router.put('/controlTower/thresholds', ControlTowerController.saveThresholds); // NT only
+router.post('/controlTower/ack', ControlTowerController.acknowledge);
+router.post('/controlTower/unack', ControlTowerController.unacknowledge);
 
 // Cache management endpoints
 const { cache } = require('../utils/cache');
