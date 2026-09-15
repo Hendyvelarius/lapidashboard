@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import { hasPageAccess } from '../config/AccessSettings';
-import { FaChartLine, FaClipboardList, FaBoxOpen, FaRegFileAlt, FaFlask, FaIndustry, FaArchive, FaTachometerAlt, FaChartBar } from 'react-icons/fa';
+import { FaChartLine, FaClipboardList, FaBoxOpen, FaRegFileAlt, FaFlask, FaIndustry, FaArchive, FaTachometerAlt, FaChartBar, FaBroadcastTower } from 'react-icons/fa';
 import Sidebar from './Sidebar';
 import Modal from './Modal';
 import './LandingPage.css';
@@ -25,6 +25,7 @@ const dashboardCards = [
     items: [
       { key: "production", label: "Production", desc: "Informasi proses produksi secara keseluruhan.", icon: <FaClipboardList size={20} color="#38e6c5" />, route: "/production", pageName: "production" },
       { key: "line-metrics", label: "Line Metrics", desc: "Output, yield, dan order fulfillment per bentuk sediaan.", icon: <FaChartBar size={20} color="#0ea5e9" />, route: "/dept-production", pageName: "dept-production" },
+      { key: "control-tower", label: "Processing Control Tower", desc: "Monitoring live semua proses dan deteksi deviasi durasi vs standar.", icon: <FaBroadcastTower size={20} color="#d03b3b" />, route: "/control-tower", pageName: "control-tower" },
     ],
   },
   {
@@ -96,7 +97,7 @@ function LandingGroupCard({ card, onItemClick, user }) {
 
   return (
     <div
-      className={`lp-card lp-card-group${allUnauthorized ? ' lp-card-unauthorized' : ''}`}
+      className={`lp-card lp-card-group${open ? ' lp-card-open' : ''}${allUnauthorized ? ' lp-card-unauthorized' : ''}`}
       style={{ '--card-accent': card.color }}
       tabIndex={0}
       role="button"
