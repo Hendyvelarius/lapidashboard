@@ -14,8 +14,36 @@ export const SCOPED_DEPTS = ['PN1', 'PN2', 'PC', 'QC', 'QA', 'MC'];
 /** User IDs that always get the all-seeing view (mirrors AccessSettings overrides). */
 export const ALL_SEEING_USERS = ['HWA', 'JDV'];
 
-/** Who may edit the yellow thresholds. */
-export const THRESHOLD_EDITOR_DEPTS = ['NT'];
+/** Departments that own the configuration: thresholds, and (their managers) every dept's clerical list. */
+export const CONFIG_ADMIN_DEPTS = ['NT', 'PL', 'MS'];
+
+/** Users who bypass every configuration gate. */
+export const CONFIG_SUPERUSERS = ['HWA'];
+
+/**
+ * emp_JobLevelID values that count as a department manager. The Plant heads
+ * (PL department) carry job level 'PL' instead of 'MGR' in m_employee.
+ */
+export const MANAGER_JOB_LEVELS = ['MGR', 'PL'];
+
+/**
+ * What a user may change in the Configuration modal.
+ *
+ *   thresholds     NT / PL / MS (any level), or a superuser
+ *   clericalDepts  departments whose clerical list the user may edit
+ *                  ([] = read-only): a superuser -> all; a manager of
+ *                  NT / PL / MS -> all; a manager of a scoped dept -> own dept.
+ *                  Staff never edit a clerical list.
+ */
+export function resolveConfigAccess(user) {
+  const dept = String(user?.emp_DeptID || '').toUpperCase();
+  const nik = String(user?.log_NIK || '').toUpperCase();
+  const isManager = MANAGER_JOB_LEVELS.includes(String(user?.emp_JobLevelID || '').toUpperCase());
+  if (CONFIG_SUPERUSERS.includes(nik)) return { thresholds: true, clericalDepts: [...SCOPED_DEPTS] };
+  if (CONFIG_ADMIN_DEPTS.includes(dept)) return { thresholds: true, clericalDepts: isManager ? [...SCOPED_DEPTS] : [] };
+  if (SCOPED_DEPTS.includes(dept)) return { thresholds: false, clericalDepts: isManager ? [dept] : [] };
+  return { thresholds: false, clericalDepts: [] };
+}
 
 /**
  * Resolve what a user is allowed to monitor.
@@ -38,7 +66,11 @@ export const SEVERITY = {
   yellow: { key: 'yellow', label: 'Deviasi', short: 'Yellow', color: '#e6a817', soft: '#fdf3d7', icon: '⚠️' },
   green: { key: 'green', label: 'Normal', short: 'Green', color: '#2e9c86', soft: '#e3f3ee', icon: '✅' },
   nostd: { key: 'nostd', label: 'Tanpa standar', short: 'No std', color: '#94a3b8', soft: '#eef2f6', icon: '❔' },
+  clerical: { key: 'clerical', label: 'Clerical', short: 'Clerical', color: '#a78bfa', soft: '#f1ecfd', icon: '📎' },
 };
+
+/** Severities that count as "scored" (everything the thresholds apply to). */
+export const SCORED_SEVERITIES = ['red', 'yellow', 'green'];
 
 export const DEVIATION_LABEL = {
   instant: 'Instant tap',
@@ -46,6 +78,7 @@ export const DEVIATION_LABEL = {
   slow: 'Terlalu lama',
   ok: 'Normal',
   nostd: 'Tanpa standar',
+  clerical: 'Clerical (tidak dimonitor)',
 };
 
 export const ACK_STATUS = {

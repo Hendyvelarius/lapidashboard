@@ -42,6 +42,7 @@ function userFromBody(body) {
     nik: u.nik ? String(u.nik).trim() : '',
     name: u.name ? String(u.name).trim() : '',
     dept: u.dept ? String(u.dept).trim().toUpperCase() : '',
+    jobLevel: u.jobLevel ? String(u.jobLevel).trim().toUpperCase() : '',
   };
 }
 
@@ -140,17 +141,59 @@ async function getThresholds(req, res) {
   } catch (err) { fail(res, err, 'thresholds'); }
 }
 
-// PUT /controlTower/thresholds  { rows: [{dept, fast_ratio, slow_ratio}], user }
-// Only NT may change the rules (the frontend hides the panel; this is the backstop).
+// Mirrors resolveConfigAccess() in frontend/src/config/controlTower.js.
+const isSuperuser = (user) => CT.CONFIG_SUPERUSERS.includes(user.nik.toUpperCase());
+const isConfigAdmin = (user) => isSuperuser(user) || CT.CONFIG_ADMIN_DEPTS.includes(user.dept);
+const canEditClerical = (user, dept) => isSuperuser(user)
+  || (CT.MANAGER_JOB_LEVELS.includes(user.jobLevel) && (CT.CONFIG_ADMIN_DEPTS.includes(user.dept) || user.dept === dept));
+
+// PUT /controlTower/thresholds  { rows: [{dept, fast_factor, slow_factor}], user }
+// Only NT / PL / MS may change the rules (the frontend disables the form; this
+// is the backstop).
 async function saveThresholds(req, res) {
   try {
     const user = userFromBody(req.body);
-    if (user.dept !== 'NT') return res.status(403).json({ success: false, error: 'Hanya NT yang dapat mengubah threshold' });
+    if (!isConfigAdmin(user)) return res.status(403).json({ success: false, error: `Hanya ${CT.CONFIG_ADMIN_DEPTS.join('/')} yang dapat mengubah threshold` });
     const data = await CT.saveThresholds(req.body?.rows, user);
     // Severity depends on the thresholds -> everything computed is stale.
     cache.deleteByPrefix('ct:');
     res.json({ success: true, data });
   } catch (err) { fail(res, err, 'saveThresholds'); }
+}
+
+// GET /controlTower/processes?dept=PN1  -- candidate processes for the clerical list
+async function getProcesses(req, res) {
+  try {
+    const dept = String(req.query.dept || '').trim().toUpperCase();
+    if (!CT.SCOPED_DEPTS.includes(dept)) throw badRequest(`dept must be one of ${CT.SCOPED_DEPTS.join(', ')}`);
+    const data = await cached(`ct:processes:${dept}`, CACHE_TTL.MEDIUM, req.query.refresh === 'true', () => CT.getProcesses(dept));
+    res.json({ data });
+  } catch (err) { fail(res, err, 'processes'); }
+}
+
+// GET /controlTower/clerical?depts=
+async function getClerical(req, res) {
+  try {
+    res.json({ data: await CT.getClerical({ depts: parseDepts(req) }) });
+  } catch (err) { fail(res, err, 'clerical'); }
+}
+
+// PUT /controlTower/clerical  { dept, codes: [kode_tahapan], user }
+// Only a manager (MGR) of that department, a manager of NT / PL / MS, or a
+// superuser may change a list.
+async function saveClerical(req, res) {
+  try {
+    const user = userFromBody(req.body);
+    const dept = String(req.body?.dept || '').trim().toUpperCase();
+    if (!CT.SCOPED_DEPTS.includes(dept)) throw badRequest(`dept must be one of ${CT.SCOPED_DEPTS.join(', ')}`);
+    if (!canEditClerical(user, dept)) {
+      return res.status(403).json({ success: false, error: `Hanya Manager ${dept} (atau Manager ${CT.CONFIG_ADMIN_DEPTS.join('/')}) yang dapat mengubah daftar clerical ${dept}` });
+    }
+    const data = await CT.saveClerical({ dept, codes: req.body?.codes, user });
+    // Clerical steps drop out of every score -> everything computed is stale.
+    cache.deleteByPrefix('ct:');
+    res.json({ success: true, data });
+  } catch (err) { fail(res, err, 'saveClerical'); }
 }
 
 // POST /controlTower/ack  { items, status, note, user }
@@ -184,6 +227,9 @@ module.exports = {
   getReport,
   getThresholds,
   saveThresholds,
+  getProcesses,
+  getClerical,
+  saveClerical,
   acknowledge,
   unacknowledge,
 };

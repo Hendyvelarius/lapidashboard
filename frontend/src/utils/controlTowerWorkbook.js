@@ -186,9 +186,12 @@ export function buildWorkbook(XLSXModule, data, meta) {
 
   const scope = meta.depts && meta.depts.length ? meta.depts.join(', ') : 'Semua departemen';
   const thr = meta.thresholds;
+  const def = thr?.rows.find((t) => t.dept === '*');
+  const overrides = thr ? thr.rows.filter((t) => t.dept !== '*') : [];
   const thrLine = thr
-    ? `Red = durasi < ${thr.red_max_minutes} menit · Yellow = rasio ≤ ${thr.rows.find((t) => t.dept === '*')?.fast_ratio ?? '?'}× atau ≥ ${thr.rows.find((t) => t.dept === '*')?.slow_ratio ?? '?'}× standar` +
-      (thr.rows.filter((t) => t.dept !== '*').length ? ` (override: ${thr.rows.filter((t) => t.dept !== '*').map((t) => `${t.dept} ${t.fast_ratio}×/${t.slow_ratio}×`).join(', ')})` : '')
+    ? `Red = durasi < ${thr.red_max_minutes} menit · Yellow = ≥ ${def?.fast_factor ?? '?'}× lebih cepat atau ≥ ${def?.slow_factor ?? '?'}× lebih lama dari standar` +
+      (overrides.length ? ` (override: ${overrides.map((t) => `${t.dept} ${t.fast_factor}×/${t.slow_factor}×`).join(', ')})` : '') +
+      ' · proses clerical tidak disertakan'
     : '';
   const baseLines = [
     `Periode ${fmtID(meta.from)} – ${fmtID(meta.to)} (tanggal selesai proses)  ·  ${scope}  ·  ${rows.length} proses, ${alerts.length} alert`,

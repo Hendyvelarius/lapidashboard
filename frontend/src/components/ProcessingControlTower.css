@@ -238,3 +238,18 @@
   .ct-radio-grid, .ct-sheet-grid { grid-template-columns: 1fr; }
   .ct-topbar-right { margin-left: 0; }
 }
+
+/* ---- Configuration modal -------------------------------------------------- */
+.ct-config-modal { width: 860px; }
+.ct-config-modal .ct-modal-head { gap: 12px; }
+.ct-config-modal .ct-modal-head .ct-toggle { margin-left: auto; }
+.ct-factor-cell { white-space: nowrap; font-size: 0.8rem; color: #475569; }
+.ct-factor-cell .ct-input { width: 64px; margin-right: 6px; }
+.ct-factor-example { font-size: 0.76rem; }
+.ct-cler-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+.ct-cler-selected { min-height: 30px; }
+.ct-chip.pending { border-style: dashed; }
+.ct-chip-x { border: none; background: transparent; padding: 0; margin-left: 2px; display: inline-flex; color: inherit; cursor: pointer; opacity: 0.7; }
+.ct-chip-x:hover { opacity: 1; }
+.ct-cler-table { max-height: 42vh; }
+.ct-cler-table tr.selected td { background: #f1ecfd; }

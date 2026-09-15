@@ -10,12 +10,12 @@ import {
 import Sidebar from './Sidebar';
 import DashboardLoading from './DashboardLoading';
 import ControlTowerReportModal from './ControlTowerReportModal';
-import ControlTowerSettingsModal from './ControlTowerSettingsModal';
+import ControlTowerConfigModal from './ControlTowerConfigModal';
 import { useAuth } from '../context/AuthContext';
 import { apiUrl, fetchWithTimeout } from '../api';
 import {
-  resolveScope, SCOPED_DEPTS, THRESHOLD_EDITOR_DEPTS, SEVERITY, DEVIATION_LABEL, ACK_STATUS, DEPT_COLOR,
-  RED_MAX_MINUTES, fmtDateTime, fmtTime, fmtDate, fmtDuration, fmtInt, fmtRatio, picList, stepKey,
+  resolveScope, resolveConfigAccess, SCOPED_DEPTS, SCORED_SEVERITIES, SEVERITY, DEVIATION_LABEL, ACK_STATUS, DEPT_COLOR,
+  RED_MAX_MINUTES, fmtDateTime, fmtDateTimeFull, fmtTime, fmtDate, fmtDuration, fmtInt, fmtRatio, picList, stepKey,
   toISODate, daysAgo, wallTime, fmtLocalDateTime,
 } from '../config/controlTower';
 import './ProcessingControlTower.css';
@@ -104,7 +104,7 @@ function Pic({ row }) {
 function KpiStrip({ live, openAlerts, hours }) {
   const c = live?.completed || [];
   const count = (sev) => c.filter((r) => r.severity === sev).length;
-  const scored = c.filter((r) => r.severity !== 'nostd').length;
+  const scored = c.filter((r) => SCORED_SEVERITIES.includes(r.severity)).length;
   const flagged = count('red') + count('yellow');
   const running = live?.running || [];
   const overdue = running.filter((r) => r.run_status === 'overdue').length;
@@ -219,7 +219,7 @@ function RunningBoard({ rows, showDept }) {
 // ---------------------------------------------------------------------------
 // Trend charts
 // ---------------------------------------------------------------------------
-function useStats(granularity, depts) {
+function useStats(granularity, depts, refreshToken) {
   const [state, setState] = useState({ rows: [], loading: true, error: '' });
   const g = GRANULARITY.find((x) => x.key === granularity) || GRANULARITY[0];
   useEffect(() => {
@@ -231,12 +231,12 @@ function useStats(granularity, depts) {
       .then((json) => { if (!cancelled) setState({ rows: json.data || [], loading: false, error: '' }); })
       .catch((e) => { if (!cancelled) setState({ rows: [], loading: false, error: e.message }); });
     return () => { cancelled = true; };
-  }, [g.key, g.days, depts.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [g.key, g.days, depts.join(','), refreshToken]); // eslint-disable-line react-hooks/exhaustive-deps
   return { ...state, g };
 }
 
-function TrendCharts({ granularity, setGranularity, depts, showDept }) {
-  const { rows, loading, error, g } = useStats(granularity, depts);
+function TrendCharts({ granularity, setGranularity, depts, showDept, refreshToken }) {
+  const { rows, loading, error, g } = useStats(granularity, depts, refreshToken);
 
   const agg = useMemo(() => {
     const periods = new Map(); // iso -> { red, yellow, green, nostd }
@@ -558,12 +558,12 @@ function AlertLog({ depts, showDept, user, onOpenCount, refreshToken }) {
           <thead>
             <tr>
               <th className="ct-th-check"><input type="checkbox" checked={allPageSelected} onChange={togglePage} disabled={!pageRows.length} /></th>
-              <th>Selesai</th>
               {showDept && <th>Dept</th>}
               <th>Batch</th>
               <th>Produk</th>
               <th>Proses</th>
               <th>Mulai</th>
+              <th>Selesai</th>
               <th className="num">Durasi</th>
               <th className="num">Standar</th>
               <th className="num">% vs std</th>
@@ -580,14 +580,14 @@ function AlertLog({ depts, showDept, user, onOpenCount, refreshToken }) {
               return (
                 <tr key={stepKey(r)} className={`${selected.has(stepKey(r)) ? 'selected' : ''}${r.ack_id ? ' acked' : ''}`}>
                   <td className="ct-th-check"><input type="checkbox" checked={selected.has(stepKey(r))} onChange={() => toggleRow(r)} /></td>
-                  <td className="mono">{fmtDateTime(r.EndDate)}</td>
                   {showDept && <td><DeptTag dept={r.dept} /></td>}
                   <td className="mono"><strong>{r.Batch_No}</strong></td>
                   <td className="ct-td-prod" title={r.Product_Name || ''}>{r.Product_ID} <span className="ct-muted">{r.Product_Name}</span></td>
                   <td className="ct-td-proc" title={`${DEVIATION_LABEL[r.deviation] || ''}${r.segments > 1 ? ` · ${r.segments} segmen (pending)` : ''}`}>
                     {r.nama_tahapan}{r.segments > 1 && <span className="ct-seg" title="digabung dari beberapa segmen pending">×{r.segments}</span>}
                   </td>
-                  <td className="mono">{fmtDateTime(r.StartDate)}</td>
+                  <td className="mono" title={fmtDateTimeFull(r.StartDate)}>{fmtDateTime(r.StartDate)}</td>
+                  <td className="mono" title={fmtDateTimeFull(r.EndDate)}>{fmtDateTime(r.EndDate)}</td>
                   <td className="num mono">{fmtDuration(r.duration_min)}</td>
                   <td className="num mono">{fmtDuration(r.std_min)}<span className="ct-muted ct-src">{r.std_source === 'default' ? ' (default)' : ''}</span></td>
                   <td className="num mono" style={{ color: SEVERITY[r.severity]?.color, fontWeight: 600 }}>{fmtRatio(r.ratio_pct)}</td>
@@ -632,7 +632,7 @@ function AlertLog({ depts, showDept, user, onOpenCount, refreshToken }) {
 // ---------------------------------------------------------------------------
 // To-Do: steps with no standard
 // ---------------------------------------------------------------------------
-function TodoPanel({ depts, showDept }) {
+function TodoPanel({ depts, showDept, refreshToken }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -647,7 +647,7 @@ function TodoPanel({ depts, showDept }) {
       .catch((e) => { if (!cancelled) setError(e.message); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [depts.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [depts.join(','), refreshToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // dept -> process -> { products[], occurrences, lastSeen, avg }
   const grouped = useMemo(() => {
@@ -730,8 +730,8 @@ export default function ProcessingControlTower() {
   const [deptPick, setDeptPick] = useState('ALL');
   const depts = scope.mode === 'all' ? (deptPick === 'ALL' ? [] : [deptPick]) : scope.depts;
   const showDept = scope.mode === 'all' && deptPick === 'ALL';
-  const canEditThresholds = THRESHOLD_EDITOR_DEPTS.includes(String(user?.emp_DeptID || '').toUpperCase());
-  const ackUser = { nik: user?.log_NIK || '', name: user?.Nama || user?.nama || '', dept: user?.emp_DeptID || '' };
+  const configAccess = useMemo(() => resolveConfigAccess(user), [user]);
+  const ackUser = { nik: user?.log_NIK || '', name: user?.Nama || user?.nama || '', dept: user?.emp_DeptID || '', jobLevel: user?.emp_JobLevelID || '' };
 
   const [live, setLive] = useState(null);
   const [liveError, setLiveError] = useState('');
@@ -742,7 +742,7 @@ export default function ProcessingControlTower() {
   const [granularity, setGranularity] = useState('day');
   const [openAlerts, setOpenAlerts] = useState(null);
   const [reportOpen, setReportOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [configOpen, setConfigOpen] = useState(false);
   const [refreshToken, setRefreshToken] = useState(0);
   const timerRef = useRef(null);
 
@@ -775,7 +775,7 @@ export default function ProcessingControlTower() {
             <div className="ct-title-block">
               <h1 className="ct-title">Processing Control Tower</h1>
               <span className="ct-range">
-                {scope.mode === 'all' ? 'semua departemen' : `scope ${scope.depts.join(', ') || '-'}`} · red = selesai &lt; {RED_MAX_MINUTES} menit · yellow = di luar ambang standar
+                {scope.mode === 'all' ? 'semua departemen' : `scope ${scope.depts.join(', ') || '-'}`} · red = selesai &lt; {RED_MAX_MINUTES} menit · yellow = terlalu cepat / lama vs standar · clerical tidak di-score
               </span>
             </div>
             <div className="ct-filters">
@@ -797,9 +797,7 @@ export default function ProcessingControlTower() {
                 <RefreshCw size={14} className={refreshing ? 'spin' : ''} /> Refresh
               </button>
               <button className="ct-btn" onClick={() => setReportOpen(true)}><FileSpreadsheet size={14} /> Report</button>
-              {canEditThresholds && (
-                <button className="ct-btn" onClick={() => setSettingsOpen(true)} title="Threshold settings (NT)"><Settings size={14} /> Threshold</button>
-              )}
+              <button className="ct-btn" onClick={() => setConfigOpen(true)} title="Threshold & clerical processes"><Settings size={14} /> Configuration</button>
             </div>
           </header>
 
@@ -812,18 +810,16 @@ export default function ProcessingControlTower() {
             <RunningBoard rows={live?.running || []} showDept={showDept} />
           </div>
 
-          <TrendCharts granularity={granularity} setGranularity={setGranularity} depts={depts} showDept={showDept} />
+          <TrendCharts granularity={granularity} setGranularity={setGranularity} depts={depts} showDept={showDept} refreshToken={refreshToken} />
 
           <AlertLog depts={depts} showDept={showDept} user={ackUser} onOpenCount={onOpenCount} refreshToken={refreshToken} />
 
-          <TodoPanel depts={depts} showDept={showDept} />
+          <TodoPanel depts={depts} showDept={showDept} refreshToken={refreshToken} />
         </div>
 
         <ControlTowerReportModal open={reportOpen} onClose={() => setReportOpen(false)} scope={scope} />
-        {canEditThresholds && (
-          <ControlTowerSettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} user={ackUser}
-            onSaved={() => { fetchLive(); setRefreshToken((x) => x + 1); }} />
-        )}
+        <ControlTowerConfigModal open={configOpen} onClose={() => setConfigOpen(false)} user={ackUser} access={configAccess}
+          onSaved={() => { fetchLive(); setRefreshToken((x) => x + 1); }} />
       </main>
     </div>
   );

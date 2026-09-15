@@ -11,19 +11,55 @@ USE [LAPI_Report];
 GO
 
 -- Yellow-alert thresholds. One row per department plus '*' as the default.
+-- Stored as "how many times faster / slower than the standard" (what the user
+-- types): fast_factor 2 = yellow when actual <= standard / 2, slow_factor 2 =
+-- yellow when actual >= standard * 2.
 -- Red (an instant tap: work time under 2 minutes) is fixed in code and is NOT
 -- configurable here on purpose.
 IF OBJECT_ID('dbo.ct_threshold', 'U') IS NULL
 BEGIN
   CREATE TABLE dbo.ct_threshold (
     dept            VARCHAR(10)   NOT NULL PRIMARY KEY,  -- '*' | PN1 | PN2 | PC | QC | QA | MC
-    fast_ratio      DECIMAL(6,3)  NOT NULL,              -- yellow when actual/standard <= this (e.g. 0.5)
-    slow_ratio      DECIMAL(6,3)  NOT NULL,              -- yellow when actual/standard >= this (e.g. 2.0)
+    fast_factor     DECIMAL(6,2)  NOT NULL,              -- yellow when >= this many times faster than standard
+    slow_factor     DECIMAL(6,2)  NOT NULL,              -- yellow when >= this many times slower than standard
     updated_by      VARCHAR(20)   NULL,
     updated_by_name NVARCHAR(100) NULL,
     updated_at      DATETIME      NOT NULL DEFAULT GETDATE()
   );
-  INSERT INTO dbo.ct_threshold (dept, fast_ratio, slow_ratio) VALUES ('*', 0.5, 2.0);
+  INSERT INTO dbo.ct_threshold (dept, fast_factor, slow_factor) VALUES ('*', 2, 2);
+END;
+GO
+
+-- v1 -> v2: the first release stored ratios (fast_ratio 0.5 / slow_ratio 2.0).
+-- Convert in place; the backend does the same on startup.
+IF OBJECT_ID('dbo.ct_threshold', 'U') IS NOT NULL AND COL_LENGTH('dbo.ct_threshold', 'fast_factor') IS NULL
+BEGIN
+  ALTER TABLE dbo.ct_threshold ADD fast_factor DECIMAL(6,2) NULL, slow_factor DECIMAL(6,2) NULL;
+  EXEC('UPDATE dbo.ct_threshold
+        SET fast_factor = CASE WHEN fast_ratio > 0 THEN ROUND(1.0 / fast_ratio, 2) ELSE 2 END,
+            slow_factor = slow_ratio');
+  EXEC('ALTER TABLE dbo.ct_threshold ALTER COLUMN fast_factor DECIMAL(6,2) NOT NULL;
+        ALTER TABLE dbo.ct_threshold ALTER COLUMN slow_factor DECIMAL(6,2) NOT NULL;
+        ALTER TABLE dbo.ct_threshold DROP COLUMN fast_ratio, slow_ratio');
+END;
+GO
+
+-- "Clerical" processes: steps a department chose not to monitor (admin taps
+-- such as Approve Timbang that may legitimately take a second). Keyed on the
+-- resolved dept, so PN1 and PN2 keep separate lists even though both pick
+-- from the same m_tahapan rows (dept = 'PN'). A dept may only edit its own
+-- list; NT / PL / MS may edit any.
+IF OBJECT_ID('dbo.ct_clerical', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.ct_clerical (
+    dept          VARCHAR(10)   NOT NULL,   -- PN1 | PN2 | PC | QC | QA | MC
+    kode_tahapan  INT           NOT NULL,   -- m_tahapan.kode_tahapan
+    nama_tahapan  NVARCHAR(200) NULL,       -- snapshot for display / audit
+    added_by      VARCHAR(20)   NULL,
+    added_by_name NVARCHAR(100) NULL,
+    added_at      DATETIME      NOT NULL DEFAULT GETDATE(),
+    CONSTRAINT PK_ct_clerical PRIMARY KEY (dept, kode_tahapan)
+  );
 END;
 GO
 

@@ -23,25 +23,44 @@ const sql = require('mssql');
 //                  creation and has been bulk-rewritten before.
 //   ratio          actual minutes / standard minutes (shown as a percentage,
 //                  e.g. 300-min standard done in 60 min = 20%).
-//   severity       red     work time under RED_MAX_MINUTES regardless of the
-//                          standard (an instant tap) -- not configurable
-//                  yellow  ratio <= fast_ratio or >= slow_ratio (per-dept
-//                          thresholds in LAPI_Report.ct_threshold)
-//                  green   everything else
-//                  nostd   no standard anywhere -> excluded from scoring and
-//                          listed on the department's To-Do instead
+//   severity       clerical  the dept marked this process as clerical
+//                            (LAPI_Report.ct_clerical): an admin tap such as
+//                            "Approve Timbang" that may legitimately take a
+//                            second. Never scored, never alerted.
+//                  red       work time under RED_MAX_MINUTES regardless of the
+//                            standard (an instant tap) -- not configurable
+//                  yellow    at least fast_factor times faster than the standard
+//                            (ratio <= 1/fast_factor) or at least slow_factor
+//                            times slower (ratio >= slow_factor); per-dept
+//                            factors in LAPI_Report.ct_threshold
+//                  green     everything else
+//                  nostd     no standard anywhere -> excluded from scoring and
+//                            listed on the department's To-Do instead
 //   dept           t_alur_proses.dept, except that 'PN' is resolved to PN1/PN2
 //                  through m_product_pn_group.Group_Dept of the batch's product.
+//                  Configuration (thresholds, clerical list) is keyed on this
+//                  resolved dept, so PN1 and PN2 are configured independently
+//                  even though they share m_tahapan rows with dept = 'PN'.
 //
 // The database is SQL Server 2008 R2: no IIF/CONCAT/STRING_AGG/OFFSET, and a
 // CTE is re-evaluated per reference, so the pipeline is staged in temp tables.
 // ============================================================================
 
 const RED_MAX_MINUTES = 2;
-const DEFAULT_THRESHOLD = { fast_ratio: 0.5, slow_ratio: 2.0 };
+const DEFAULT_THRESHOLD = { fast_factor: 2, slow_factor: 2 };
 const SCOPED_DEPTS = ['PN1', 'PN2', 'PC', 'QC', 'QA', 'MC'];
-const SEVERITIES = ['red', 'yellow', 'green', 'nostd'];
+/** Departments that own the configuration (thresholds; their managers may edit any clerical list). */
+const CONFIG_ADMIN_DEPTS = ['NT', 'PL', 'MS'];
+/** Users who bypass every configuration gate. */
+const CONFIG_SUPERUSERS = ['HWA'];
+/** emp_JobLevelID values that count as a department manager ('PL' = the Plant heads). */
+const MANAGER_JOB_LEVELS = ['MGR', 'PL'];
+const SEVERITIES = ['red', 'yellow', 'green', 'nostd', 'clerical'];
 const ACK_STATUSES = ['mistap', 'valid', 'followup', 'other'];
+const MAX_FACTOR = 100;
+
+/** m_tahapan.dept behind a resolved dept: PN1/PN2 both read the 'PN' rows. */
+const baseDept = (dept) => (dept === 'PN1' || dept === 'PN2' ? 'PN' : dept);
 
 const ACK_DB = process.env.LFSQL_Snapshot_Database || 'LAPI_Report';
 
@@ -53,19 +72,55 @@ let tablesEnsured = false;
 async function ensureTables() {
   if (tablesEnsured) return;
   const db = await connectSnapshot();
+
+  // v1 stored the yellow rule as ratios (fast_ratio 0.5 = "half the standard").
+  // Users think in "N times faster / slower", so the factors are now stored as
+  // typed; existing rows are converted in place (fast_factor = 1 / fast_ratio).
+  // Runs as its own batch: SQL Server binds column names of an existing table
+  // at compile time, so the CREATE batch below would not even compile against
+  // the old shape.
+  await db.request().batch(`
+    IF OBJECT_ID('dbo.ct_threshold', 'U') IS NOT NULL AND COL_LENGTH('dbo.ct_threshold', 'fast_factor') IS NULL
+    BEGIN
+      ALTER TABLE dbo.ct_threshold ADD fast_factor DECIMAL(6,2) NULL, slow_factor DECIMAL(6,2) NULL;
+      EXEC('UPDATE dbo.ct_threshold
+            SET fast_factor = CASE WHEN fast_ratio > 0 THEN ROUND(1.0 / fast_ratio, 2) ELSE ${DEFAULT_THRESHOLD.fast_factor} END,
+                slow_factor = slow_ratio');
+      EXEC('ALTER TABLE dbo.ct_threshold ALTER COLUMN fast_factor DECIMAL(6,2) NOT NULL;
+            ALTER TABLE dbo.ct_threshold ALTER COLUMN slow_factor DECIMAL(6,2) NOT NULL;
+            ALTER TABLE dbo.ct_threshold DROP COLUMN fast_ratio, slow_ratio');
+    END;
+  `);
+
   await db.request().batch(`
     IF OBJECT_ID('dbo.ct_threshold', 'U') IS NULL
     BEGIN
       CREATE TABLE dbo.ct_threshold (
         dept            VARCHAR(10)   NOT NULL PRIMARY KEY,  -- '*' = default for every dept
-        fast_ratio      DECIMAL(6,3)  NOT NULL,              -- yellow when actual/standard <= this
-        slow_ratio      DECIMAL(6,3)  NOT NULL,              -- yellow when actual/standard >= this
+        fast_factor     DECIMAL(6,2)  NOT NULL,              -- yellow when >= this many times faster than standard
+        slow_factor     DECIMAL(6,2)  NOT NULL,              -- yellow when >= this many times slower than standard
         updated_by      VARCHAR(20)   NULL,
         updated_by_name NVARCHAR(100) NULL,
         updated_at      DATETIME      NOT NULL DEFAULT GETDATE()
       );
-      INSERT INTO dbo.ct_threshold (dept, fast_ratio, slow_ratio)
-      VALUES ('*', ${DEFAULT_THRESHOLD.fast_ratio}, ${DEFAULT_THRESHOLD.slow_ratio});
+      INSERT INTO dbo.ct_threshold (dept, fast_factor, slow_factor)
+      VALUES ('*', ${DEFAULT_THRESHOLD.fast_factor}, ${DEFAULT_THRESHOLD.slow_factor});
+    END;
+
+    -- Processes a department chose not to monitor. Keyed on the resolved dept
+    -- (PN1 and PN2 keep separate lists even though both draw from m_tahapan
+    -- rows with dept = 'PN').
+    IF OBJECT_ID('dbo.ct_clerical', 'U') IS NULL
+    BEGIN
+      CREATE TABLE dbo.ct_clerical (
+        dept          VARCHAR(10)   NOT NULL,   -- PN1 | PN2 | PC | QC | QA | MC
+        kode_tahapan  INT           NOT NULL,
+        nama_tahapan  NVARCHAR(200) NULL,       -- snapshot for display / audit
+        added_by      VARCHAR(20)   NULL,
+        added_by_name NVARCHAR(100) NULL,
+        added_at      DATETIME      NOT NULL DEFAULT GETDATE(),
+        CONSTRAINT PK_ct_clerical PRIMARY KEY (dept, kode_tahapan)
+      );
     END;
 
     IF OBJECT_ID('dbo.ct_alert_ack', 'U') IS NULL
@@ -113,12 +168,12 @@ async function getThresholds() {
   await ensureTables();
   const db = await connectSnapshot();
   const r = await db.request().query(`
-    SELECT dept, fast_ratio, slow_ratio, updated_by, updated_by_name, updated_at
+    SELECT dept, fast_factor, slow_factor, updated_by, updated_by_name, updated_at
     FROM dbo.ct_threshold ORDER BY CASE WHEN dept = '*' THEN 0 ELSE 1 END, dept`);
   const rows = r.recordset.map((x) => ({
     dept: x.dept,
-    fast_ratio: Number(x.fast_ratio),
-    slow_ratio: Number(x.slow_ratio),
+    fast_factor: Number(x.fast_factor),
+    slow_factor: Number(x.slow_factor),
     updated_by: x.updated_by,
     updated_by_name: x.updated_by_name,
     updated_at: x.updated_at,
@@ -128,8 +183,11 @@ async function getThresholds() {
 }
 
 /**
- * Replace the threshold set. `rows` is [{ dept, fast_ratio, slow_ratio }]; a
+ * Replace the threshold set. `rows` is [{ dept, fast_factor, slow_factor }]; a
  * dept absent from the list falls back to '*'. The '*' row is always kept.
+ * A factor of 2 means "twice as fast" (actual <= half the standard) or "twice
+ * as slow" (actual >= double the standard); 1 would flag every deviation, so
+ * factors must be above 1.
  */
 async function saveThresholds(rows, user) {
   await ensureTables();
@@ -137,10 +195,10 @@ async function saveThresholds(rows, user) {
   for (const r of rows || []) {
     const dept = String(r.dept || '').trim();
     if (dept !== '*' && !SCOPED_DEPTS.includes(dept)) throw new Error(`Dept tidak dikenal: '${dept}'`);
-    const fast = Number(r.fast_ratio), slow = Number(r.slow_ratio);
-    if (!(fast > 0 && fast < 1)) throw new Error(`${dept}: fast ratio harus antara 0 dan 1`);
-    if (!(slow > 1 && slow <= 100)) throw new Error(`${dept}: slow ratio harus lebih dari 1`);
-    clean.push({ dept, fast, slow });
+    const fast = Number(r.fast_factor), slow = Number(r.slow_factor);
+    if (!(fast > 1 && fast <= MAX_FACTOR)) throw new Error(`${dept}: faktor "terlalu cepat" harus lebih dari 1 dan maksimal ${MAX_FACTOR}`);
+    if (!(slow > 1 && slow <= MAX_FACTOR)) throw new Error(`${dept}: faktor "terlalu lama" harus lebih dari 1 dan maksimal ${MAX_FACTOR}`);
+    clean.push({ dept, fast: Math.round(fast * 100) / 100, slow: Math.round(slow * 100) / 100 });
   }
   if (!clean.some((r) => r.dept === '*')) throw new Error('Default (*) threshold wajib ada');
 
@@ -152,11 +210,11 @@ async function saveThresholds(rows, user) {
     for (const r of clean) {
       const req = new sql.Request(tx);
       req.input('dept', sql.VarChar(10), r.dept);
-      req.input('fast', sql.Decimal(6, 3), r.fast);
-      req.input('slow', sql.Decimal(6, 3), r.slow);
+      req.input('fast', sql.Decimal(6, 2), r.fast);
+      req.input('slow', sql.Decimal(6, 2), r.slow);
       req.input('by', sql.VarChar(20), user?.nik || null);
       req.input('byName', sql.NVarChar(100), user?.name || null);
-      await req.query(`INSERT INTO dbo.ct_threshold (dept, fast_ratio, slow_ratio, updated_by, updated_by_name, updated_at)
+      await req.query(`INSERT INTO dbo.ct_threshold (dept, fast_factor, slow_factor, updated_by, updated_by_name, updated_at)
                        VALUES (@dept, @fast, @slow, @by, @byName, GETDATE())`);
     }
     await tx.commit();
@@ -175,10 +233,10 @@ async function saveThresholds(rows, user) {
 function thresholdValues(thr) {
   const byDept = new Map(thr.rows.map((r) => [r.dept, r]));
   const def = byDept.get('*') || DEFAULT_THRESHOLD;
-  const lines = [`('*', ${Number(def.fast_ratio)}, ${Number(def.slow_ratio)})`];
+  const lines = [`('*', ${Number(def.fast_factor)}, ${Number(def.slow_factor)})`];
   for (const d of SCOPED_DEPTS) {
     const r = byDept.get(d) || def;
-    lines.push(`('${d}', ${Number(r.fast_ratio)}, ${Number(r.slow_ratio)})`);
+    lines.push(`('${d}', ${Number(r.fast_factor)}, ${Number(r.slow_factor)})`);
   }
   return lines.join(',\n      ');
 }
@@ -191,14 +249,20 @@ function deptPredicate(depts, col) {
 }
 
 /**
- * Shared lookups: thresholds, PN1/PN2 line per product, worker names.
- * Leaves #thr, #pn, #emp behind for the caller's script.
+ * Shared lookups: thresholds, clerical processes, PN1/PN2 line per product,
+ * worker names. Leaves #thr, #cler, #pn, #emp behind for the caller's script.
  */
 function lookupsSql(thr) {
   return `
-    CREATE TABLE #thr (dept VARCHAR(10) PRIMARY KEY, fast DECIMAL(6,3), slow DECIMAL(6,3));
+    CREATE TABLE #thr (dept VARCHAR(10) PRIMARY KEY, fast DECIMAL(6,2), slow DECIMAL(6,2));
     INSERT INTO #thr (dept, fast, slow) VALUES
       ${thresholdValues(thr)};
+
+    -- Processes each (resolved) dept has excluded from monitoring.
+    SELECT  dept, kode_tahapan
+    INTO    #cler
+    FROM    ${ACK_DB}.dbo.ct_clerical;
+    CREATE UNIQUE CLUSTERED INDEX ix_cler ON #cler (dept, kode_tahapan);
 
     -- PN1/PN2 per product: the latest grouping period that is not in the
     -- future; a product that only exists in future periods takes its earliest.
@@ -243,6 +307,7 @@ function scoreSql(src) {
   return `
     SELECT  s.*,
             CASE WHEN s.dept_raw = 'PN' THEN ISNULL(pn.Group_Dept, 'PN') ELSE s.dept_raw END AS dept,
+            CASE WHEN c.kode_tahapan IS NULL THEN 0 ELSE 1 END AS is_clerical,
             LTRIM(RTRIM(ISNULL(t.nama_tahapan, 'kode_tahapan ' + CAST(s.kode_tahapan AS VARCHAR(10))))) AS nama_tahapan,
             p.Product_Name,
             CASE WHEN ISNULL(d.lead_time, 0) > 0 THEN d.lead_time
@@ -253,6 +318,8 @@ function scoreSql(src) {
     INTO    #enr
     FROM    ${src} s
     LEFT JOIN #pn pn ON pn.Product_ID = s.Product_ID
+    LEFT JOIN #cler c ON c.kode_tahapan = s.kode_tahapan
+                     AND c.dept = CASE WHEN s.dept_raw = 'PN' THEN ISNULL(pn.Group_Dept, 'PN') ELSE s.dept_raw END
     LEFT JOIN m_tahapan t ON t.kode_tahapan = s.kode_tahapan
     LEFT JOIN m_alur_detail d ON d.Seq_ID = s.seq_id AND d.No_urut = s.No_urut AND d.kode_tahapan = s.kode_tahapan
     LEFT JOIN m_Product p ON p.Product_ID = s.Product_ID;
@@ -261,17 +328,20 @@ function scoreSql(src) {
             ROUND(e.work_sec / 60.0, 1) AS duration_min,
             CASE WHEN e.std_min IS NULL THEN NULL
                  ELSE ROUND(e.work_sec / 60.0 / e.std_min * 100, 1) END AS ratio_pct,
-            ISNULL(th.fast, thd.fast) AS fast_ratio,
-            ISNULL(th.slow, thd.slow) AS slow_ratio,
-            CASE WHEN e.std_min IS NULL THEN 'nostd'
+            ISNULL(th.fast, thd.fast) AS fast_factor,
+            ISNULL(th.slow, thd.slow) AS slow_factor,
+            -- "N times faster" = actual * N <= standard; "N times slower" = actual >= standard * N
+            CASE WHEN e.is_clerical = 1 THEN 'clerical'
+                 WHEN e.std_min IS NULL THEN 'nostd'
                  WHEN e.work_sec < ${RED_MAX_MINUTES * 60} THEN 'red'
-                 WHEN e.work_sec / 60.0 / e.std_min <= ISNULL(th.fast, thd.fast) THEN 'yellow'
-                 WHEN e.work_sec / 60.0 / e.std_min >= ISNULL(th.slow, thd.slow) THEN 'yellow'
+                 WHEN e.work_sec / 60.0 * ISNULL(th.fast, thd.fast) <= e.std_min THEN 'yellow'
+                 WHEN e.work_sec / 60.0 >= e.std_min * ISNULL(th.slow, thd.slow) THEN 'yellow'
                  ELSE 'green' END AS severity,
-            CASE WHEN e.std_min IS NULL THEN 'nostd'
+            CASE WHEN e.is_clerical = 1 THEN 'clerical'
+                 WHEN e.std_min IS NULL THEN 'nostd'
                  WHEN e.work_sec < ${RED_MAX_MINUTES * 60} THEN 'instant'
-                 WHEN e.work_sec / 60.0 / e.std_min <= ISNULL(th.fast, thd.fast) THEN 'fast'
-                 WHEN e.work_sec / 60.0 / e.std_min >= ISNULL(th.slow, thd.slow) THEN 'slow'
+                 WHEN e.work_sec / 60.0 * ISNULL(th.fast, thd.fast) <= e.std_min THEN 'fast'
+                 WHEN e.work_sec / 60.0 >= e.std_min * ISNULL(th.slow, thd.slow) THEN 'slow'
                  ELSE 'ok' END AS deviation
     INTO    #sev
     FROM    #enr e
@@ -434,7 +504,7 @@ async function getRunningSteps({ depts }) {
 
     SELECT ${DETAIL_COLUMNS},
            v.EndDate AS CurrentSegmentStart,
-           CASE WHEN v.std_min IS NOT NULL AND v.work_sec / 60.0 / v.std_min >= v.slow_ratio THEN 'overdue'
+           CASE WHEN v.is_clerical = 0 AND v.std_min IS NOT NULL AND v.work_sec / 60.0 >= v.std_min * v.slow_factor THEN 'overdue'
                 ELSE 'running' END AS run_status
     FROM   #sev v
     WHERE  ${deptPredicate(depts, 'v.dept')}
@@ -471,6 +541,7 @@ async function getStats({ from, to, depts, granularity }) {
     SELECT  ${bucket} AS period, v.dept, v.severity, v.deviation, COUNT(*) AS n
     FROM    #sev v
     WHERE   ${deptPredicate(depts, 'v.dept')}
+      AND   v.severity <> 'clerical'
     GROUP BY ${bucket}, v.dept, v.severity, v.deviation
     ORDER BY period, v.dept;
   `;
@@ -504,6 +575,84 @@ async function getNoStandard({ from, to, depts }) {
   `;
   const r = await windowRequest(db, from, to).query(script);
   return r.recordset;
+}
+
+// ----------------------------------------------------------------------------
+// Clerical processes
+// ----------------------------------------------------------------------------
+
+/**
+ * Candidate processes for a dept's clerical list: every m_tahapan row of the
+ * underlying dept (PN for PN1/PN2), with how often it ran in the last 90 days
+ * so the manager can spot the admin taps.
+ */
+async function getProcesses(dept) {
+  if (!SCOPED_DEPTS.includes(dept)) throw new Error(`Dept tidak dikenal: '${dept}'`);
+  const db = await connect();
+  const req = db.request();
+  req.input('dept', sql.NVarChar(10), baseDept(dept));
+  const r = await req.query(`
+    SELECT  t.kode_tahapan, LTRIM(RTRIM(t.nama_tahapan)) AS nama_tahapan, LTRIM(RTRIM(t.alias)) AS alias, t.lead_time,
+            (SELECT COUNT(*) FROM t_alur_proses a
+             WHERE a.kode_tahapan = t.kode_tahapan AND a.EndDate >= DATEADD(day, -90, GETDATE())) AS runs_90d
+    FROM    m_tahapan t
+    WHERE   t.dept = @dept
+    ORDER BY t.nama_tahapan`);
+  return r.recordset;
+}
+
+/** Clerical rows (all depts, or the given scope). Small table; no cache. */
+async function getClerical({ depts }) {
+  await ensureTables();
+  const db = await connectSnapshot();
+  const r = await db.request().query(`
+    SELECT dept, kode_tahapan, nama_tahapan, added_by, added_by_name, added_at
+    FROM dbo.ct_clerical
+    WHERE ${deptPredicate(depts, 'dept')}
+    ORDER BY dept, nama_tahapan`);
+  return r.recordset;
+}
+
+/**
+ * Replace one dept's clerical list with `codes` (kode_tahapan[]). Codes must
+ * exist in m_tahapan under the dept's base dept. Rows that were already on the
+ * list keep their original added_by / added_at.
+ */
+async function saveClerical({ dept, codes, user }) {
+  await ensureTables();
+  if (!SCOPED_DEPTS.includes(dept)) throw new Error(`Dept tidak dikenal: '${dept}'`);
+  if (!user?.nik) throw new Error('User tidak dikenal');
+  const wanted = [...new Set((Array.isArray(codes) ? codes : []).map((c) => Number(c)).filter((c) => Number.isInteger(c) && c > 0))];
+  const valid = new Map((await getProcesses(dept)).map((p) => [p.kode_tahapan, p.nama_tahapan]));
+  const unknown = wanted.filter((c) => !valid.has(c));
+  if (unknown.length) throw new Error(`Proses tidak dikenal untuk ${dept}: ${unknown.join(', ')}`);
+
+  const db = await connectSnapshot();
+  const tx = new sql.Transaction(db);
+  await tx.begin();
+  try {
+    const del = new sql.Request(tx);
+    del.input('dept', sql.VarChar(10), dept);
+    const keep = wanted.length ? `AND kode_tahapan NOT IN (${wanted.join(', ')})` : '';
+    await del.query(`DELETE FROM dbo.ct_clerical WHERE dept = @dept ${keep}`);
+    for (const code of wanted) {
+      const req = new sql.Request(tx);
+      req.input('dept', sql.VarChar(10), dept);
+      req.input('kode', sql.Int, code);
+      req.input('nama', sql.NVarChar(200), valid.get(code) || null);
+      req.input('by', sql.VarChar(20), String(user.nik).slice(0, 20));
+      req.input('byName', sql.NVarChar(100), user.name || null);
+      await req.query(`
+        IF NOT EXISTS (SELECT 1 FROM dbo.ct_clerical WHERE dept = @dept AND kode_tahapan = @kode)
+          INSERT INTO dbo.ct_clerical (dept, kode_tahapan, nama_tahapan, added_by, added_by_name)
+          VALUES (@dept, @kode, @nama, @by, @byName)`);
+    }
+    await tx.commit();
+  } catch (e) {
+    await tx.rollback();
+    throw e;
+  }
+  return getClerical({ depts: [dept] });
 }
 
 // ----------------------------------------------------------------------------
@@ -611,10 +760,16 @@ async function getAcknowledgements({ from, to, depts }) {
 module.exports = {
   RED_MAX_MINUTES,
   SCOPED_DEPTS,
+  CONFIG_ADMIN_DEPTS,
+  CONFIG_SUPERUSERS,
+  MANAGER_JOB_LEVELS,
   SEVERITIES,
   ACK_STATUSES,
   getThresholds,
   saveThresholds,
+  getProcesses,
+  getClerical,
+  saveClerical,
   getSteps,
   getRunningSteps,
   getStats,

@@ -137,7 +137,10 @@ router.get('/controlTower/stats', ControlTowerController.getStats);            /
 router.get('/controlTower/todo', ControlTowerController.getTodo);              // steps without a standard
 router.get('/controlTower/report', ControlTowerController.getReport);          // rows + acks for the workbook
 router.get('/controlTower/thresholds', ControlTowerController.getThresholds);
-router.put('/controlTower/thresholds', ControlTowerController.saveThresholds); // NT only
+router.put('/controlTower/thresholds', ControlTowerController.saveThresholds); // NT / PL / MS only
+router.get('/controlTower/processes', ControlTowerController.getProcesses);    // m_tahapan rows behind a dept (clerical picker)
+router.get('/controlTower/clerical', ControlTowerController.getClerical);      // processes each dept chose to ignore
+router.put('/controlTower/clerical', ControlTowerController.saveClerical);     // own dept, or NT / PL / MS
 router.post('/controlTower/ack', ControlTowerController.acknowledge);
 router.post('/controlTower/unack', ControlTowerController.unacknowledge);
 
