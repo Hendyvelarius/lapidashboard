@@ -4,7 +4,7 @@ import {
 } from 'chart.js';
 import { Bar, Line } from 'react-chartjs-2';
 import {
-  Activity, AlertTriangle, CheckCircle2, Clock, FileSpreadsheet, ListChecks, Pause, Play,
+  Activity, AlertTriangle, CheckCircle2, Clock, Columns3, FileSpreadsheet, ListChecks, Pause, Play,
   RefreshCw, Search, Settings, Undo2, X,
 } from 'lucide-react';
 import Sidebar from './Sidebar';
@@ -12,6 +12,7 @@ import DashboardLoading from './DashboardLoading';
 import ControlTowerReportModal from './ControlTowerReportModal';
 import ControlTowerConfigModal from './ControlTowerConfigModal';
 import { useAuth } from '../context/AuthContext';
+import { useColumnWidths, ColHeader } from '../hooks/useColumnWidths';
 import { apiUrl, fetchWithTimeout } from '../api';
 import {
   resolveScope, resolveConfigAccess, SCOPED_DEPTS, SCORED_SEVERITIES, SEVERITY, DEVIATION_LABEL, ACK_STATUS, DEPT_COLOR,
@@ -35,6 +36,22 @@ const GRANULARITY = [
   { key: 'week', label: 'Weekly', days: 182, fmt: (d) => `${d.getDate()}/${d.getMonth() + 1}` },
   { key: 'month', label: 'Monthly', days: 365, fmt: (d) => d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }) },
   { key: 'year', label: 'Yearly', days: 1800, fmt: (d) => String(d.getFullYear()) },
+];
+
+const LOG_COLUMNS = [
+  { key: 'check', label: '', width: 28, className: 'ct-th-check', fixed: true },
+  { key: 'dept', label: 'Dept', width: 58, deptOnly: true },
+  { key: 'batch', label: 'Batch', width: 78 },
+  { key: 'prod', label: 'Produk', width: 180 },
+  { key: 'proc', label: 'Proses', width: 170 },
+  { key: 'start', label: 'Mulai', width: 96 },
+  { key: 'end', label: 'Selesai', width: 96 },
+  { key: 'dur', label: 'Durasi', width: 76, className: 'num' },
+  { key: 'std', label: 'Standar', width: 82, className: 'num' },
+  { key: 'ratio', label: '% vs std', width: 72, className: 'num' },
+  { key: 'sev', label: 'Severity', width: 84 },
+  { key: 'pic', label: 'PIC', width: 130 },
+  { key: 'ack', label: 'Ack', width: 170 },
 ];
 
 const ACK_FILTERS = [
@@ -138,7 +155,28 @@ function KpiStrip({ live, openAlerts, hours }) {
 // ---------------------------------------------------------------------------
 // Live feed (completed steps, newest first) and running board
 // ---------------------------------------------------------------------------
+const FEED_COLUMNS = [
+  { key: 'sev', label: '', width: 28, className: 'ct-th-check', fixed: true },
+  { key: 'time', label: 'Selesai', width: 66 },
+  { key: 'dept', label: 'Dept', width: 58, deptOnly: true },
+  { key: 'batch', label: 'Batch', width: 84 },
+  { key: 'proc', label: 'Proses · Produk', width: 200 },
+  { key: 'dur', label: 'Durasi / std', width: 110, className: 'num' },
+  { key: 'ratio', label: '% vs std', width: 76, className: 'num' },
+  { key: 'pic', label: 'PIC', width: 120 },
+];
+
+function ResetColumnsButton({ cols }) {
+  if (cols.isDefault) return null;
+  return (
+    <button className="ct-icon-btn" onClick={cols.resetAll} title="Kembalikan lebar kolom ke default">
+      <Columns3 size={14} /><span>Reset kolom</span>
+    </button>
+  );
+}
+
 function LiveFeed({ rows, showDept, paused, onTogglePause, hours }) {
+  const cols = useColumnWidths('ct-cols-live-feed', FEED_COLUMNS.filter((c) => showDept || !c.deptOnly));
   return (
     <div className="ct-card ct-feed-card">
       <div className="ct-card-head">
@@ -146,29 +184,44 @@ function LiveFeed({ rows, showDept, paused, onTogglePause, hours }) {
           <span className="ct-live-dot" /> Live feed
           <span className="ct-card-sub">proses selesai {hours} jam terakhir · {rows.length}</span>
         </div>
-        <button className="ct-icon-btn" onClick={onTogglePause} title={paused ? 'Resume auto-refresh' : 'Pause auto-refresh'}>
-          {paused ? <Play size={14} /> : <Pause size={14} />}<span>{paused ? 'Paused' : 'Auto'}</span>
-        </button>
+        <div className="ct-card-actions">
+          <ResetColumnsButton cols={cols} />
+          <button className="ct-icon-btn" onClick={onTogglePause} title={paused ? 'Resume auto-refresh' : 'Pause auto-refresh'}>
+            {paused ? <Play size={14} /> : <Pause size={14} />}<span>{paused ? 'Paused' : 'Auto'}</span>
+          </button>
+        </div>
       </div>
-      <div className="ct-feed">
-        {rows.length === 0 && <div className="ct-empty">Belum ada proses yang selesai pada rentang ini.</div>}
-        {rows.map((r) => (
-          <div className={`ct-feed-row sev-${r.severity}`} key={stepKey(r)}>
-            <SevDot severity={r.severity} />
-            <span className="ct-feed-time">{fmtTime(r.EndDate)}</span>
-            <span className="ct-feed-dept">{showDept && <DeptTag dept={r.dept} />}</span>
-            <span className="ct-feed-batch">{r.Batch_No}</span>
-            <span className="ct-feed-proc" title={`${r.Product_Name || r.Product_ID} · ${r.nama_tahapan}`}>
-              {r.nama_tahapan}<span className="ct-muted"> · {r.Product_ID}</span>
-            </span>
-            <span className="ct-feed-dur" title={r.std_min ? `standar ${fmtDuration(r.std_min)}` : 'tanpa standar'}>
-              {fmtDuration(r.duration_min)}
-              {r.std_min ? <span className="ct-muted"> / {fmtDuration(r.std_min)}</span> : null}
-            </span>
-            <span className="ct-feed-ratio" style={{ color: SEVERITY[r.severity]?.color }}>{fmtRatio(r.ratio_pct)}</span>
-            <span className="ct-feed-pic"><Pic row={r} /></span>
-          </div>
-        ))}
+      <div className="ct-feed ct-table-wrap">
+        <table className="ct-table ct-feed-table" style={cols.tableStyle}>
+          <colgroup>{cols.colgroup}</colgroup>
+          <thead>
+            <tr>
+              {cols.columns.map((c) => (c.fixed ? <th key={c.key} className={c.className} /> : <ColHeader key={c.key} col={c} cols={cols} />))}
+              <th className="ct-th-fill" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && <tr><td colSpan={cols.columns.length + 1} className="ct-empty">Belum ada proses yang selesai pada rentang ini.</td></tr>}
+            {rows.map((r) => (
+              <tr className={`ct-feed-row sev-${r.severity}`} key={stepKey(r)}>
+                <td className="ct-th-check"><SevDot severity={r.severity} /></td>
+                <td className="ct-feed-time">{fmtTime(r.EndDate)}</td>
+                {showDept && <td className="ct-feed-dept"><DeptTag dept={r.dept} /></td>}
+                <td className="ct-feed-batch">{r.Batch_No}</td>
+                <td className="ct-feed-proc" title={`${r.Product_Name || r.Product_ID} · ${r.nama_tahapan}`}>
+                  {r.nama_tahapan}<span className="ct-muted"> · {r.Product_ID}</span>
+                </td>
+                <td className="ct-feed-dur num" title={r.std_min ? `standar ${fmtDuration(r.std_min)}` : 'tanpa standar'}>
+                  {fmtDuration(r.duration_min)}
+                  {r.std_min ? <span className="ct-muted"> / {fmtDuration(r.std_min)}</span> : null}
+                </td>
+                <td className="ct-feed-ratio num" style={{ color: SEVERITY[r.severity]?.color }}>{fmtRatio(r.ratio_pct)}</td>
+                <td className="ct-feed-pic"><Pic row={r} /></td>
+                <td />
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -438,6 +491,7 @@ function AlertLog({ depts, showDept, user, onOpenCount, refreshToken }) {
   const [reload, setReload] = useState(0);
 
   const rangeValid = from && to && from <= to;
+  const cols = useColumnWidths('ct-cols-alert-log', LOG_COLUMNS.filter((c) => showDept || !c.deptOnly));
 
   useEffect(() => {
     if (!rangeValid) return undefined;
@@ -544,6 +598,7 @@ function AlertLog({ depts, showDept, user, onOpenCount, refreshToken }) {
           {search && <button className="ct-icon-btn" onClick={() => setSearch('')}><X size={12} /></button>}
         </div>
         <div className="ct-log-actions">
+          <ResetColumnsButton cols={cols} />
           {selected.size > 0 && <span className="ct-muted">{selected.size} dipilih</span>}
           <button className="ct-btn primary" disabled={!selected.size} onClick={() => setAckItems(selectedRows)}>
             <ListChecks size={14} /> Acknowledge{selected.size ? ` (${selected.size})` : ''}
@@ -554,27 +609,18 @@ function AlertLog({ depts, showDept, user, onOpenCount, refreshToken }) {
       {error && <div className="ct-error">⚠️ {error}</div>}
 
       <div className="ct-table-wrap">
-        <table className="ct-table">
+        <table className="ct-table" style={cols.tableStyle}>
+          <colgroup>{cols.colgroup}</colgroup>
           <thead>
             <tr>
               <th className="ct-th-check"><input type="checkbox" checked={allPageSelected} onChange={togglePage} disabled={!pageRows.length} /></th>
-              {showDept && <th>Dept</th>}
-              <th>Batch</th>
-              <th>Produk</th>
-              <th>Proses</th>
-              <th>Mulai</th>
-              <th>Selesai</th>
-              <th className="num">Durasi</th>
-              <th className="num">Standar</th>
-              <th className="num">% vs std</th>
-              <th>Severity</th>
-              <th>PIC</th>
-              <th>Ack</th>
+              {cols.columns.filter((c) => !c.fixed).map((c) => <ColHeader key={c.key} col={c} cols={cols} />)}
+              <th className="ct-th-fill" />
             </tr>
           </thead>
           <tbody>
-            {loading && <tr><td colSpan={13} className="ct-empty">Loading alert…</td></tr>}
-            {!loading && pageRows.length === 0 && <tr><td colSpan={13} className="ct-empty">Tidak ada alert yang cocok dengan filter.</td></tr>}
+            {loading && <tr><td colSpan={cols.columns.length + 1} className="ct-empty">Loading alert…</td></tr>}
+            {!loading && pageRows.length === 0 && <tr><td colSpan={cols.columns.length + 1} className="ct-empty">Tidak ada alert yang cocok dengan filter.</td></tr>}
             {!loading && pageRows.map((r) => {
               const names = picList(r.pic_names);
               return (
@@ -604,6 +650,7 @@ function AlertLog({ depts, showDept, user, onOpenCount, refreshToken }) {
                       <button className="ct-btn tiny" onClick={() => setAckItems([r])}>Ack</button>
                     )}
                   </td>
+                  <td />
                 </tr>
               );
             })}
