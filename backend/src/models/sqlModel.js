@@ -406,10 +406,51 @@ async function getDailySales() {
   return result.recordset;
 }
 
+// Qty_Booked / Saldo are counted in the sales packaging unit (kotak, botol, ...):
+// TotalPending = Qty_Booked * Product_SalesHNA and the HNA is priced per kemasan.
+// The SP doesn't return that unit, so it is joined in from m_Product here. Unit is
+// the packing unit actually written on the BPHP hand-overs, falling back to the
+// first word of the kemasan description; IsiPerKemasan / SatuanIsi give the
+// content of one kemasan (100 kaplet, 1 botol, ...).
+const PRODUCT_UNIT_SQL = `
+  WITH unit AS (
+    SELECT Product_ID, BPHP_Unit
+    FROM ( SELECT LTRIM(RTRIM(d.BPHP_ProductID)) AS Product_ID,
+                  LTRIM(RTRIM(d.BPHP_JumlahUnitID)) AS BPHP_Unit,
+                  ROW_NUMBER() OVER (PARTITION BY LTRIM(RTRIM(d.BPHP_ProductID))
+                                     ORDER BY COUNT(*) DESC) AS rn
+           FROM   t_BPHP_Detail d
+           WHERE  NULLIF(LTRIM(RTRIM(d.BPHP_JumlahUnitID)), '') IS NOT NULL
+           GROUP BY LTRIM(RTRIM(d.BPHP_ProductID)), LTRIM(RTRIM(d.BPHP_JumlahUnitID))
+         ) x WHERE rn = 1
+  )
+  SELECT LTRIM(RTRIM(p.Product_ID)) AS Product_ID,
+         ISNULL(NULLIF(u.BPHP_Unit, ''),
+                LOWER(NULLIF(LEFT(LTRIM(p.Product_Kemasan),
+                      CHARINDEX(' ', LTRIM(p.Product_Kemasan) + ' ') - 1), ''))) AS Kemasan,
+         p.Product_VolumeInBox                 AS IsiPerKemasan,
+         LTRIM(RTRIM(p.Product_Unit))          AS SatuanIsi
+  FROM m_Product p
+  LEFT JOIN unit u ON u.Product_ID = LTRIM(RTRIM(p.Product_ID))`;
+
 async function getLostSales() {
   const db = await connect();
-  const result = await db.request().query(`exec sp_Dashboard_SalesNPending 'Pending'`);
-  return result.recordset;
+  const [pending, units] = await Promise.all([
+    db.request().query(`exec sp_Dashboard_SalesNPending 'Pending'`),
+    db.request().query(PRODUCT_UNIT_SQL)
+  ]);
+  const unitById = new Map(units.recordset.map(u => [u.Product_ID, u]));
+  return pending.recordset.map(row => {
+    const u = unitById.get(String(row.MSO_ProductID || '').trim()) || {};
+    // A few kemasan descriptions start with '-', '1', ... — not a unit, leave it empty.
+    const kemasan = /^[a-z]/i.test(u.Kemasan || '') ? u.Kemasan : null;
+    return {
+      ...row,
+      Unit: kemasan,
+      IsiPerKemasan: u.IsiPerKemasan > 0 ? u.IsiPerKemasan : null,
+      SatuanIsi: u.SatuanIsi || null
+    };
+  });
 }
 
 async function getOTA() {

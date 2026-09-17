@@ -25,6 +25,21 @@ const formatNumber = (num) => {
   return num?.toLocaleString() || '0';
 };
 
+// Exact figure with thousand separators; only 1M+ falls back to the M/B shorthand.
+const formatExact = (num) => (num >= 1000000 ? formatNumber(num) : Math.round(num || 0).toLocaleString());
+
+// Qty_Booked / Saldo are counted in the sales packaging unit (kotak/botol), which is not
+// obvious to users — so spell out the unit and the content it represents:
+// "1,292 kotak (129,200 kaplet)". Older snapshots have no unit fields; then it's just the number.
+const formatQtyWithUnit = (qty, product) => {
+  let text = formatExact(qty);
+  if (product.Unit) text += ` ${product.Unit}`;
+  if (product.IsiPerKemasan > 0 && product.SatuanIsi) {
+    text += ` (${formatExact(qty * product.IsiPerKemasan)} ${product.SatuanIsi})`;
+  }
+  return text;
+};
+
 // Helper function to determine color based on coverage percentage
 const getCoverageColor = (percentage) => {
   if (percentage < 50) return '#ef4444'; // red
@@ -3027,9 +3042,9 @@ const LostSalesDetailsModal = ({ isOpen, onClose, lostSalesData, forecastData })
                         <div className="product-info">
                           <span className="product-name">{product.Product_Name || 'N/A'}</span>
                           <span className="product-id">
-                            Pending: {formatNumber(pending)} | 
-                            Price: {formatNumber(product.Product_SalesHNA || 0)} | 
-                            Potential: {formatNumber(product.TotalPending || 0)}
+                            Pending: {formatQtyWithUnit(pending, product)} | 
+                            Price: Rp {formatExact(product.Product_SalesHNA || 0)}{product.Unit ? `/${product.Unit}` : ''} | 
+                            Potential: Rp {formatNumber(product.TotalPending || 0)}
                           </span>
                         </div>
                       </div>
@@ -3059,9 +3074,9 @@ const LostSalesDetailsModal = ({ isOpen, onClose, lostSalesData, forecastData })
                         <div className="product-info">
                           <span className="product-name">{product.Product_Name || 'N/A'}</span>
                           <span className="product-id">
-                            Pending: {formatNumber(pending)} | 
-                            Price: {formatNumber(product.Product_SalesHNA || 0)} | 
-                            Potential: {formatNumber(product.TotalPending || 0)}
+                            Pending: {formatQtyWithUnit(pending, product)} | 
+                            Price: Rp {formatExact(product.Product_SalesHNA || 0)}{product.Unit ? `/${product.Unit}` : ''} | 
+                            Potential: Rp {formatNumber(product.TotalPending || 0)}
                           </span>
                         </div>
                       </div>
@@ -3165,9 +3180,9 @@ const StockOutDetailsModal = ({ isOpen, onClose, lostSalesData }) => {
                       <div className="product-info">
                         <span className="product-name">{product.Product_Name || 'N/A'}</span>
                         <span className="product-id">
-                          Demand: {formatNumber(product.Qty_Booked || 0)} |
+                          Demand: {formatQtyWithUnit(product.Qty_Booked || 0, product)} |
                           Stock: 0 |
-                          Potential Loss: {formatNumber(product.TotalPending || 0)}
+                          Potential Loss: Rp {formatNumber(product.TotalPending || 0)}
                         </span>
                       </div>
                     </div>
@@ -3191,9 +3206,9 @@ const StockOutDetailsModal = ({ isOpen, onClose, lostSalesData }) => {
                       <div className="product-info">
                         <span className="product-name">{product.Product_Name || 'N/A'}</span>
                         <span className="product-id">
-                          Demand: {formatNumber(product.Qty_Booked || 0)} |
+                          Demand: {formatQtyWithUnit(product.Qty_Booked || 0, product)} |
                           Stock: 0 |
-                          Potential Loss: {formatNumber(product.TotalPending || 0)}
+                          Potential Loss: Rp {formatNumber(product.TotalPending || 0)}
                         </span>
                       </div>
                     </div>
