@@ -33,7 +33,12 @@ const sql = require('mssql');
 //                            (ratio <= 1/fast_factor) or at least slow_factor
 //                            times slower (ratio >= slow_factor); per-dept
 //                            factors in LAPI_Report.ct_threshold
-//                  green     everything else
+//                  green     everything else. Special case: a step whose
+//                            standard is 1 minute is green whenever its work
+//                            time is within std1_grace_min (ct_threshold,
+//                            default 2 min) -- it could never be green
+//                            otherwise, since 1 minute sits below the red
+//                            cut-off. Beyond the grace the normal rules apply.
 //                  nostd     no standard anywhere -> excluded from scoring and
 //                            listed on the department's To-Do instead
 //   dept           t_alur_proses.dept, except that 'PN' is resolved to PN1/PN2
@@ -47,7 +52,7 @@ const sql = require('mssql');
 // ============================================================================
 
 const RED_MAX_MINUTES = 2;
-const DEFAULT_THRESHOLD = { fast_factor: 2, slow_factor: 2 };
+const DEFAULT_THRESHOLD = { fast_factor: 2, slow_factor: 2, std1_grace_min: 2 };
 const SCOPED_DEPTS = ['PN1', 'PN2', 'PC', 'QC', 'QA', 'MC'];
 /** Departments that own the configuration (thresholds; their managers may edit any clerical list). */
 const CONFIG_ADMIN_DEPTS = ['NT', 'PL', 'MS'];
@@ -58,6 +63,7 @@ const MANAGER_JOB_LEVELS = ['MGR', 'PL'];
 const SEVERITIES = ['red', 'yellow', 'green', 'nostd', 'clerical'];
 const ACK_STATUSES = ['mistap', 'valid', 'followup', 'other'];
 const MAX_FACTOR = 100;
+const MAX_GRACE_MINUTES = 1440;
 
 /** m_tahapan.dept behind a resolved dept: PN1/PN2 both read the 'PN' rows. */
 const baseDept = (dept) => (dept === 'PN1' || dept === 'PN2' ? 'PN' : dept);
@@ -92,6 +98,13 @@ async function ensureTables() {
     END;
   `);
 
+  // v2 -> v3: grace window for 1-minute standards (Sept 2026). Own batch for
+  // the same compile-time binding reason.
+  await db.request().batch(`
+    IF OBJECT_ID('dbo.ct_threshold', 'U') IS NOT NULL AND COL_LENGTH('dbo.ct_threshold', 'std1_grace_min') IS NULL
+      ALTER TABLE dbo.ct_threshold ADD std1_grace_min DECIMAL(6,2) NOT NULL DEFAULT ${DEFAULT_THRESHOLD.std1_grace_min};
+  `);
+
   await db.request().batch(`
     IF OBJECT_ID('dbo.ct_threshold', 'U') IS NULL
     BEGIN
@@ -99,12 +112,13 @@ async function ensureTables() {
         dept            VARCHAR(10)   NOT NULL PRIMARY KEY,  -- '*' = default for every dept
         fast_factor     DECIMAL(6,2)  NOT NULL,              -- yellow when >= this many times faster than standard
         slow_factor     DECIMAL(6,2)  NOT NULL,              -- yellow when >= this many times slower than standard
+        std1_grace_min  DECIMAL(6,2)  NOT NULL DEFAULT ${DEFAULT_THRESHOLD.std1_grace_min}, -- 1-minute standard: green while work time <= this many minutes
         updated_by      VARCHAR(20)   NULL,
         updated_by_name NVARCHAR(100) NULL,
         updated_at      DATETIME      NOT NULL DEFAULT GETDATE()
       );
-      INSERT INTO dbo.ct_threshold (dept, fast_factor, slow_factor)
-      VALUES ('*', ${DEFAULT_THRESHOLD.fast_factor}, ${DEFAULT_THRESHOLD.slow_factor});
+      INSERT INTO dbo.ct_threshold (dept, fast_factor, slow_factor, std1_grace_min)
+      VALUES ('*', ${DEFAULT_THRESHOLD.fast_factor}, ${DEFAULT_THRESHOLD.slow_factor}, ${DEFAULT_THRESHOLD.std1_grace_min});
     END;
 
     -- Processes a department chose not to monitor. Keyed on the resolved dept
@@ -168,12 +182,13 @@ async function getThresholds() {
   await ensureTables();
   const db = await connectSnapshot();
   const r = await db.request().query(`
-    SELECT dept, fast_factor, slow_factor, updated_by, updated_by_name, updated_at
+    SELECT dept, fast_factor, slow_factor, std1_grace_min, updated_by, updated_by_name, updated_at
     FROM dbo.ct_threshold ORDER BY CASE WHEN dept = '*' THEN 0 ELSE 1 END, dept`);
   const rows = r.recordset.map((x) => ({
     dept: x.dept,
     fast_factor: Number(x.fast_factor),
     slow_factor: Number(x.slow_factor),
+    std1_grace_min: Number(x.std1_grace_min),
     updated_by: x.updated_by,
     updated_by_name: x.updated_by_name,
     updated_at: x.updated_at,
@@ -183,11 +198,13 @@ async function getThresholds() {
 }
 
 /**
- * Replace the threshold set. `rows` is [{ dept, fast_factor, slow_factor }]; a
- * dept absent from the list falls back to '*'. The '*' row is always kept.
- * A factor of 2 means "twice as fast" (actual <= half the standard) or "twice
- * as slow" (actual >= double the standard); 1 would flag every deviation, so
- * factors must be above 1.
+ * Replace the threshold set. `rows` is [{ dept, fast_factor, slow_factor,
+ * std1_grace_min }]; a dept absent from the list falls back to '*'. The '*'
+ * row is always kept. A factor of 2 means "twice as fast" (actual <= half the
+ * standard) or "twice as slow" (actual >= double the standard); 1 would flag
+ * every deviation, so factors must be above 1. std1_grace_min is the work
+ * time (minutes) up to which a step with a 1-minute standard still counts as
+ * Normal.
  */
 async function saveThresholds(rows, user) {
   await ensureTables();
@@ -198,7 +215,9 @@ async function saveThresholds(rows, user) {
     const fast = Number(r.fast_factor), slow = Number(r.slow_factor);
     if (!(fast > 1 && fast <= MAX_FACTOR)) throw new Error(`${dept}: faktor "terlalu cepat" harus lebih dari 1 dan maksimal ${MAX_FACTOR}`);
     if (!(slow > 1 && slow <= MAX_FACTOR)) throw new Error(`${dept}: faktor "terlalu lama" harus lebih dari 1 dan maksimal ${MAX_FACTOR}`);
-    clean.push({ dept, fast: Math.round(fast * 100) / 100, slow: Math.round(slow * 100) / 100 });
+    const grace = r.std1_grace_min == null ? DEFAULT_THRESHOLD.std1_grace_min : Number(r.std1_grace_min);
+    if (!(grace > 0 && grace <= MAX_GRACE_MINUTES)) throw new Error(`${dept}: toleransi standar 1 menit harus lebih dari 0 dan maksimal ${MAX_GRACE_MINUTES} menit`);
+    clean.push({ dept, fast: Math.round(fast * 100) / 100, slow: Math.round(slow * 100) / 100, grace: Math.round(grace * 100) / 100 });
   }
   if (!clean.some((r) => r.dept === '*')) throw new Error('Default (*) threshold wajib ada');
 
@@ -212,10 +231,11 @@ async function saveThresholds(rows, user) {
       req.input('dept', sql.VarChar(10), r.dept);
       req.input('fast', sql.Decimal(6, 2), r.fast);
       req.input('slow', sql.Decimal(6, 2), r.slow);
+      req.input('grace', sql.Decimal(6, 2), r.grace);
       req.input('by', sql.VarChar(20), user?.nik || null);
       req.input('byName', sql.NVarChar(100), user?.name || null);
-      await req.query(`INSERT INTO dbo.ct_threshold (dept, fast_factor, slow_factor, updated_by, updated_by_name, updated_at)
-                       VALUES (@dept, @fast, @slow, @by, @byName, GETDATE())`);
+      await req.query(`INSERT INTO dbo.ct_threshold (dept, fast_factor, slow_factor, std1_grace_min, updated_by, updated_by_name, updated_at)
+                       VALUES (@dept, @fast, @slow, @grace, @by, @byName, GETDATE())`);
     }
     await tx.commit();
   } catch (e) {
@@ -233,10 +253,11 @@ async function saveThresholds(rows, user) {
 function thresholdValues(thr) {
   const byDept = new Map(thr.rows.map((r) => [r.dept, r]));
   const def = byDept.get('*') || DEFAULT_THRESHOLD;
-  const lines = [`('*', ${Number(def.fast_factor)}, ${Number(def.slow_factor)})`];
+  const grace = (r) => Number(r.std1_grace_min ?? DEFAULT_THRESHOLD.std1_grace_min);
+  const lines = [`('*', ${Number(def.fast_factor)}, ${Number(def.slow_factor)}, ${grace(def)})`];
   for (const d of SCOPED_DEPTS) {
     const r = byDept.get(d) || def;
-    lines.push(`('${d}', ${Number(r.fast_factor)}, ${Number(r.slow_factor)})`);
+    lines.push(`('${d}', ${Number(r.fast_factor)}, ${Number(r.slow_factor)}, ${grace(r)})`);
   }
   return lines.join(',\n      ');
 }
@@ -254,8 +275,8 @@ function deptPredicate(depts, col) {
  */
 function lookupsSql(thr) {
   return `
-    CREATE TABLE #thr (dept VARCHAR(10) PRIMARY KEY, fast DECIMAL(6,2), slow DECIMAL(6,2));
-    INSERT INTO #thr (dept, fast, slow) VALUES
+    CREATE TABLE #thr (dept VARCHAR(10) PRIMARY KEY, fast DECIMAL(6,2), slow DECIMAL(6,2), grace DECIMAL(6,2));
+    INSERT INTO #thr (dept, fast, slow, grace) VALUES
       ${thresholdValues(thr)};
 
     -- Processes each (resolved) dept has excluded from monitoring.
@@ -330,15 +351,20 @@ function scoreSql(src) {
                  ELSE ROUND(e.work_sec / 60.0 / e.std_min * 100, 1) END AS ratio_pct,
             ISNULL(th.fast, thd.fast) AS fast_factor,
             ISNULL(th.slow, thd.slow) AS slow_factor,
-            -- "N times faster" = actual * N <= standard; "N times slower" = actual >= standard * N
+            ISNULL(th.grace, thd.grace) AS std1_grace_min,
+            -- "N times faster" = actual * N <= standard; "N times slower" = actual >= standard * N.
+            -- A 1-minute standard is green within its grace window (it could never be
+            -- green otherwise: 1 minute sits below the red cut-off).
             CASE WHEN e.is_clerical = 1 THEN 'clerical'
                  WHEN e.std_min IS NULL THEN 'nostd'
+                 WHEN e.std_min <= 1 AND e.work_sec <= ISNULL(th.grace, thd.grace) * 60 THEN 'green'
                  WHEN e.work_sec < ${RED_MAX_MINUTES * 60} THEN 'red'
                  WHEN e.work_sec / 60.0 * ISNULL(th.fast, thd.fast) <= e.std_min THEN 'yellow'
                  WHEN e.work_sec / 60.0 >= e.std_min * ISNULL(th.slow, thd.slow) THEN 'yellow'
                  ELSE 'green' END AS severity,
             CASE WHEN e.is_clerical = 1 THEN 'clerical'
                  WHEN e.std_min IS NULL THEN 'nostd'
+                 WHEN e.std_min <= 1 AND e.work_sec <= ISNULL(th.grace, thd.grace) * 60 THEN 'ok'
                  WHEN e.work_sec < ${RED_MAX_MINUTES * 60} THEN 'instant'
                  WHEN e.work_sec / 60.0 * ISNULL(th.fast, thd.fast) <= e.std_min THEN 'fast'
                  WHEN e.work_sec / 60.0 >= e.std_min * ISNULL(th.slow, thd.slow) THEN 'slow'
@@ -504,7 +530,8 @@ async function getRunningSteps({ depts }) {
 
     SELECT ${DETAIL_COLUMNS},
            v.EndDate AS CurrentSegmentStart,
-           CASE WHEN v.is_clerical = 0 AND v.std_min IS NOT NULL AND v.work_sec / 60.0 >= v.std_min * v.slow_factor THEN 'overdue'
+           CASE WHEN v.is_clerical = 0 AND v.std_min IS NOT NULL AND v.work_sec / 60.0 >= v.std_min * v.slow_factor
+                 AND NOT (v.std_min <= 1 AND v.work_sec <= v.std1_grace_min * 60) THEN 'overdue'
                 ELSE 'running' END AS run_status
     FROM   #sev v
     WHERE  ${deptPredicate(depts, 'v.dept')}

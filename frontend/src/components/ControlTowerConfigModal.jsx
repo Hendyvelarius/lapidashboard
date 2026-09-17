@@ -7,11 +7,14 @@ import { SCOPED_DEPTS, CONFIG_ADMIN_DEPTS, RED_MAX_MINUTES, fmtDateTime, fmtDura
 // Configuration modal -- two tabs.
 //
 //   Threshold   The yellow rule, expressed as "how many times faster / slower
-//               than the standard" (fast_factor / slow_factor). One default
-//               row ('*') plus optional overrides per department. Editable by
-//               NT / PL / MS; everyone else sees it read-only so the rule set
-//               is never a mystery. Red (< RED_MAX_MINUTES) is fixed in the
-//               backend and only displayed.
+//               than the standard" (fast_factor / slow_factor), plus the
+//               grace window for 1-minute standards (std1_grace_min: such a
+//               step is Normal while its work time stays within it, since it
+//               could never be green under the red rule otherwise). One
+//               default row ('*') plus optional overrides per department.
+//               Editable by NT / PL / MS; everyone else sees it read-only so
+//               the rule set is never a mystery. Red (< RED_MAX_MINUTES) is
+//               fixed in the backend and only displayed.
 //   Clerical    Processes a department does not want monitored (admin taps
 //               such as "Approve Timbang"). Only a department's manager
 //               (emp_JobLevelID MGR, or PL for the Plant heads) edits its list; managers of NT / PL / MS
@@ -40,7 +43,7 @@ const EXAMPLE_STD_MIN = 60;
 // Threshold tab
 // ---------------------------------------------------------------------------
 function ThresholdTab({ user, canEdit, onClose, onSaved }) {
-  const [rows, setRows] = useState([]);       // [{ dept, fast_factor, slow_factor }] as strings while editing
+  const [rows, setRows] = useState([]);       // [{ dept, fast_factor, slow_factor, std1_grace_min }] as strings while editing
   const [meta, setMeta] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -50,7 +53,7 @@ function ThresholdTab({ user, canEdit, onClose, onSaved }) {
     getJSON('/api/controlTower/thresholds')
       .then((json) => {
         if (cancelled) return;
-        setRows(json.data.rows.map((r) => ({ dept: r.dept, fast_factor: String(r.fast_factor), slow_factor: String(r.slow_factor) })));
+        setRows(json.data.rows.map((r) => ({ dept: r.dept, fast_factor: String(r.fast_factor), slow_factor: String(r.slow_factor), std1_grace_min: String(r.std1_grace_min ?? 2) })));
         const last = json.data.rows.find((r) => r.updated_by);
         setMeta(last ? { by: last.updated_by_name || last.updated_by, at: last.updated_at } : null);
       })
@@ -58,30 +61,32 @@ function ThresholdTab({ user, canEdit, onClose, onSaved }) {
     return () => { cancelled = true; };
   }, []);
 
-  const def = rows.find((r) => r.dept === '*') || { dept: '*', fast_factor: '2', slow_factor: '2' };
+  const def = rows.find((r) => r.dept === '*') || { dept: '*', fast_factor: '2', slow_factor: '2', std1_grace_min: '2' };
   const overridden = new Set(rows.filter((r) => r.dept !== '*').map((r) => r.dept));
 
   const setVal = (dept, key, val) => setRows((prev) => prev.map((r) => (r.dept === dept ? { ...r, [key]: val } : r)));
-  const addOverride = (dept) => setRows((prev) => [...prev, { dept, fast_factor: def.fast_factor, slow_factor: def.slow_factor }]);
+  const addOverride = (dept) => setRows((prev) => [...prev, { dept, fast_factor: def.fast_factor, slow_factor: def.slow_factor, std1_grace_min: def.std1_grace_min }]);
   const removeOverride = (dept) => setRows((prev) => prev.filter((r) => r.dept !== dept));
 
   async function save() {
     setBusy(true); setError('');
     try {
-      const payload = rows.map((r) => ({ dept: r.dept, fast_factor: Number(r.fast_factor), slow_factor: Number(r.slow_factor) }));
+      const payload = rows.map((r) => ({ dept: r.dept, fast_factor: Number(r.fast_factor), slow_factor: Number(r.slow_factor), std1_grace_min: Number(r.std1_grace_min) }));
       await putJSON('/api/controlTower/thresholds', { rows: payload, user });
       onSaved?.();
       onClose();
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   }
 
-  // "Standar 60 menit -> yellow bila <= 30 menit atau >= 120 menit"
+  // "Standar 60 menit -> yellow bila <= 30 menit atau >= 120 menit · standar 1 menit -> Normal bila <= 2 menit"
   const example = (r) => {
-    const f = Number(r.fast_factor), s = Number(r.slow_factor);
+    const f = Number(r.fast_factor), s = Number(r.slow_factor), g = Number(r.std1_grace_min);
     if (!(f > 1) || !(s > 1)) return <span className="ct-muted">faktor harus lebih dari 1</span>;
+    if (!(g > 0)) return <span className="ct-muted">toleransi standar 1 menit harus lebih dari 0</span>;
     return (
       <span className="ct-muted">
         standar {EXAMPLE_STD_MIN} mnt → yellow bila ≤ <strong>{fmtDuration(EXAMPLE_STD_MIN / f)}</strong> atau ≥ <strong>{fmtDuration(EXAMPLE_STD_MIN * s)}</strong>
+        <br />standar 1 mnt → Normal bila ≤ <strong>{fmtDuration(g)}</strong>, setelah itu aturan biasa
       </span>
     );
   };
@@ -100,6 +105,12 @@ function ThresholdTab({ user, canEdit, onClose, onSaved }) {
           onChange={(e) => setVal(r.dept, 'slow_factor', e.target.value)} />
         <span>× lebih lama</span>
       </td>
+      <td className="ct-factor-cell">
+        <span>≤</span>
+        <input type="number" step="0.5" min="0.5" max="1440" className="ct-input" value={r.std1_grace_min} disabled={!canEdit}
+          onChange={(e) => setVal(r.dept, 'std1_grace_min', e.target.value)} />
+        <span>menit = Normal</span>
+      </td>
       <td className="ct-factor-example">{example(r)}</td>
       <td>{isDefault ? <span className="ct-muted">wajib</span> : canEdit && <button className="ct-btn ghost tiny" onClick={() => removeOverride(r.dept)}>Hapus</button>}</td>
     </tr>
@@ -115,9 +126,13 @@ function ThresholdTab({ user, canEdit, onClose, onSaved }) {
             Contoh: <strong>2</strong>× lebih lama = durasi ≥ 2 × standar; <strong>2</strong>× lebih cepat = durasi ≤ ½ standar.
           </div>
           <div><strong>Green — Normal.</strong> Sisanya. Proses tanpa standar masuk To-Do; proses clerical tidak di-score sama sekali.</div>
+          <div>
+            <strong>Standar 1 menit — toleransi.</strong> Proses dengan standar 1 menit tidak pernah bisa Normal menurut aturan di atas (1 menit sudah di bawah batas red),
+            jadi durasi dari 0 detik sampai <em>N</em> menit dianggap <strong>Normal</strong> (bukan red, bukan yellow). Lewat dari itu berlaku aturan biasa.
+          </div>
         </div>
         <table className="ct-table ct-settings-table">
-          <thead><tr><th>Dept</th><th>Terlalu cepat</th><th>Terlalu lama</th><th>Contoh</th><th /></tr></thead>
+          <thead><tr><th>Dept</th><th>Terlalu cepat</th><th>Terlalu lama</th><th>Standar 1 menit</th><th>Contoh</th><th /></tr></thead>
           <tbody>
             {renderRow(def, true)}
             {rows.filter((r) => r.dept !== '*').map((r) => renderRow(r, false))}

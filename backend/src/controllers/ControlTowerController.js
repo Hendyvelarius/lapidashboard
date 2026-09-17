@@ -147,7 +147,7 @@ const isConfigAdmin = (user) => isSuperuser(user) || CT.CONFIG_ADMIN_DEPTS.inclu
 const canEditClerical = (user, dept) => isSuperuser(user)
   || (CT.MANAGER_JOB_LEVELS.includes(user.jobLevel) && (CT.CONFIG_ADMIN_DEPTS.includes(user.dept) || user.dept === dept));
 
-// PUT /controlTower/thresholds  { rows: [{dept, fast_factor, slow_factor}], user }
+// PUT /controlTower/thresholds  { rows: [{dept, fast_factor, slow_factor, std1_grace_min}], user }
 // Only NT / PL / MS may change the rules (the frontend disables the form; this
 // is the backstop).
 async function saveThresholds(req, res) {

@@ -16,17 +16,22 @@ GO
 -- yellow when actual >= standard * 2.
 -- Red (an instant tap: work time under 2 minutes) is fixed in code and is NOT
 -- configurable here on purpose.
+-- std1_grace_min: a step whose standard is 1 minute can never be green under
+-- the rules above (1 minute is below the red cut-off), so it counts as Normal
+-- while its work time is <= this many minutes; beyond that the normal rules
+-- apply.
 IF OBJECT_ID('dbo.ct_threshold', 'U') IS NULL
 BEGIN
   CREATE TABLE dbo.ct_threshold (
     dept            VARCHAR(10)   NOT NULL PRIMARY KEY,  -- '*' | PN1 | PN2 | PC | QC | QA | MC
     fast_factor     DECIMAL(6,2)  NOT NULL,              -- yellow when >= this many times faster than standard
     slow_factor     DECIMAL(6,2)  NOT NULL,              -- yellow when >= this many times slower than standard
+    std1_grace_min  DECIMAL(6,2)  NOT NULL DEFAULT 2,    -- 1-minute standard: green while work time <= this many minutes
     updated_by      VARCHAR(20)   NULL,
     updated_by_name NVARCHAR(100) NULL,
     updated_at      DATETIME      NOT NULL DEFAULT GETDATE()
   );
-  INSERT INTO dbo.ct_threshold (dept, fast_factor, slow_factor) VALUES ('*', 2, 2);
+  INSERT INTO dbo.ct_threshold (dept, fast_factor, slow_factor, std1_grace_min) VALUES ('*', 2, 2, 2);
 END;
 GO
 
@@ -42,6 +47,11 @@ BEGIN
         ALTER TABLE dbo.ct_threshold ALTER COLUMN slow_factor DECIMAL(6,2) NOT NULL;
         ALTER TABLE dbo.ct_threshold DROP COLUMN fast_ratio, slow_ratio');
 END;
+GO
+
+-- v2 -> v3: grace window for 1-minute standards (default 2 minutes).
+IF OBJECT_ID('dbo.ct_threshold', 'U') IS NOT NULL AND COL_LENGTH('dbo.ct_threshold', 'std1_grace_min') IS NULL
+  ALTER TABLE dbo.ct_threshold ADD std1_grace_min DECIMAL(6,2) NOT NULL DEFAULT 2;
 GO
 
 -- "Clerical" processes: steps a department chose not to monitor (admin taps

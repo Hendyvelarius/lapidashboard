@@ -191,6 +191,7 @@ export function buildWorkbook(XLSXModule, data, meta) {
   const thrLine = thr
     ? `Red = durasi < ${thr.red_max_minutes} menit · Yellow = ≥ ${def?.fast_factor ?? '?'}× lebih cepat atau ≥ ${def?.slow_factor ?? '?'}× lebih lama dari standar` +
       (overrides.length ? ` (override: ${overrides.map((t) => `${t.dept} ${t.fast_factor}×/${t.slow_factor}×`).join(', ')})` : '') +
+      (def?.std1_grace_min != null ? ` · standar 1 menit = Normal bila ≤ ${def.std1_grace_min} menit` : '') +
       ' · proses clerical tidak disertakan'
     : '';
   const baseLines = [
