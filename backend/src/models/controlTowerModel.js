@@ -73,10 +73,24 @@ const ACK_DB = process.env.LFSQL_Snapshot_Database || 'LAPI_Report';
 // ----------------------------------------------------------------------------
 // App-owned tables (LAPI_Report). Created on first use so a fresh environment
 // needs no manual migration; the same DDL lives in backend/migrations for docs.
+//
+// Single-flight: the page fires several requests at once on load, and two
+// concurrent first calls would both pass the IF ... IS NULL guards and both
+// try to ALTER / CREATE ("Column name ... specified more than once").
 // ----------------------------------------------------------------------------
 let tablesEnsured = false;
-async function ensureTables() {
-  if (tablesEnsured) return;
+let ensuring = null;
+function ensureTables() {
+  if (tablesEnsured) return Promise.resolve();
+  if (!ensuring) {
+    ensuring = ensureTablesOnce()
+      .then(() => { tablesEnsured = true; })
+      .finally(() => { ensuring = null; });
+  }
+  return ensuring;
+}
+
+async function ensureTablesOnce() {
   const db = await connectSnapshot();
 
   // v1 stored the yellow rule as ratios (fast_ratio 0.5 = "half the standard").
@@ -172,7 +186,6 @@ async function ensureTables() {
       CREATE INDEX IX_ct_alert_ack_at ON dbo.ct_alert_ack (ack_at);
     END;
   `);
-  tablesEnsured = true;
 }
 
 // ----------------------------------------------------------------------------

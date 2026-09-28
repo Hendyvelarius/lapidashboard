@@ -17,7 +17,7 @@ export const COLUMNS = [
   { header: 'Formula PPI', key: 'FormulaPPI', width: 34, align: 'left', band: 'PPI' },
   { header: 'Granulasi', key: 'Granulasi', width: 13, date: true, band: 'Proses Produksi' },
   { header: 'Mixing', key: 'Mixing', width: 13, date: true, band: 'Proses Produksi' },
-  { header: 'Filling Kapsul', key: 'FillingKapsul', width: 13, date: true, band: 'Proses Produksi' },
+  { header: 'Filling', key: 'Filling', width: 13, date: true, band: 'Proses Produksi' },
   { header: 'Cetak', key: 'Cetak', width: 13, date: true, band: 'Proses Produksi' },
   { header: 'Coating', key: 'Coating', width: 13, date: true, band: 'Proses Produksi' },
   { header: 'Kemas Primer', key: 'KemasPrimer', width: 14, date: true, band: 'Proses Produksi' },

@@ -2636,13 +2636,21 @@ const NOT_PREP_NAME = (alias) => `
 
 // m_tahapan_group is too coarse to separate the process milestones the report
 // needs: its 'Granulasi' group holds the solid-line Mixing steps as well, and
-// its 'Filling' group mixes capsule filling (a processing step) with bottle,
-// vial and sachet filling (primary packaging). So these are matched by name.
+// its 'Filling' group mixes the fill itself with vial washing, sterilisation,
+// filter integrity, raw-material checks, changeover and cleaning. So these are
+// matched by name.
 const IS_GRANULASI = (a) => `(${a}.nama_tahapan LIKE 'Granulasi%'
     OR ${a}.nama_tahapan LIKE 'Slugging%'
     OR ${a}.nama_tahapan LIKE 'Pengayakan Slug%'
     OR ${a}.nama_tahapan LIKE 'Pengeringan [0-9]%')`;
 const IS_MIXING = (a) => `${a}.nama_tahapan LIKE 'Mixing%'`;
+/**
+ * The fill proper -- kapsul, vial, ampul, sachet or botol. Every one is named
+ * "Fill ..."/"Filling ..." (sachet is spelled "Filing Sachet"), while the
+ * surrounding steps in the group start with Cuci / sterilisasi / Integrity /
+ * Pengecekan / Change Over / Clean / Persiapan.
+ */
+const IS_FILL = (a) => `(${a}.tahapan_group = 'Filling' AND ${a}.nama_tahapan LIKE 'Fil%')`;
 const IS_FILL_KAPSUL = (a) => `${a}.nama_tahapan LIKE 'Fill%kapsul%'`;
 
 /** Product categories (jenis sediaan) used by the Production Monitoring filter. */
@@ -2696,6 +2704,8 @@ async function getProductionMonitoring(from, to, dept = 'ALL', groupIds = []) {
           AND   StartDate < DATEADD(day, 1, @to)
           AND   kode_tahapan NOT IN (${PREP_STEP_CODES.join(', ')})
           AND ${NOT_PREP_NAME('steps')}
+          -- Vial washing and sterilisation run hours ahead of the fill.
+          AND   (tahapan_group <> 'Filling' OR ${IS_FILL('steps')})
     ),
     base AS (
         SELECT Product_ID, Batch_No, Batch_Date, StartDate AS ProsesProduksi
@@ -2731,7 +2741,7 @@ async function getProductionMonitoring(from, to, dept = 'ALL', groupIds = []) {
                                                              AS FormulaPPI,
         gr.d                                                 AS Granulasi,
         mx.d                                                 AS Mixing,
-        fk.d                                                 AS FillingKapsul,
+        fk.d                                                 AS Filling,
         ct.d                                                 AS Cetak,
         co.d                                                 AS Coating,
         ISNULL(kp.d, fl.d)                                   AS KemasPrimer,
@@ -2784,7 +2794,7 @@ async function getProductionMonitoring(from, to, dept = 'ALL', groupIds = []) {
                    AND ${IS_MIXING('s')} AND ${NOT_PREP_NAME('s')}) mx
     OUTER APPLY (SELECT MIN(s.StartDate) d FROM steps s
                  WHERE s.Product_ID=b.Product_ID AND s.Batch_No=b.Batch_No AND s.Batch_Date=b.Batch_Date
-                   AND ${IS_FILL_KAPSUL('s')} AND ${NOT_PREP_NAME('s')}) fk
+                   AND ${IS_FILL('s')}) fk
     OUTER APPLY (SELECT MIN(s.StartDate) d FROM steps s
                  WHERE s.Product_ID=b.Product_ID AND s.Batch_No=b.Batch_No AND s.Batch_Date=b.Batch_Date
                    AND s.tahapan_group='Cetak' AND ${NOT_PREP_NAME('s')}) ct
@@ -2800,10 +2810,8 @@ async function getProductionMonitoring(from, to, dept = 'ALL', groupIds = []) {
     -- the bottle or vial IS the primary packaging, so Filling stands in for it.
     OUTER APPLY (SELECT MIN(s.StartDate) d FROM steps s
                  WHERE s.Product_ID=b.Product_ID AND s.Batch_No=b.Batch_No AND s.Batch_Date=b.Batch_Date
-                   AND s.tahapan_group='Filling'
-                   AND NOT ${IS_FILL_KAPSUL('s')}   -- capsule filling is processing, not packing
-                   AND s.kode_tahapan NOT IN (${PREP_STEP_CODES.join(', ')})
-                   AND ${NOT_PREP_NAME('s')}) fl
+                   AND ${IS_FILL('s')}
+                   AND NOT ${IS_FILL_KAPSUL('s')}) fl   -- capsule filling is processing, not packing
     -- Sample handover: the lab pickup is the handover proper; fall back to the
     -- PN-side sampling step for batches where no pickup was recorded. MC has a
     -- third form, Sampling Mikro, used by families that record neither of the
