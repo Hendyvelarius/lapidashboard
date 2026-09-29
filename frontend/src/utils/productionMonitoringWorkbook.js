@@ -23,7 +23,9 @@ export const COLUMNS = [
   { header: 'Kemas Primer', key: 'KemasPrimer', width: 14, date: true, band: 'Proses Produksi' },
   { header: 'Penyerahan Sample QC', key: 'SampleQC', width: 15, date: true, band: 'QC / MC / QA' },
   { header: 'Penyerahan Sample MC', key: 'SampleMC', width: 15, date: true, band: 'QC / MC / QA' },
-  { header: 'Penyerahan Pengujian QA', key: 'PengujianQA', width: 15, date: true, band: 'QC / MC / QA' },
+  { header: 'Dok PPI Diterima QA', key: 'DokPPIDiterimaQA', width: 15, date: true, band: 'QC / MC / QA' },
+  { header: 'Pengujian QC Diterima QA', key: 'PengujianQCDiterimaQA', width: 15, date: true, band: 'QC / MC / QA' },
+  { header: 'Pengujian MC Diterima QA', key: 'PengujianMCDiterimaQA', width: 15, date: true, band: 'QC / MC / QA' },
   { header: 'Rilis Produk Jadi', key: 'ReleaseDate', width: 14, date: true, band: 'QC / MC / QA' },
 ];
 

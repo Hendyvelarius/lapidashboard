@@ -2622,8 +2622,14 @@ const PP_TOKEN = (col) => `${col} + CASE
             WHEN NULLIF(LTRIM(RTRIM(ISNULL(rh.Reg_PPI_Revisi, ''))), '') IS NULL THEN ''
             ELSE ' rev ' + LTRIM(RTRIM(rh.Reg_PPI_Revisi))
           END`;
-/** The four "Cek Dokumen ... oleh QA" checks. */
-const QA_DOC_CODES = [167, 168, 169, 197];
+/**
+ * "Cek Dokumen <dept> oleh QA" step codes -- the point each department's
+ * paperwork reaches QA. Names carry numbered variants ("... oleh QA 76") but
+ * the code is stable, so match on the code. (168 = Cek Dokumen PC is not reported.)
+ */
+const QA_DOC_PN = 169;
+const QA_DOC_QC = 167;
+const QA_DOC_MC = 197;
 
 const NOT_PREP_NAME = (alias) => `
       ${alias}.nama_tahapan NOT LIKE 'Persiapan%'
@@ -2747,7 +2753,9 @@ async function getProductionMonitoring(from, to, dept = 'ALL', groupIds = []) {
         ISNULL(kp.d, fl.d)                                   AS KemasPrimer,
         ISNULL(qcp.d, qcs.d)                                 AS SampleQC,
         ISNULL(ISNULL(mcp.d, mcs.d), mck.d)                  AS SampleMC,
-        qa.d                                                 AS PengujianQA,
+        qpn.d                                                AS DokPPIDiterimaQA,
+        qqc.d                                                AS PengujianQCDiterimaQA,
+        qmc.d                                                AS PengujianMCDiterimaQA,
         rel.d                                                AS ReleaseDate,
         ISNULL(pn.Group_Dept, '')                            AS Line,
         ISNULL(pcg.pengelompokan, '')                        AS Sediaan
@@ -2823,12 +2831,12 @@ async function getProductionMonitoring(from, to, dept = 'ALL', groupIds = []) {
     -- Sampling Mikro is the same handover under a different step code, used by
     -- product families that never record 194 or 227.
     OUTER APPLY (SELECT MIN(s.StartDate) d FROM steps s WHERE s.Product_ID=b.Product_ID AND s.Batch_No=b.Batch_No AND s.Batch_Date=b.Batch_Date AND s.kode_tahapan=198) mck
-    -- Latest of the four QA document checks, using whichever are present: 468
-    -- batches in 2026 were released with only three recorded (Cek Dokumen MC is
-    -- the usual omission), so demanding all four would blank out finished batches.
-    OUTER APPLY (SELECT MAX(s.StartDate) d FROM steps s
-                 WHERE s.Product_ID=b.Product_ID AND s.Batch_No=b.Batch_No AND s.Batch_Date=b.Batch_Date
-                   AND s.kode_tahapan IN (${QA_DOC_CODES.join(', ')}) AND s.StartDate IS NOT NULL) qa
+    -- When each department's documents reached QA: the start of its
+    -- "Cek Dokumen <dept> oleh QA" check. Reported separately because a batch
+    -- can be released without all of them (Cek Dokumen MC is the usual omission).
+    OUTER APPLY (SELECT MIN(s.StartDate) d FROM steps s WHERE s.Product_ID=b.Product_ID AND s.Batch_No=b.Batch_No AND s.Batch_Date=b.Batch_Date AND s.kode_tahapan=${QA_DOC_PN}) qpn
+    OUTER APPLY (SELECT MIN(s.StartDate) d FROM steps s WHERE s.Product_ID=b.Product_ID AND s.Batch_No=b.Batch_No AND s.Batch_Date=b.Batch_Date AND s.kode_tahapan=${QA_DOC_QC}) qqc
+    OUTER APPLY (SELECT MIN(s.StartDate) d FROM steps s WHERE s.Product_ID=b.Product_ID AND s.Batch_No=b.Batch_No AND s.Batch_Date=b.Batch_Date AND s.kode_tahapan=${QA_DOC_MC}) qmc
     OUTER APPLY (SELECT MAX(s.EndDate) d FROM steps s WHERE s.Product_ID=b.Product_ID AND s.Batch_No=b.Batch_No AND s.Batch_Date=b.Batch_Date AND s.kode_tahapan=170) rel
     -- Line assignment follows the period the batch actually went into process.
     LEFT JOIN m_Product_PN_Group pn
