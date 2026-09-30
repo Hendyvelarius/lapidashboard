@@ -740,12 +740,14 @@ const QCDashboard = () => {
         align: 'top',
         font: { size: 10, weight: 600 },
         color: '#334155',
+        clamp: true,
         formatter: (value) => value > 0 ? value : ''
       }
     },
     scales: {
       x: { grid: { display: false }, ticks: { font: { size: 10 } } },
-      y: { beginAtZero: true, ticks: { font: { size: 10 } } }
+      // grace leaves headroom so the tallest bar's label doesn't collide with the legend
+      y: { beginAtZero: true, grace: '10%', ticks: { font: { size: 10 } } }
     }
   };
 
@@ -922,12 +924,13 @@ const QCDashboard = () => {
         align: 'top',
         font: { size: 9, weight: 600 },
         color: '#334155',
+        clamp: true,
         formatter: (value) => value > 0 ? Math.round(value) : ''
       }
     },
     scales: {
       x: { grid: { display: false }, ticks: { font: { size: 9 }, maxRotation: 45 } },
-      y: { beginAtZero: true, ticks: { font: { size: 10 }, callback: (v) => `${v}d` }, title: { display: true, text: 'Avg Turnaround (hari)', font: { size: 10 } } }
+      y: { beginAtZero: true, grace: '10%', ticks: { font: { size: 10 }, callback: (v) => `${v}d` }, title: { display: true, text: 'Avg Turnaround (hari)', font: { size: 10 } } }
     }
   };
 
