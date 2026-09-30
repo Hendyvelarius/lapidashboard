@@ -31,6 +31,9 @@ const formatNumber = (num) => {
   return Number(num).toLocaleString('id-ID');
 };
 
+// SQL ROUND() on floats still yields values like 1.6800000000000002 in JS.
+const roundPct = (num) => Math.round((Number(num) || 0) * 100) / 100;
+
 const getAgingColor = (days) => {
   if (days <= 7) return 'green';
   if (days <= 14) return 'yellow';
@@ -404,13 +407,13 @@ const QCDashboard = () => {
         pending: bbPending,
         avgDays: bbLead ? Math.round(bbLead.avg_turnaround * 10) / 10 : 0,
         completed: bbReleased?.completed || 0,
-        rejectPct: bbReleased?.reject_pct || 0
+        rejectPct: roundPct(bbReleased?.reject_pct)
       },
       bk: {
         pending: bkPending,
         avgDays: bkLead ? Math.round(bkLead.avg_turnaround * 10) / 10 : 0,
         completed: bkReleased?.completed || 0,
-        rejectPct: bkReleased?.reject_pct || 0
+        rejectPct: roundPct(bkReleased?.reject_pct)
       }
     };
   }, [summaryData, inProcessData]);
@@ -425,7 +428,7 @@ const QCDashboard = () => {
       pending: inProcessData.length,
       avgDays: lead ? Math.round(lead.avg_turnaround * 10) / 10 : 0,
       completed: released?.completed || 0,
-      rejectPct: released?.reject_pct || 0
+      rejectPct: roundPct(released?.reject_pct)
     };
   }, [summaryData, inProcessData]);
 
@@ -755,7 +758,7 @@ const QCDashboard = () => {
     const getTypeData = (type) => ({
       total: periods.map((p) => { const item = allData.find((d) => d.period === p && d.material_type === type); return item ? item.total : 0; }),
       completed: periods.map((p) => { const item = allData.find((d) => d.period === p && d.material_type === type); return item ? item.completed : 0; }),
-      rejectPct: periods.map((p) => { const item = allData.find((d) => d.period === p && d.material_type === type); return item ? (item.reject_pct || 0) : 0; })
+      rejectPct: periods.map((p) => { const item = allData.find((d) => d.period === p && d.material_type === type); return item ? roundPct(item.reject_pct) : 0; })
     });
 
     const bb = getTypeData('BB');
@@ -800,7 +803,7 @@ const QCDashboard = () => {
       datasets: [
         { label: 'Total', data: pick('total'), borderColor: '#4f8cff', backgroundColor: 'rgba(79, 140, 255, 0.15)', fill: true, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#4f8cff' },
         { label: 'Released', data: pick('completed'), borderColor: '#22c55e', backgroundColor: 'rgba(34, 197, 94, 0.15)', fill: true, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#22c55e' },
-        { label: 'Reject %', data: pick('reject_pct'), borderColor: '#ef4444', borderDash: [5, 5], tension: 0.3, pointRadius: 4, pointBackgroundColor: '#ef4444', yAxisID: 'y1' }
+        { label: 'Reject %', data: pick('reject_pct').map(roundPct), borderColor: '#ef4444', borderDash: [5, 5], tension: 0.3, pointRadius: 4, pointBackgroundColor: '#ef4444', yAxisID: 'y1' }
       ]
     };
   }, [summaryData]);
