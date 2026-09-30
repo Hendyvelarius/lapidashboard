@@ -1,9 +1,25 @@
 # Claude Code / agent local data (project memory, settings, etc.)
 .claude/
 
+# Editor / IDE settings and AI assistant config
+.vscode/
+.idea/
+.github/copilot-instructions.md
+*.code-workspace
+
 # OS / editor cruft
 Thumbs.db
 .DS_Store
+
+# Dependencies, builds, local env (also covered per-package)
+node_modules/
+dist/
+.env
+.env.local
+*.log
+
+# One-off local debug scripts
+backend/_*.js
 
 # Generated report exports
 exports/
