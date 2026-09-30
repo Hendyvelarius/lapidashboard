@@ -2756,7 +2756,7 @@ async function getProductionMonitoring(from, to, dept = 'ALL', groupIds = []) {
         qpn.d                                                AS DokPPIDiterimaQA,
         qqc.d                                                AS PengujianQCDiterimaQA,
         qmc.d                                                AS PengujianMCDiterimaQA,
-        rel.d                                                AS ReleaseDate,
+        ISNULL(rel.d, dnc.d)                                 AS ReleaseDate,
         ISNULL(pn.Group_Dept, '')                            AS Line,
         ISNULL(pcg.pengelompokan, '')                        AS Sediaan
     FROM base b
@@ -2838,6 +2838,12 @@ async function getProductionMonitoring(from, to, dept = 'ALL', groupIds = []) {
     OUTER APPLY (SELECT MIN(s.StartDate) d FROM steps s WHERE s.Product_ID=b.Product_ID AND s.Batch_No=b.Batch_No AND s.Batch_Date=b.Batch_Date AND s.kode_tahapan=${QA_DOC_QC}) qqc
     OUTER APPLY (SELECT MIN(s.StartDate) d FROM steps s WHERE s.Product_ID=b.Product_ID AND s.Batch_No=b.Batch_No AND s.Batch_Date=b.Batch_Date AND s.kode_tahapan=${QA_DOC_MC}) qmc
     OUTER APPLY (SELECT MAX(s.EndDate) d FROM steps s WHERE s.Product_ID=b.Product_ID AND s.Batch_No=b.Batch_No AND s.Batch_Date=b.Batch_Date AND s.kode_tahapan=170) rel
+    -- Fallback for batches released while their process flow was still waiting
+    -- on an earlier step (often Cek Dokumen MC): the release is recorded in
+    -- t_dnc_product but step 170 never gets an EndDate (~1.5% of 2026 releases).
+    OUTER APPLY (SELECT MIN(dn.DNC_TempelLabel) d FROM t_dnc_product dn
+                 WHERE dn.DNc_ProductID=b.Product_ID AND dn.DNc_BatchNo=b.Batch_No AND dn.DNC_BatchDate=b.Batch_Date
+                   AND dn.DNc_Status='DILULUSKAN' AND dn.DNC_TempelLabel IS NOT NULL) dnc
     -- Line assignment follows the period the batch actually went into process.
     LEFT JOIN m_Product_PN_Group pn
            ON pn.Group_ProductID = b.Product_ID
