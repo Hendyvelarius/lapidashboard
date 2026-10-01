@@ -29,7 +29,7 @@ function getProductCycleTimeAverage(data) {
 function WipConverter(rawData) {
   if (!Array.isArray(rawData)) return [];
   return rawData.map(item => ({
-    id: item.Product_ID,
+    id: item.Product_ID ?? item.product_id, // sp_Dashboard_WIP returns it lower-case
     name: item.Product_Name,
     batch: item.Batch_No,
     startDate: item["Tgl Timbang"],

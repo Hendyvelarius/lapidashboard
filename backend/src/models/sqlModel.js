@@ -72,10 +72,34 @@ async function getFulfillmentPerDept() {
   return result.recordset;
 }
 
+// WIP rows from sp_Dashboard_WIP, with Dept (PN1 / PN2 / PC) and Pengelompokan
+// (jenis sediaan) per product. The SP reads vw_wip_produksi, which stopped
+// returning those two columns in mid-2026, so they are looked up here from
+// m_alur_jenis_sediaan_produk -- the same source the SP used to join. Products
+// missing there fall back to this month's production line in m_product_pn_group
+// for Dept; Pengelompokan has no other source and stays null.
 async function WorkInProgress() {
   const db = await connect();
-  const result = await db.request().query(`EXEC sp_Dashboard_WIP 'RAW';`);
-  return result.recordset;
+  const [wip, alur, pnGroup] = await Promise.all([
+    db.request().query(`EXEC sp_Dashboard_WIP 'RAW';`),
+    db.request().query(`SELECT Product_ID, Jenis_Sediaan, Dept FROM m_alur_jenis_sediaan_produk`),
+    db.request().query(`
+      SELECT Group_ProductID, MAX(Group_Dept) AS Group_Dept
+      FROM m_product_pn_group
+      WHERE REPLACE(Group_Periode, ' ', '') = CONVERT(varchar(6), GETDATE(), 112)
+      GROUP BY Group_ProductID`)
+  ]);
+  const alurByProduct = new Map(alur.recordset.map(r => [String(r.Product_ID).trim(), r]));
+  const lineByProduct = new Map(pnGroup.recordset.map(r => [String(r.Group_ProductID).trim(), r.Group_Dept]));
+  return wip.recordset.map(row => {
+    const productId = String(row.Product_ID ?? row.product_id ?? '').trim();
+    const alurRow = alurByProduct.get(productId);
+    return {
+      ...row,
+      Pengelompokan: row.Pengelompokan ?? alurRow?.Jenis_Sediaan ?? null,
+      Dept: row.Dept ?? alurRow?.Dept ?? lineByProduct.get(productId) ?? null
+    };
+  });
 }
 
 async function WorkInProgressAlur() {
@@ -116,16 +140,24 @@ async function getFulfillmentPerKelompok() {
   return result.recordset;
 }
 
+// Counts per Dept / per Pengelompokan. Computed from WorkInProgress() because
+// the SP's 'WIPProdByDept' / 'WIPProdByPCGroup' modes group on columns the view
+// no longer has and fail with "Invalid column name". Same shape as those modes.
+async function countWipBy(field, outputKey) {
+  const counts = new Map();
+  (await WorkInProgress()).forEach(row => {
+    const key = row[field] ?? null;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  });
+  return Array.from(counts, ([key, total]) => ({ [outputKey]: key, Total: total }));
+}
+
 async function getWipProdByDept() {
-  const db = await connect();
-  const result = await db.request().query(`EXEC sp_Dashboard_WIP 'WIPProdByDept';`);
-  return result.recordset;
+  return countWipBy('Dept', 'Dept');
 }
 
 async function getWipByGroup() {
-  const db = await connect();
-  const result = await db.request().query(`EXEC sp_Dashboard_WIP 'WIPProdByPCGroup';`);
-  return result.recordset;
+  return countWipBy('Pengelompokan', 'pengelompokan');
 }
 
 async function getProductCycleTime() {
