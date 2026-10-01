@@ -12,6 +12,7 @@ import { useAuth } from '../context/AuthContext';
 import OF1TargetModal from './OF1TargetModal';
 import ProductionOutputModal from './ProductionOutputModal';
 import BatchesReportModal from './BatchesReportModal';
+import { sortByProductThenBatch } from '../utils/batchSort';
 import './SummaryDashboard.css';
 
 // Register Chart.js components
@@ -4658,7 +4659,9 @@ function SummaryDashboard() {
           { key: 'Dok', header: 'Dokumen', width: 10 },
           { key: 'QA', header: 'QA', width: 8 },
         ];
-        const ofBatchWS = createStyledSheet(ofRawData, ofBatchCols);
+        // Product, then batch in production order (HI206, HI256, HI306, ...)
+        const ofBatchRows = sortByProductThenBatch(ofRawData, { name: 'Product_Name', id: 'ProductID', batch: 'ListBet' }, exportRefDate.getFullYear());
+        const ofBatchWS = createStyledSheet(ofBatchRows, ofBatchCols);
         XLSX.utils.book_append_sheet(wb, ofBatchWS, 'OF by Batch');
       }
 
@@ -4671,7 +4674,9 @@ function SummaryDashboard() {
           { key: 'startDate', header: 'Start Date', width: 14 },
           { key: 'duration', header: 'Days in Production', width: 18, format: 'number' },
         ];
-        const wipWS = createStyledSheet(wipRawData, wipCols);
+        // WIP rows carry no product code, so the batch's own 2-character prefix is used
+        const wipRows = sortByProductThenBatch(wipRawData, { name: 'name', batch: 'batch' }, exportRefDate.getFullYear());
+        const wipWS = createStyledSheet(wipRows, wipCols);
         XLSX.utils.book_append_sheet(wb, wipWS, 'WIP Data');
       }
 
@@ -4761,7 +4766,8 @@ function SummaryDashboard() {
           { key: 'BatchStockKarantina', header: 'Stock Karantina', width: 16, format: 'number' },
           { key: 'HNA', header: 'HNA', width: 14, format: 'number' },
         ];
-        const expiryWS = createStyledSheet(batchExpiryRawData, expiryCols);
+        const expiryRows = sortByProductThenBatch(batchExpiryRawData, { name: 'Product_Name', id: 'Product_ID', batch: 'Batch_No' }, exportRefDate.getFullYear());
+        const expiryWS = createStyledSheet(expiryRows, expiryCols);
         XLSX.utils.book_append_sheet(wb, expiryWS, 'Batch Expiry');
       }
 
