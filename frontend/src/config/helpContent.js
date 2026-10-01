@@ -263,10 +263,21 @@ export const helpContent = {
             ]
           },
           {
+            subtitle: 'Batch yang Di-lock lalu Di-unlock',
+            description: 'Batch rilis bulan sebelumnya yang masih di-lock pada tanggal 1, lalu di-unlock bulan ini, kembali ke distribusi dan dihitung sebagai batch rilis bulan ini.',
+            details: [
+              'Syarat: saat di-unlock, sisa batch minimal 95% dari jumlah yang diluluskan (belum terkirim)',
+              'Sisa di bawah 95% tidak dihitung sebagai pemenuhan',
+              'Stok awal untuk menghitung target memakai status lock per tanggal 1, sehingga target tidak berubah saat batch di-lock atau di-unlock di tengah bulan'
+            ]
+          },
+          {
             subtitle: 'Sumber Data',
             description: 'Data berasal dari sistem order fulfillment.',
             details: [
-              'Order Fulfillment (sp_Dashboard_OF1): status penyelesaian tiap tahap (Turun PPI, Potong Stock, Proses, Kemas, Dokumen, QC, QA) per batch'
+              'Order Fulfillment (sp_Dashboard_OF1): status penyelesaian tiap tahap (Turun PPI, Potong Stock, Proses, Kemas, Dokumen, QC, QA) per batch',
+              'Lock Batch (t_Batch_Lock, t_Batch_Lock_Hist): status dan riwayat lock/unlock QA per batch',
+              'Pengiriman (t_SPB_Header, t_SPB_Detail): jumlah batch yang sudah terkirim sebelum di-unlock'
             ]
           }
         ]
