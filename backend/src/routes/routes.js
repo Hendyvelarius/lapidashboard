@@ -85,7 +85,9 @@ router.get('/releasedBatchesYTD', SqlController.getReleasedBatchesYTD);
 router.get('/of1Target', SqlController.getOF1Target);
 router.get('/of1TargetProducts', SqlController.getOF1TargetProducts);
 router.get('/of1TargetConfig', SqlController.getOF1TargetConfig);
-router.post('/of1TargetConfig', SqlController.saveOF1TargetConfig);
+router.post('/of1TargetConfig', SqlController.saveOF1TargetConfig);   // PC / NT only (body.user); every change is audited
+router.get('/of1TargetAudit', SqlController.getOF1TargetAudit);       // who changed which target, newest first
+router.get('/of1TargetVersion', SqlController.getOF1TargetVersion);   // changes on every target save; dashboards poll it
 
 // Routing Batch Expiry
 router.get('/batchExpiry', SqlController.getBatchExpiry);

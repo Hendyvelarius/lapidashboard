@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { apiUrl } from '../api';
+import { useAuth } from '../context/AuthContext';
 import './OF1TargetModal.css';
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -16,6 +17,15 @@ function formatPeriode(p) {
   return `${MONTH_NAMES[month]} ${year}`;
 }
 
+// changed_at comes back as server-local time serialized with a 'Z'; show it as-is.
+function formatAuditTime(value) {
+  const m = String(value || '').match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (!m) return '';
+  return `${parseInt(m[3], 10)} ${MONTH_NAMES[parseInt(m[2], 10) - 1]} ${m[1]} ${m[4]}:${m[5]}`;
+}
+
+const formatPct = (v) => (v === null || v === undefined ? '—' : `${v}%`);
+
 function generateFuturePeriods(count = 12) {
   const periods = [];
   const now = new Date();
@@ -27,7 +37,10 @@ function generateFuturePeriods(count = 12) {
   return periods;
 }
 
-const OF1TargetModal = ({ isOpen, onClose }) => {
+// Departments allowed to change targets (mirrors OF1_TARGET_EDITOR_DEPTS in the backend).
+const TARGET_EDITOR_DEPTS = ['PC', 'NT'];
+
+const OF1TargetModal = ({ isOpen, onClose, onSaved }) => {
   const [selectedPeriode, setSelectedPeriode] = useState(() => getMinPeriode());
   const [products, setProducts] = useState([]);
   const [existingTargets, setExistingTargets] = useState({});
@@ -45,11 +58,36 @@ const OF1TargetModal = ({ isOpen, onClose }) => {
   const [showCopyModal, setShowCopyModal] = useState(false);
   const [copyTargetPeriods, setCopyTargetPeriods] = useState(new Set());
 
+  // Change history for the selected period (newest first)
+  const [history, setHistory] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
+
+  // Saves are audited, so they carry who is making the change.
+  const { user } = useAuth();
+  const editor = {
+    nik: user?.log_NIK || '',
+    name: user?.Nama || user?.nama || '',
+    dept: user?.emp_DeptID || ''
+  };
+  const canEdit = TARGET_EDITOR_DEPTS.includes(editor.dept) && editor.nik !== 'TV';
+
   const futurePeriods = useMemo(() => generateFuturePeriods(12), []);
+
+  const loadHistory = useCallback(async (periode) => {
+    try {
+      const res = await fetch(apiUrl(`/api/of1TargetAudit?periode=${periode}`));
+      const json = await res.json();
+      setHistory(json.data || []);
+    } catch (err) {
+      console.error('Failed to load OF1 target history:', err);
+      setHistory([]);
+    }
+  }, []);
 
   // Load products and existing config when period changes
   const loadData = useCallback(async (periode) => {
     setLoading(true);
+    loadHistory(periode);
     try {
       const [productsRes, configRes] = await Promise.all([
         fetch(apiUrl(`/api/of1TargetProducts?periode=${periode}`)),
@@ -76,7 +114,7 @@ const OF1TargetModal = ({ isOpen, onClose }) => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadHistory]);
 
   useEffect(() => {
     if (isOpen && selectedPeriode) {
@@ -201,12 +239,14 @@ const OF1TargetModal = ({ isOpen, onClose }) => {
       const res = await fetch(apiUrl('/api/of1TargetConfig'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ periode: selectedPeriode, targets })
+        body: JSON.stringify({ periode: selectedPeriode, targets, user: editor })
       });
       const result = await res.json();
       if (result.success) {
         setExistingTargets({ ...productTargets });
         setHasChanges(false);
+        loadHistory(selectedPeriode);
+        onSaved?.();
         showNotification('success', `Targets saved for ${formatPeriode(selectedPeriode)}`);
       } else {
         showNotification('error', result.error || 'Failed to save');
@@ -237,12 +277,13 @@ const OF1TargetModal = ({ isOpen, onClose }) => {
           fetch(apiUrl('/api/of1TargetConfig'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ periode: targetPeriode, targets })
+            body: JSON.stringify({ periode: targetPeriode, targets, user: editor })
           }).then(r => r.json())
         )
       );
 
       const failed = results.filter(r => !r.success);
+      if (failed.length < results.length) onSaved?.();
       if (failed.length === 0) {
         showNotification('success', `Copied to ${copyTargetPeriods.size} month(s) successfully`);
         setShowCopyModal(false);
@@ -311,6 +352,7 @@ const OF1TargetModal = ({ isOpen, onClose }) => {
             </select>
           </div>
 
+          {canEdit && (<>
           {/* Quick Category Apply */}
           <div className="of1target-control-group of1target-quick-apply">
             <label>Quick Apply by Category</label>
@@ -355,6 +397,12 @@ const OF1TargetModal = ({ isOpen, onClose }) => {
               </button>
             </div>
           </div>
+          </>)}
+          {!canEdit && (
+            <div className="of1target-control-group of1target-readonly-note">
+              View only — only {TARGET_EDITOR_DEPTS.join(' and ')} can change targets
+            </div>
+          )}
         </div>
 
         {/* Summary Bar */}
@@ -387,6 +435,52 @@ const OF1TargetModal = ({ isOpen, onClose }) => {
             />
           </div>
         </div>
+
+        {/* Last change (from the audit log) */}
+        <div className="of1target-audit-bar">
+          {history.length > 0 ? (
+            <span>
+              Last changed by <strong>{history[0].changed_by_name || history[0].changed_by}</strong>
+              {history[0].changed_by_name ? ` (${history[0].changed_by})` : ''}
+              {' · '}{formatAuditTime(history[0].changed_at)}
+              {' · '}{history.filter(h => h.save_id === history[0].save_id).length} product(s)
+            </span>
+          ) : (
+            <span>No recorded changes for {formatPeriode(selectedPeriode)}</span>
+          )}
+          {history.length > 0 && (
+            <button className="of1target-audit-toggle" onClick={() => setShowHistory(s => !s)}>
+              {showHistory ? 'Hide history' : 'Show history'}
+            </button>
+          )}
+        </div>
+
+        {showHistory && history.length > 0 && (
+          <div className="of1target-audit-list">
+            <table className="of1target-audit-table">
+              <thead>
+                <tr>
+                  <th>When</th>
+                  <th>By</th>
+                  <th>Product</th>
+                  <th>Old</th>
+                  <th>New</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((h, i) => (
+                  <tr key={`${h.save_id}-${h.product_id}-${i}`}>
+                    <td>{formatAuditTime(h.changed_at)}</td>
+                    <td>{h.changed_by_name || h.changed_by}{h.changed_by_dept ? ` · ${h.changed_by_dept}` : ''}</td>
+                    <td>{h.product_name || h.product_id}</td>
+                    <td>{formatPct(h.old_pct)}</td>
+                    <td>{formatPct(h.new_pct)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {/* Product Table */}
         <div className="of1target-table-container">
@@ -445,6 +539,7 @@ const OF1TargetModal = ({ isOpen, onClose }) => {
                           max="1000"
                           value={currentPct}
                           onChange={(e) => handleTargetChange(p.Product_ID, e.target.value)}
+                          disabled={!canEdit}
                           className={`of1target-cell-input ${currentPct > 0 ? 'of1target-cell-active' : ''}`}
                         />
                       </td>
@@ -467,24 +562,28 @@ const OF1TargetModal = ({ isOpen, onClose }) => {
         {/* Footer */}
         <div className="of1target-footer">
           <div className="of1target-footer-left">
-            <button
-              className="of1target-copy-btn"
-              onClick={() => setShowCopyModal(true)}
-              disabled={Object.keys(productTargets).length === 0}
-              title="Copy current setup to other months"
-            >
-              📋 Copy to Other Months
-            </button>
+            {canEdit && (
+              <button
+                className="of1target-copy-btn"
+                onClick={() => setShowCopyModal(true)}
+                disabled={Object.keys(productTargets).length === 0}
+                title="Copy current setup to other months"
+              >
+                📋 Copy to Other Months
+              </button>
+            )}
           </div>
           <div className="of1target-footer-right">
             <button className="of1target-cancel-btn" onClick={onClose}>Close</button>
-            <button
-              className="of1target-save-btn"
-              onClick={handleSave}
-              disabled={!hasChanges || saving}
-            >
-              {saving ? 'Saving...' : 'Save Changes'}
-            </button>
+            {canEdit && (
+              <button
+                className="of1target-save-btn"
+                onClick={handleSave}
+                disabled={!hasChanges || saving}
+              >
+                {saving ? 'Saving...' : 'Save Changes'}
+              </button>
+            )}
           </div>
         </div>
 

@@ -3620,6 +3620,27 @@ function SummaryDashboard() {
   // Helper functions for data caching
   const CACHE_KEY = 'SummaryDashboardData';
   const CACHE_DURATION = 60 * 60 * 1000; // 1 hour in milliseconds
+  const TARGET_VERSION_POLL = 60 * 1000; // how often an open page checks for OF1 target changes
+
+  // OF1 targets feed the planned batches, so data built before a target save is
+  // stale no matter how young it is. The backend exposes a version number that
+  // moves on every save; live data remembers the version it was built with.
+  const targetVersionRef = useRef(null);
+  const isHistoricalRef = useRef(isHistoricalData);
+  useEffect(() => { isHistoricalRef.current = isHistoricalData; }, [isHistoricalData]);
+
+  // Returns the current target version, or null when it cannot be checked
+  // (a failed check never blocks the page).
+  const fetchTargetVersion = async () => {
+    try {
+      const res = await fetch(apiUrl('/api/of1TargetVersion'));
+      if (!res.ok) return null;
+      const json = await res.json();
+      return typeof json.version === 'number' ? json.version : null;
+    } catch {
+      return null;
+    }
+  };
 
   const clearOldCacheEntries = () => {
     // Clear the main cache key
@@ -3646,10 +3667,11 @@ function SummaryDashboard() {
     });
   };
 
-  const saveDataToCache = (data, rawData) => {
+  const saveDataToCache = (data, rawData, targetVersion = null) => {
     const cacheData = {
       data,
       rawData,
+      targetVersion,
       timestamp: Date.now()
     };
     
@@ -3670,6 +3692,7 @@ function SummaryDashboard() {
           try {
             const minimalCache = {
               data,
+              targetVersion,
               timestamp: Date.now(),
               isMinimal: true
             };
@@ -3749,12 +3772,18 @@ function SummaryDashboard() {
     loadAvailablePeriods(); // Also refresh available periods
   };
 
-  const fetchAllData = async (forceRefresh = false) => {
+  // forceRefresh also bypasses the server cache; ignoreLocalCache only skips the
+  // browser cache (used after an OF1 target change, when the server cache has
+  // already been cleared). Returns the fresh { data, rawData } or null.
+  const fetchAllData = async (forceRefresh = false, { ignoreLocalCache = false } = {}) => {
     try {
       // Check cache first unless force refresh
-      if (!forceRefresh) {
+      if (!forceRefresh && !ignoreLocalCache) {
         const cachedData = getCachedData();
-        if (cachedData && !cachedData.isExpired) {
+        const currentVersion = cachedData && !cachedData.isExpired ? await fetchTargetVersion() : null;
+        const targetsChanged = currentVersion !== null && cachedData.targetVersion !== currentVersion;
+        if (cachedData && !cachedData.isExpired && !targetsChanged) {
+          targetVersionRef.current = cachedData.targetVersion ?? null;
           setData(cachedData.data);
           // Handle minimal cache (when rawData wasn't saved due to quota limits)
           if (cachedData.rawData && !cachedData.isMinimal) {
@@ -3771,19 +3800,23 @@ function SummaryDashboard() {
           }
           setLastFetchTime(cachedData.timestamp);
           setLoading(false);
-          return;
+          return null;
         }
       }
 
-      if (forceRefresh) {
+      if (forceRefresh || ignoreLocalCache) {
         setRefreshing(true);
       } else {
         setLoading(true);
       }
-      
+
       // Use apiUrlWithRefresh to bypass server cache when forceRefresh is true
       const buildUrl = (path) => forceRefresh ? apiUrlWithRefresh(path, true) : apiUrl(path);
-      
+
+      // Read the version before the data: if a save lands mid-fetch, the data
+      // is labelled with the older version and the next check refetches it.
+      const targetVersion = await fetchTargetVersion();
+
       const [wipRes, ofRes, pctRes, forecastRes, bbbkRes, dailySalesRes, lostSalesRes, otaRes, materialRes, batchExpiryRes, expiredMaterialsRes] = await Promise.all([
         fetch(buildUrl('/api/wip')),
         fetch(buildUrl('/api/ofsummary')),
@@ -3858,13 +3891,16 @@ function SummaryDashboard() {
       };
 
       setData(processedData);
-      
+
       // Save to cache
       const timestamp = Date.now();
-      saveDataToCache(processedData, rawData);
+      saveDataToCache(processedData, rawData, targetVersion);
+      targetVersionRef.current = targetVersion;
       setLastFetchTime(timestamp);
       setError(null); // Clear any previous errors on successful fetch
-      
+
+      return { data: processedData, rawData };
+
     } catch (error) {
       console.error('❌ Error fetching summary data:', error);
       
@@ -3878,10 +3914,47 @@ function SummaryDashboard() {
         message: error.message || 'An error occurred while loading data',
         timestamp: Date.now()
       });
+      return null;
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
+  };
+
+  // Called after an OF1 target save (here or in another browser): reload live
+  // data without the browser cache. The server cache was cleared by the save.
+  const refreshAfterTargetChange = () => {
+    if (isHistoricalRef.current) return Promise.resolve(null);
+    return fetchAllData(false, { ignoreLocalCache: true });
+  };
+
+  // Data for the Excel export. Live data built before the latest target save is
+  // reloaded first, so a download never carries planned batches from old targets.
+  const getExportSource = async () => {
+    const current = {
+      data, ofRawData, forecastRawData, lostSalesRawData, bbbkRawData, wipRawData,
+      pctRawData, otaRawData, materialRawData, batchExpiryRawData
+    };
+    if (isHistoricalData) return current;
+
+    const version = await fetchTargetVersion();
+    if (version === null || version === targetVersionRef.current) return current;
+
+    const fresh = await refreshAfterTargetChange();
+    if (!fresh) throw new Error('Could not reload data after an OF1 target change');
+    const raw = fresh.rawData;
+    return {
+      data: fresh.data,
+      ofRawData: applyOFBusinessLogic(raw.ofData),
+      forecastRawData: raw.forecastData,
+      lostSalesRawData: raw.lostSalesData,
+      bbbkRawData: raw.bbbkData,
+      wipRawData: raw.wipData,
+      pctRawData: raw.pctData,
+      otaRawData: raw.otaData,
+      materialRawData: raw.materialData,
+      batchExpiryRawData: raw.batchExpiryData
+    };
   };
 
   // Helper functions for OF stage analysis
@@ -4074,7 +4147,26 @@ function SummaryDashboard() {
       }
     }, 5 * 60 * 1000); // Check every 5 minutes
 
-    return () => clearInterval(intervalId);
+    // Reload as soon as someone saves OF1 targets, instead of waiting for the
+    // hour-long cache to run out.
+    let checkingTargets = false;
+    const targetIntervalId = setInterval(async () => {
+      if (checkingTargets || isHistoricalRef.current) return;
+      checkingTargets = true;
+      try {
+        const version = await fetchTargetVersion();
+        if (version !== null && version !== targetVersionRef.current && !isHistoricalRef.current) {
+          await refreshAfterTargetChange();
+        }
+      } finally {
+        checkingTargets = false;
+      }
+    }, TARGET_VERSION_POLL);
+
+    return () => {
+      clearInterval(intervalId);
+      clearInterval(targetIntervalId);
+    };
   }, []);
 
   // Load available snapshot periods
@@ -4212,6 +4304,12 @@ function SummaryDashboard() {
     
     setExporting(true);
     try {
+      // Fresh data when OF1 targets changed since this page loaded (shadows the state)
+      const {
+        data, ofRawData, forecastRawData, lostSalesRawData, bbbkRawData, wipRawData,
+        pctRawData, otaRawData, materialRawData, batchExpiryRawData
+      } = await getExportSource();
+
       // Use xlsx-js-style for styled exports
       const XLSX = await import('xlsx-js-style');
       
@@ -8527,6 +8625,7 @@ function SummaryDashboard() {
       <OF1TargetModal
         isOpen={of1TargetModalOpen}
         onClose={() => setOf1TargetModalOpen(false)}
+        onSaved={refreshAfterTargetChange}
       />
 
       <ProductionOutputModal

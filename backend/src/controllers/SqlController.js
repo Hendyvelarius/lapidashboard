@@ -2,6 +2,10 @@ const SqlModel = require('../models/sqlModel');
 const converterModel = require('../models/converterModel');
 const { cache, CACHE_TTL } = require('../utils/cache');
 
+// Bumped whenever cached results are invalidated. A fetch that started before
+// an invalidation must not write its (now stale) result back into the cache.
+let cacheGeneration = 0;
+
 // Helper function to get data with caching
 // If skipCache is true (from ?refresh=true query param), bypass cache and fetch fresh data
 async function getCachedData(cacheKey, fetchFn, ttl = CACHE_TTL.MEDIUM, skipCache = false) {
@@ -13,15 +17,34 @@ async function getCachedData(cacheKey, fetchFn, ttl = CACHE_TTL.MEDIUM, skipCach
       return cachedData;
     }
   }
-  
+
   // Fetch fresh data
+  const generation = cacheGeneration;
   const data = await fetchFn();
-  
-  // Store in cache (even if we skipped reading from it)
-  cache.set(cacheKey, data, ttl);
-  
+
+  // Store in cache (even if we skipped reading from it), unless it was
+  // invalidated while this fetch was running
+  if (generation === cacheGeneration) {
+    cache.set(cacheKey, data, ttl);
+  }
+
   return data;
 }
+
+// Every result built from sp_Dashboard_OF1 depends on m_target_of1_dashboard,
+// so a target save has to drop all of them.
+const OF1_CACHE_KEYS = ['of1Target', 'ofSummary', 'orderFulfillment', 'fulfillment', 'fulfillmentPerDept', 'fulfillmentPerKelompok'];
+const OF1_CACHE_PREFIXES = ['deptProductionFulfillment:'];
+function invalidateOF1Caches() {
+  cacheGeneration += 1;
+  OF1_CACHE_KEYS.forEach(key => cache.delete(key));
+  for (const key of Array.from(cache.cache.keys())) {
+    if (OF1_CACHE_PREFIXES.some(prefix => key.startsWith(prefix))) cache.delete(key);
+  }
+}
+
+// Departments allowed to change OF1 targets (emp_DeptID).
+const OF1_TARGET_EDITOR_DEPTS = ['PC', 'NT'];
 
 // Helper to check if request wants fresh data
 function shouldSkipCache(req) {
@@ -776,12 +799,55 @@ async function saveOF1TargetConfig(req, res) {
         return res.status(400).json({ success: false, error: 'Each target must have Product_ID and PersenTarget (0-1000)' });
       }
     }
-    const result = await SqlModel.saveOF1TargetConfig(periode, targets);
-    // Clear related cache
-    cache.delete(`of1Target`);
+    // Every change is audited, so the save needs to know who is making it.
+    // TV Mode tokens are display-only and identify a screen, not a person.
+    const u = req.body.user || {};
+    const nik = u.nik ? String(u.nik).trim() : '';
+    if (!nik || nik === 'TV') {
+      return res.status(401).json({ success: false, error: 'Please log in with your own account to change targets' });
+    }
+    const forwarded = req.headers['x-forwarded-for'];
+    const changedBy = {
+      nik: nik.slice(0, 20),
+      name: u.name ? String(u.name).trim().slice(0, 100) : '',
+      dept: u.dept ? String(u.dept).trim().toUpperCase().slice(0, 10) : '',
+      ip: String((forwarded ? forwarded.split(',')[0] : req.socket.remoteAddress) || '').trim().slice(0, 64),
+    };
+    if (!OF1_TARGET_EDITOR_DEPTS.includes(changedBy.dept)) {
+      return res.status(403).json({ success: false, error: `Only ${OF1_TARGET_EDITOR_DEPTS.join(' and ')} can change OF1 targets` });
+    }
+    const result = await SqlModel.saveOF1TargetConfig(periode, targets, changedBy);
+    // Everything computed from the targets is now stale
+    invalidateOF1Caches();
     res.json(result);
   } catch (err) {
     console.error('Error saving OF1 Target Config:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+// Cheap change marker for the dashboards: changes whenever a save alters a target.
+async function getOF1TargetVersion(req, res) {
+  try {
+    const version = await SqlModel.getOF1TargetVersion();
+    res.json({ version });
+  } catch (err) {
+    console.error('Error in fetching OF1 Target Version:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+async function getOF1TargetAudit(req, res) {
+  try {
+    const periode = req.query.periode;
+    if (!periode || !/^\d{6}$/.test(periode)) {
+      return res.status(400).json({ success: false, error: 'periode is required in YYYYMM format' });
+    }
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 200, 1), 1000);
+    const data = await SqlModel.getOF1TargetAudit(periode, limit);
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching OF1 Target Audit:', err);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 }
@@ -955,4 +1021,4 @@ async function getBatchesReport(req, res) {
   }
 }
 
-module.exports = { getBatchesReport, getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getPCTSummary, getOrderFulfillment, getStockReport, getofsummary, getPCTBreakdown, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getTahapanGroupCategories, getTahapanGroupAssignments, bulkUpsertTahapanGroups, getQCSummary, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getFGQCSummary, getFGQCInProcess, getFGQCByPeriod, getFGQCCompletedByPeriod, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig, getExpiredMaterials, getDeptProductionOutputYield, getDeptProductionFulfillment, getProductionMonitoring, getProductCategoryGroups, getProductionOutput, getProductionOutputRange };
+module.exports = { getBatchesReport, getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getPCTSummary, getOrderFulfillment, getStockReport, getofsummary, getPCTBreakdown, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getTahapanGroupCategories, getTahapanGroupAssignments, bulkUpsertTahapanGroups, getQCSummary, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getFGQCSummary, getFGQCInProcess, getFGQCByPeriod, getFGQCCompletedByPeriod, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig, getOF1TargetVersion, getOF1TargetAudit, getExpiredMaterials, getDeptProductionOutputYield, getDeptProductionFulfillment, getProductionMonitoring, getProductCategoryGroups, getProductionOutput, getProductionOutputRange };

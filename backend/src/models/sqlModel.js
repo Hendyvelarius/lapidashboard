@@ -2412,13 +2412,76 @@ async function getOF1TargetConfig(periodes) {
   return result.recordset;
 }
 
-async function saveOF1TargetConfig(periode, targets) {
+// ----------------------------------------------------------------------------
+// OF1 target audit (LAPI_Report.dbo.of1_target_audit). Created on first use so
+// a fresh environment needs no manual migration; the same DDL lives in
+// backend/migrations/create_of1_target_audit_table.sql.
+//
+// Audit rows are written from the lapifactory transaction through a
+// three-part name, so the target change and its audit entry commit or roll
+// back together (both databases live on the same instance).
+// ----------------------------------------------------------------------------
+const AUDIT_DB = process.env.LFSQL_Snapshot_Database || 'LAPI_Report';
+const MAIN_DB = process.env.LFSQL_Database || 'lapifactory';
+if (!/^\w+$/.test(AUDIT_DB) || !/^\w+$/.test(MAIN_DB)) {
+  throw new Error('LFSQL_Database / LFSQL_Snapshot_Database must be plain database names');
+}
+const OF1_AUDIT_TABLE = `[${AUDIT_DB}].dbo.of1_target_audit`;
+
+// Single-flight: two first saves at once would both pass the IS NULL guard.
+let of1AuditEnsured = false;
+let of1AuditEnsuring = null;
+function ensureOF1AuditTable() {
+  if (of1AuditEnsured) return Promise.resolve();
+  if (!of1AuditEnsuring) {
+    of1AuditEnsuring = (async () => {
+      const db = await connect();
+      await db.request().batch(`
+        IF OBJECT_ID('${AUDIT_DB}.dbo.of1_target_audit', 'U') IS NULL
+        BEGIN
+          EXEC('USE [${AUDIT_DB}];
+            CREATE TABLE dbo.of1_target_audit (
+              id              INT IDENTITY(1,1) PRIMARY KEY,
+              save_id         UNIQUEIDENTIFIER NOT NULL,
+              periode         VARCHAR(6)       NOT NULL,
+              product_id      NVARCHAR(20)     NOT NULL,
+              old_pct         INT              NULL,
+              new_pct         INT              NULL,
+              changed_by      VARCHAR(20)      NOT NULL,
+              changed_by_name NVARCHAR(100)    NULL,
+              changed_by_dept VARCHAR(10)      NULL,
+              client_ip       VARCHAR(64)      NULL,
+              changed_at      DATETIME         NOT NULL DEFAULT GETDATE()
+            );
+            CREATE INDEX IX_of1_target_audit_periode ON dbo.of1_target_audit (periode, changed_at DESC);
+            CREATE INDEX IX_of1_target_audit_product ON dbo.of1_target_audit (product_id, periode);');
+        END;
+      `);
+    })()
+      .then(() => { of1AuditEnsured = true; })
+      .finally(() => { of1AuditEnsuring = null; });
+  }
+  return of1AuditEnsuring;
+}
+
+async function saveOF1TargetConfig(periode, targets, changedBy) {
   // targets is an array of { Product_ID, PersenTarget }
+  // changedBy is { nik, name, dept, ip } of the user making the change
+  await ensureOF1AuditTable();
   const db = await connect();
   const transaction = new sql.Transaction(db);
   await transaction.begin();
-  
+
   try {
+    // Current values, locked until commit so a concurrent save cannot slip in
+    // between this read and the rewrite (which would make the audit's old_pct wrong).
+    const oldReq = new sql.Request(transaction);
+    oldReq.input('Periode', sql.VarChar, periode);
+    const oldRows = (await oldReq.query(
+      'SELECT Product_ID, PersenTarget FROM m_target_of1_dashboard WITH (UPDLOCK, HOLDLOCK) WHERE Periode = @Periode'
+    )).recordset;
+    const oldMap = new Map(oldRows.map(r => [r.Product_ID, r.PersenTarget]));
+
     // Delete existing entries for this period
     const deleteReq = new sql.Request(transaction);
     deleteReq.input('Periode', sql.VarChar, periode);
@@ -2436,13 +2499,70 @@ async function saveOF1TargetConfig(periode, targets) {
       });
       await insertReq.query(`INSERT INTO m_target_of1_dashboard (Periode, Product_ID, PersenTarget, TargetBets, ListBets) VALUES ${values}`);
     }
-    
+
+    // Audit only the products whose value actually changed (old_pct NULL = no
+    // row before, new_pct NULL = row dropped by this save).
+    const newMap = new Map(targets.map(t => [t.Product_ID, t.PersenTarget]));
+    const changes = [];
+    newMap.forEach((pct, pid) => {
+      const old = oldMap.has(pid) ? oldMap.get(pid) : null;
+      if (old !== pct) changes.push({ pid, old, pct });
+    });
+    oldMap.forEach((old, pid) => {
+      if (!newMap.has(pid)) changes.push({ pid, old, pct: null });
+    });
+
+    const saveId = changes.length > 0 ? (await new sql.Request(transaction).query('SELECT NEWID() AS id')).recordset[0].id : null;
+    for (let i = 0; i < changes.length; i += 100) {
+      const batch = changes.slice(i, i + 100);
+      const values = batch.map((c, idx) => `(@SaveId, @Periode, @apid${idx}, @aold${idx}, @anew${idx}, @By, @ByName, @ByDept, @Ip)`).join(', ');
+      const auditReq = new sql.Request(transaction);
+      auditReq.input('SaveId', sql.UniqueIdentifier, saveId);
+      auditReq.input('Periode', sql.VarChar, periode);
+      auditReq.input('By', sql.VarChar(20), changedBy.nik);
+      auditReq.input('ByName', sql.NVarChar(100), changedBy.name || null);
+      auditReq.input('ByDept', sql.VarChar(10), changedBy.dept || null);
+      auditReq.input('Ip', sql.VarChar(64), changedBy.ip || null);
+      batch.forEach((c, idx) => {
+        auditReq.input(`apid${idx}`, sql.NVarChar(20), c.pid);
+        auditReq.input(`aold${idx}`, sql.Int, c.old);
+        auditReq.input(`anew${idx}`, sql.Int, c.pct);
+      });
+      await auditReq.query(`INSERT INTO ${OF1_AUDIT_TABLE} (save_id, periode, product_id, old_pct, new_pct, changed_by, changed_by_name, changed_by_dept, client_ip) VALUES ${values}`);
+    }
+
     await transaction.commit();
-    return { success: true };
+    return { success: true, changed: changes.length, saveId };
   } catch (err) {
     await transaction.rollback();
     throw err;
   }
+}
+
+// Highest audit id = a version number that moves on every save that changed a target.
+async function getOF1TargetVersion() {
+  await ensureOF1AuditTable();
+  const db = await connect();
+  const result = await db.request().query(`SELECT ISNULL(MAX(id), 0) AS version FROM ${OF1_AUDIT_TABLE}`);
+  return result.recordset[0].version;
+}
+
+// Change history for one period, newest first.
+async function getOF1TargetAudit(periode, limit = 200) {
+  await ensureOF1AuditTable();
+  const db = await connect();
+  const result = await db.request()
+    .input('Periode', sql.VarChar, periode)
+    .input('Limit', sql.Int, limit)
+    .query(`
+      SELECT TOP (@Limit) a.save_id, a.periode, a.product_id, p.Product_Name AS product_name,
+             a.old_pct, a.new_pct, a.changed_by, a.changed_by_name, a.changed_by_dept, a.client_ip, a.changed_at
+      FROM ${OF1_AUDIT_TABLE} a
+      LEFT JOIN [${MAIN_DB}].dbo.m_Product p ON p.Product_ID = a.product_id
+      WHERE a.periode = @Periode
+      ORDER BY a.changed_at DESC, a.id DESC
+    `);
+  return result.recordset;
 }
 
 async function getExpiredMaterials() {
@@ -3543,4 +3663,4 @@ async function getBatchesReport(from, to) {
     UOM: r.UOM,
   }));
 }
-module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTBreakdownLegacy, getPCTBreakdownV2, getPCTSummary, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getTahapanGroupCategories, getTahapanGroupAssignments, bulkUpsertTahapanGroups, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getQCSummary, getFGQCInProcess, getFGQCByPeriod, getFGQCCompletedByPeriod, getFGQCSummary, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig, getExpiredMaterials, getDeptProductionOutputYield, getDeptProductionFulfillment, getProductionMonitoring, getProductCategoryGroups, getProductionOutput, getProductionOutputRange, getBatchesReport};
+module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTBreakdownLegacy, getPCTBreakdownV2, getPCTSummary, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getTahapanGroupCategories, getTahapanGroupAssignments, bulkUpsertTahapanGroups, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getQCSummary, getFGQCInProcess, getFGQCByPeriod, getFGQCCompletedByPeriod, getFGQCSummary, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig, getOF1TargetVersion, getOF1TargetAudit, getExpiredMaterials, getDeptProductionOutputYield, getDeptProductionFulfillment, getProductionMonitoring, getProductCategoryGroups, getProductionOutput, getProductionOutputRange, getBatchesReport};
