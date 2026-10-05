@@ -106,12 +106,14 @@ export const PAGE_ACCESS = {
 
   // Processing Control Tower. Which processes a user sees is decided inside the
   // page (frontend/src/config/controlTower.js): NT/PL/HQ/HD/MS/DS see everything,
-  // the owning departments see only their own steps. This list only gates entry.
+  // the owning departments see only their own steps (WH sees PC's). This list
+  // only gates entry: one of these departments AND one of these job levels
+  // (staff are excluded).
   'control-tower': {
     requireAuth: true,
-    allowedDepartments: ['NT', 'PL', 'HQ', 'HD', 'MS', 'DS', 'PN1', 'PN2', 'PC', 'QC', 'QA', 'MC'],
+    allowedDepartments: ['NT', 'PL', 'HQ', 'HD', 'MS', 'DS', 'WH', 'PN1', 'PN2', 'PC', 'QC', 'QA', 'MC'],
     allowedUserIds: ['HWA', 'JDV'],
-    allowedJobLevels: [],
+    allowedJobLevels: ['OFC', 'SPV', 'ASM', 'MGR', 'PL', 'HO', 'DIR'],
     specificCombinations: [],
   },
 

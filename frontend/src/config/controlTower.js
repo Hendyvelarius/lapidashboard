@@ -11,6 +11,12 @@ export const ALL_SEEING_DEPTS = ['NT', 'PL', 'HQ', 'HD', 'MS', 'DS'];
 /** Departments that own process steps; also the selector options. */
 export const SCOPED_DEPTS = ['PN1', 'PN2', 'PC', 'QC', 'QA', 'MC'];
 
+/**
+ * Departments that monitor another department's steps as their own. WH and PC
+ * are one function; WH owns no process steps, so it sees PC's.
+ */
+export const DEPT_ALIAS = { WH: 'PC' };
+
 /** User IDs that always get the all-seeing view (mirrors AccessSettings overrides). */
 export const ALL_SEEING_USERS = ['HWA', 'JDV'];
 
@@ -52,7 +58,8 @@ export function resolveConfigAccess(user) {
  *   mode 'dept' -> pinned to their own department
  */
 export function resolveScope(user) {
-  const dept = String(user?.emp_DeptID || '').toUpperCase();
+  const ownDept = String(user?.emp_DeptID || '').toUpperCase();
+  const dept = DEPT_ALIAS[ownDept] || ownDept;
   const nik = String(user?.log_NIK || '').toUpperCase();
   if (ALL_SEEING_DEPTS.includes(dept) || ALL_SEEING_USERS.includes(nik)) return { mode: 'all', depts: [] };
   if (SCOPED_DEPTS.includes(dept)) return { mode: 'dept', depts: [dept] };
