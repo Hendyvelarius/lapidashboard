@@ -2744,7 +2744,8 @@ async function getDeptProductionFulfillment(monthsBack = 13) {
 // The window is on the *production start*, not the batch date: the first real
 // processing step (Granulasi / Mixing / Filling / Cetak / Coating), with
 // preparation, changeover, cleaning and gowning-sterilisation steps skipped so
-// the date lands on when the batch genuinely went into process.
+// the date lands on when the batch genuinely went into process. Bought-in
+// products with no processing step start at packing instead (see START_TIER).
 //
 // Batch numbers recycle every ten years (product + seq + last digit of year),
 // so every join carries Batch_Date alongside Product_ID and Batch_No.
@@ -2811,6 +2812,25 @@ const IS_MIXING = (a) => `${a}.nama_tahapan LIKE 'Mixing%'`;
 const IS_FILL = (a) => `(${a}.tahapan_group = 'Filling' AND ${a}.nama_tahapan LIKE 'Fil%')`;
 const IS_FILL_KAPSUL = (a) => `${a}.nama_tahapan LIKE 'Fill%kapsul%'`;
 
+/**
+ * Which step marks the production start, as a tier: 0 = a real processing
+ * step, 1 = primary packing, 2 = secondary packing, NULL = neither.
+ *
+ * Bought-in products (Microgest and Floragyn soft capsules arrive as bulk;
+ * Infertreat and L-Bio Drop arrive filled) have no processing step at all, so
+ * their production starts at packing. A batch uses its lowest tier present
+ * anywhere in its flow, so batches that do have processing keep it as their start.
+ */
+const START_TIER = (a) => `CASE
+          WHEN ${a}.tahapan_group IN ('Granulasi', 'Mixing', 'Filling', 'Cetak', 'Coating')
+           AND ${a}.kode_tahapan NOT IN (${PREP_STEP_CODES.join(', ')})
+           AND ${NOT_PREP_NAME(a)}
+           -- Vial washing and sterilisation run hours ahead of the fill.
+           AND (${a}.tahapan_group <> 'Filling' OR ${IS_FILL(a)}) THEN 0
+          WHEN ${a}.tahapan_group = 'Kemas Primer' AND ${IS_KEMAS_PRIMER(a)} THEN 1
+          WHEN ${a}.tahapan_group = 'Kemas Sekunder' AND ${a}.nama_tahapan LIKE 'Kemas Sekunder%' THEN 2
+        END`;
+
 /** Product categories (jenis sediaan) used by the Production Monitoring filter. */
 async function getProductCategoryGroups() {
   const db = await connect();
@@ -2852,18 +2872,24 @@ async function getProductionMonitoring(from, to, dept = 'ALL', groupIds = []) {
         LEFT JOIN m_tahapan_group g ON g.kode_tahapan = CAST(a.kode_tahapan AS NVARCHAR(20))
         WHERE   LEN(a.Batch_Date) = 10 AND ISDATE(a.Batch_Date) = 1
     ),
+    tiered AS (
+        SELECT  Product_ID, Batch_No, Batch_Date, Urutan, No_urut, seq_id, StartDate,
+                ${START_TIER('steps')} AS tier
+        FROM    steps
+    ),
+    candidates AS (
+        SELECT  *, MIN(tier) OVER (PARTITION BY Product_ID, Batch_No, Batch_Date) AS batch_tier
+        FROM    tiered
+        WHERE   tier IS NOT NULL
+    ),
     prod AS (
         SELECT  Product_ID, Batch_No, Batch_Date, StartDate,
                 ROW_NUMBER() OVER (PARTITION BY Product_ID, Batch_No, Batch_Date
                                    ORDER BY Urutan, No_urut, seq_id) AS rn
-        FROM    steps
-        WHERE   tahapan_group IN ('Granulasi', 'Mixing', 'Filling', 'Cetak', 'Coating')
+        FROM    candidates
+        WHERE   tier = batch_tier
           AND   StartDate IS NOT NULL
           AND   StartDate < DATEADD(day, 1, @to)
-          AND   kode_tahapan NOT IN (${PREP_STEP_CODES.join(', ')})
-          AND ${NOT_PREP_NAME('steps')}
-          -- Vial washing and sterilisation run hours ahead of the fill.
-          AND   (tahapan_group <> 'Filling' OR ${IS_FILL('steps')})
     ),
     base AS (
         SELECT Product_ID, Batch_No, Batch_Date, StartDate AS ProsesProduksi
