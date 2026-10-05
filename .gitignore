@@ -23,3 +23,6 @@ backend/_*.js
 
 # Generated report exports
 exports/
+
+# Separate project kept alongside this repo, not part of it
+control-tower-scm/
