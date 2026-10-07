@@ -428,7 +428,7 @@ export const helpContent = {
               'Timbang: mulai "Penyiapan BB" → selesai "Pengiriman Bahan Baku"',
               'Produksi: mulai "Terima Bahan Baku" → selesai "Pengiriman Obat Jadi"',
               'QC: mulai "Pickup Sample QC" → selesai "Penyerahan Hasil Uji QC"',
-              'Mikro: dari uji pertama sampai uji terakhir ("Pengujian MC" / "Pengujian Sterilitas MC")',
+              'Mikro: dari uji pertama sampai uji terakhir ("Analisa Non Steril MC" / "Analisa Steril MC", dulu "Pengujian MC" / "Pengujian Sterilitas MC")',
               'QA: mulai "Penyerahan PPI ke QA" / "Penyerahan Hasil Uji QC" → selesai "Tempel Label Realese"',
               'Memakai hari kalender (termasuk akhir pekan & libur)',
               'Periode: MTD = batch selesai bulan ini; YTD = batch selesai tahun ini'
@@ -482,7 +482,7 @@ export const helpContent = {
               'Kemas Primer: mulai saat semua prasyarat pengemasan primer selesai → selesai saat proses pengemasan primer selesai',
               'Kemas Sekunder: mulai saat prasyarat pengemasan sekunder selesai → selesai "Pengiriman Obat Jadi"',
               'QC: mulai "Pickup Sample QC" → selesai "Penyerahan Hasil Uji QC"',
-              'Mikro: dari uji pertama hingga uji terakhir ("Pengujian MC" / "Pengujian Sterilitas MC")',
+              'Mikro: dari uji pertama hingga uji terakhir ("Analisa Non Steril MC" / "Analisa Steril MC", dulu "Pengujian MC" / "Pengujian Sterilitas MC")',
               'QA: mulai "Penyerahan PPI ke QA" / "Penyerahan Hasil Uji QC" → selesai "Tempel Label Realese"'
             ]
           },
@@ -639,7 +639,7 @@ export const helpContent = {
               'Kemas Primer: mulai saat semua prasyarat pengemasan primer selesai → selesai saat proses pengemasan primer selesai',
               'Kemas Sekunder: mulai saat prasyarat pengemasan sekunder selesai → selesai "Pengiriman Obat Jadi"',
               'QC: mulai "Pickup Sample QC" → selesai "Penyerahan Hasil Uji QC"',
-              'Mikro: dari uji pertama hingga uji terakhir ("Pengujian MC" / "Pengujian Sterilitas MC")',
+              'Mikro: dari uji pertama hingga uji terakhir ("Analisa Non Steril MC" / "Analisa Steril MC", dulu "Pengujian MC" / "Pengujian Sterilitas MC")',
               'QA: mulai "Penyerahan PPI ke QA" / "Penyerahan Hasil Uji QC" → selesai "Tempel Label Realese"'
             ]
           },
@@ -832,7 +832,7 @@ export const helpContent = {
               'Kemas Primer: mulai saat semua prasyarat pengemasan primer selesai → selesai saat proses pengemasan primer selesai',
               'Kemas Sekunder: mulai saat prasyarat pengemasan sekunder selesai → selesai "Pengiriman Obat Jadi"',
               'QC: mulai "Pickup Sample QC" → selesai "Penyerahan Hasil Uji QC"',
-              'Mikro: dari uji pertama hingga uji terakhir ("Pengujian MC" / "Pengujian Sterilitas MC")',
+              'Mikro: dari uji pertama hingga uji terakhir ("Analisa Non Steril MC" / "Analisa Steril MC", dulu "Pengujian MC" / "Pengujian Sterilitas MC")',
               'QA: mulai "Penyerahan PPI ke QA" / "Penyerahan Hasil Uji QC" → selesai "Tempel Label Realese"'
             ]
           },
@@ -1062,7 +1062,7 @@ export const helpContent = {
               'Kemas Primer: mulai saat semua prasyarat pengemasan primer selesai → selesai saat proses pengemasan primer selesai',
               'Kemas Sekunder: mulai saat prasyarat pengemasan sekunder selesai → selesai "Pengiriman Obat Jadi"',
               'QC: mulai "Pickup Sample QC" → selesai "Penyerahan Hasil Uji QC"',
-              'Mikro: dari uji pertama hingga uji terakhir ("Pengujian MC" / "Pengujian Sterilitas MC")',
+              'Mikro: dari uji pertama hingga uji terakhir ("Analisa Non Steril MC" / "Analisa Steril MC", dulu "Pengujian MC" / "Pengujian Sterilitas MC")',
               'QA: mulai "Penyerahan PPI ke QA" / "Penyerahan Hasil Uji QC" → selesai "Tempel Label Realese"'
             ]
           },

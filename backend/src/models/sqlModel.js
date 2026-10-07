@@ -642,6 +642,12 @@ async function getPCTBreakdownLegacy(period = 'MTD') {
   return result.recordset;
 }
 
+// The Mikro test steps, matched by code because their names changed: 215 was
+// "Pengujian MC" (now "Analisa Non Steril MC"), 216 was "Pengujian Sterilitas MC"
+// (now "Analisa Steril MC"). t_alur_proses keeps the name a batch was created
+// with, so older batches still carry the old names; the code covers both.
+const MIKRO_TEST_CODES = [215, 216];
+
 // New PCT breakdown: 5 groups (Timbang, Produksi, QC, Mikro, QA) with step-name-based
 // boundaries per the redefined stage-grouping rules. "Produksi" combines Proses +
 // Kemas Primer + Kemas Sekunder (Terima Bahan Baku start -> Pengiriman Obat Jadi end).
@@ -707,10 +713,10 @@ async function getPCTBreakdownV2(period = 'MTD') {
         MIN(CASE WHEN fa.nama_trim = 'Pickup Sample QC' THEN fa.StartDate END),
         MAX(CASE WHEN fa.nama_trim = 'Penyerahan Hasil Uji QC' THEN fa.EndDate END)
       ) AS QC_Days,
-      -- Mikro: MIN start / MAX end of Pengujian MC / Pengujian Sterilitas MC
+      -- Mikro: MIN start / MAX end of the MC test steps (Analisa Non Steril / Steril MC)
       DATEDIFF(DAY,
-        MIN(CASE WHEN fa.nama_trim IN ('Pengujian MC', 'Pengujian Sterilitas MC') THEN fa.StartDate END),
-        MAX(CASE WHEN fa.nama_trim IN ('Pengujian MC', 'Pengujian Sterilitas MC') THEN fa.EndDate END)
+        MIN(CASE WHEN fa.kode_tahapan IN (${MIKRO_TEST_CODES.join(', ')}) THEN fa.StartDate END),
+        MAX(CASE WHEN fa.kode_tahapan IN (${MIKRO_TEST_CODES.join(', ')}) THEN fa.EndDate END)
       ) AS Mikro_Days,
       -- QA: MIN start of (Penyerahan PPI ke QA [also matches the misspelled "Penyerahaan PPI ke QA"], Penyerahan Hasil Uji QC) -> Tempel Label Realese end
       DATEDIFF(DAY,
@@ -731,8 +737,8 @@ async function getPCTBreakdownV2(period = 'MTD') {
         MIN(CASE WHEN fa.nama_trim = 'Pickup Sample QC' THEN fa.StartDate END),
         MAX(CASE WHEN fa.nama_trim = 'Penyerahan Hasil Uji QC' THEN fa.EndDate END)) IS NOT NULL
       OR DATEDIFF(DAY,
-        MIN(CASE WHEN fa.nama_trim IN ('Pengujian MC', 'Pengujian Sterilitas MC') THEN fa.StartDate END),
-        MAX(CASE WHEN fa.nama_trim IN ('Pengujian MC', 'Pengujian Sterilitas MC') THEN fa.EndDate END)) IS NOT NULL
+        MIN(CASE WHEN fa.kode_tahapan IN (${MIKRO_TEST_CODES.join(', ')}) THEN fa.StartDate END),
+        MAX(CASE WHEN fa.kode_tahapan IN (${MIKRO_TEST_CODES.join(', ')}) THEN fa.EndDate END)) IS NOT NULL
       OR DATEDIFF(DAY,
         MIN(CASE WHEN fa.nama_trim IN ('Penyerahan PPI ke QA', 'Penyerahaan PPI ke QA', 'Penyerahan Hasil Uji QC') THEN fa.StartDate END),
         MAX(CASE WHEN fa.nama_trim = 'Tempel Label Realese' THEN fa.EndDate END)) IS NOT NULL

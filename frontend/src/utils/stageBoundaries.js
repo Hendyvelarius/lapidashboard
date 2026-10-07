@@ -35,8 +35,10 @@
  *                  end   = EndDate of "Pengiriman Obat Jadi"
  *   QC             start = StartDate of "Pickup Sample QC"
  *                  end   = EndDate   of "Penyerahan Hasil Uji QC"
- *   Mikro          start = MIN StartDate of "Pengujian MC" / "Pengujian Sterilitas MC"
- *                  end   = MAX EndDate   of "Pengujian MC" / "Pengujian Sterilitas MC"
+ *   Mikro          start = MIN StartDate of the MC test steps (kode 215 / 216:
+ *                          "Analisa Non Steril MC" / "Analisa Steril MC", formerly
+ *                          "Pengujian MC" / "Pengujian Sterilitas MC")
+ *                  end   = MAX EndDate   of the same steps
  *   QA             start = MIN StartDate of "Penyerahan PPI ke QA" / "Penyerahan Hasil Uji QC"
  *                  end   = EndDate of "Tempel Label Realese"
  *
@@ -76,8 +78,6 @@ const STEP = {
   TERIMA_BAHAN_BAKU: 'Terima Bahan Baku',
   PICKUP_SAMPLE_QC: 'Pickup Sample QC',
   PENYERAHAN_HASIL_UJI_QC: 'Penyerahan Hasil Uji QC',
-  PENGUJIAN_MC: 'Pengujian MC',
-  PENGUJIAN_STERILITAS_MC: 'Pengujian Sterilitas MC',
   PENYERAHAN_PPI_KE_QA: 'Penyerahan PPI ke QA',
   // The PPI-handoff step is misspelled "Penyerahaan PPI ke QA" (double-a) in the source
   // data. Match both spellings so QA's window opens for batches that only carry the typo'd
@@ -145,6 +145,19 @@ const endsOf = (entries, names) => {
   const set = new Set(names.map(norm));
   return entries.filter((e) => set.has(norm(e.nama_tahapan))).map((e) => e.EndDate);
 };
+
+// The Mikro test steps, matched by kode_tahapan because their names changed: 215 was
+// "Pengujian MC" (now "Analisa Non Steril MC"), 216 was "Pengujian Sterilitas MC" (now
+// "Analisa Steril MC"). Each batch keeps the name it was created with, so both spellings
+// occur. The names are a fallback for rows without a code (e.g. older snapshots).
+const MIKRO_TEST_CODES = new Set([215, 216]);
+const MIKRO_TEST_NAMES = new Set(
+  ['Pengujian MC', 'Pengujian Sterilitas MC', 'Analisa Non Steril MC', 'Analisa Steril MC']
+    .map((n) => n.toLowerCase())
+);
+const isMikroTestStep = (e) =>
+  MIKRO_TEST_CODES.has(Number(e.kode_tahapan)) ||
+  MIKRO_TEST_NAMES.has(norm(e.nama_tahapan).toLowerCase());
 
 /**
  * Build the set of prevStep names for a given tahapan_group within this batch.
@@ -341,8 +354,8 @@ export const computeStageBoundaries = (batchEntries) => {
       end: maxDate(endsOf(entries, [STEP.PENYERAHAN_HASIL_UJI_QC])),
     },
     'Mikro': {
-      start: minDate(startsOf(entries, [STEP.PENGUJIAN_MC, STEP.PENGUJIAN_STERILITAS_MC])),
-      end: maxDate(endsOf(entries, [STEP.PENGUJIAN_MC, STEP.PENGUJIAN_STERILITAS_MC])),
+      start: minDate(entries.filter(isMikroTestStep).map((e) => e.StartDate)),
+      end: maxDate(entries.filter(isMikroTestStep).map((e) => e.EndDate)),
     },
     'QA': {
       start: minDate(startsOf(entries, [STEP.PENYERAHAN_PPI_KE_QA, STEP.PENYERAHAN_PPI_KE_QA_TYPO, STEP.PENYERAHAN_HASIL_UJI_QC])),
