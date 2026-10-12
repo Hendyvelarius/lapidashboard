@@ -1,0 +1,385 @@
+/* Batch route modal: opens on top of other modals (theirs sit at z-index 1000). */
+.brm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1100;
+}
+
+.brm-modal {
+  --brm-done: #16a34a;
+  --brm-running: #eab308;
+  --brm-waiting: #ef4444;
+  background: white;
+  border-radius: 0.5rem;
+  width: 94%;
+  max-width: 820px;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+}
+
+.brm-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1rem 1.5rem 0.75rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.brm-header h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.brm-batch {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #4b5563;
+}
+
+.brm-sub {
+  margin-top: 2px;
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.brm-close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 0;
+}
+
+.brm-close:hover {
+  color: #111827;
+}
+
+.brm-empty {
+  padding: 3rem 1.5rem;
+  text-align: center;
+  color: #6b7280;
+  font-style: italic;
+}
+
+.brm-error {
+  color: #b91c1c;
+}
+
+.brm-top {
+  padding: 0.9rem 1.5rem 0.6rem;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* Where the batch is: the first thing to read. */
+.brm-focus {
+  border-radius: 0.5rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid;
+}
+
+.brm-focus.running {
+  background: #fefce8;
+  border-color: #fde047;
+}
+
+.brm-focus.next {
+  background: #fef2f2;
+  border-color: #fca5a5;
+}
+
+.brm-focus.complete {
+  background: #f0fdf4;
+  border-color: #86efac;
+}
+
+.brm-focus-title {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #4b5563;
+}
+
+.brm-focus-count {
+  margin-left: auto;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  color: #6b7280;
+}
+
+.brm-focus-step {
+  display: flex;
+  flex-direction: column;
+  margin-top: 0.35rem;
+}
+
+.brm-focus-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+.brm-focus-meta {
+  font-size: 0.8rem;
+  color: #4b5563;
+}
+
+.brm-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.brm-progress-bar {
+  display: flex;
+  height: 6px;
+  border-radius: 3px;
+  background: #fee2e2;
+  overflow: hidden;
+}
+
+.brm-progress-bar .done {
+  background: var(--brm-done);
+}
+
+.brm-progress-bar .running {
+  background: var(--brm-running);
+}
+
+.brm-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 1rem;
+  font-size: 0.78rem;
+  color: #4b5563;
+}
+
+.brm-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.brm-toggle {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.brm-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.brm-dot.done { background: var(--brm-done); }
+.brm-dot.running { background: var(--brm-running); }
+.brm-dot.waiting { background: var(--brm-waiting); }
+
+/* The route itself: a vertical rail of steps. */
+.brm-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem 1.5rem 0.75rem;
+  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+}
+
+.brm-step {
+  display: grid;
+  grid-template-columns: 1.8rem 18px 1fr auto;
+  align-items: center;
+  gap: 0 0.6rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 0.375rem;
+  position: relative;
+}
+
+.brm-step-no {
+  font-size: 0.72rem;
+  color: #9ca3af;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.brm-step-rail {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+/* The line joining one step's dot to the next. */
+.brm-step-rail::before {
+  content: '';
+  position: absolute;
+  top: -0.4rem;
+  bottom: -0.4rem;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  background: #e5e7eb;
+}
+
+.brm-step:first-child .brm-step-rail::before { top: 50%; }
+.brm-step:last-child .brm-step-rail::before { bottom: 50%; }
+
+.brm-step-rail .brm-dot {
+  position: relative;
+  box-shadow: 0 0 0 3px white;
+}
+
+.brm-step.done .brm-step-name {
+  color: #4b5563;
+}
+
+.brm-step-main {
+  min-width: 0;
+}
+
+.brm-step-name {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.brm-step-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 2px;
+}
+
+.brm-tag {
+  font-size: 0.68rem;
+  padding: 0 0.35rem;
+  border-radius: 3px;
+  background: #f3f4f6;
+  color: #4b5563;
+  font-weight: 600;
+}
+
+.brm-tag.group {
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+.brm-status {
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.brm-status.done { color: #15803d; }
+.brm-status.running { color: #a16207; }
+.brm-status.waiting { color: #b91c1c; }
+
+.brm-step-time {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 0.75rem;
+  color: #374151;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.brm-muted {
+  color: #9ca3af;
+}
+
+/* Where the batch is. */
+.brm-step.focus.running {
+  background: #fefce8;
+  box-shadow: inset 0 0 0 1.5px #facc15;
+}
+
+.brm-step.focus.waiting {
+  background: #fef2f2;
+  box-shadow: inset 0 0 0 1.5px #f87171;
+}
+
+.brm-step.focus .brm-step-rail .brm-dot {
+  width: 14px;
+  height: 14px;
+  box-shadow: 0 0 0 3px white, 0 0 0 5px currentColor;
+}
+
+.brm-step.focus.running .brm-step-rail .brm-dot { color: #fde68a; }
+.brm-step.focus.waiting .brm-step-rail .brm-dot { color: #fecaca; }
+
+.brm-here {
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: white;
+}
+
+.brm-here.running { background: #ca8a04; }
+.brm-here.waiting { background: #dc2626; }
+
+.brm-footer {
+  padding: 0.5rem 1.5rem;
+  font-size: 0.72rem;
+  color: #9ca3af;
+  border-top: 1px solid #f3f4f6;
+}
+
+@media (max-width: 640px) {
+  .brm-header,
+  .brm-top,
+  .brm-list,
+  .brm-footer {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .brm-step {
+    grid-template-columns: 1.4rem 18px 1fr;
+  }
+
+  .brm-step-time {
+    grid-column: 3;
+    align-items: flex-start;
+    flex-direction: row;
+    gap: 0.5rem;
+    margin-top: 2px;
+  }
+
+  .brm-toggle {
+    margin-left: 0;
+  }
+}

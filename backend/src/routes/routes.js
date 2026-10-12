@@ -29,6 +29,7 @@ router.get('/wipGroup', SqlController.getWipByGroup);
 router.get('/wipData', SqlController.getWIPData);
 router.get('/alur', SqlController.getAlur);
 router.get('/batch', SqlController.getBatchAlur);
+router.get('/batchRoute', SqlController.getBatchRoute);   // ?productId=..&batchNo=.. -> one batch's full route, live
 
 // Routing Dept Production Dashboard
 router.get('/deptProduction/outputYield', SqlController.getDeptProductionOutputYield);

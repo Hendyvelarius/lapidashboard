@@ -108,6 +108,23 @@ async function getBatchAlur(req, res) {
   }
 }
 
+// Controller for /batchRoute?productId=...&batchNo=...
+// Not cached: the modal is opened to see where a batch is right now.
+async function getBatchRoute(req, res) {
+  try {
+    const productId = String(req.query.productId || '').trim();
+    const batchNo = String(req.query.batchNo || '').trim();
+    if (!productId || !batchNo) {
+      return res.status(400).json({ error: 'productId and batchNo query parameters are required' });
+    }
+    const data = await SqlModel.getBatchRoute(productId, batchNo);
+    res.json({ data });
+  } catch (err) {
+    console.error('Error in fetching batch route:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
 
 // Controller for /fulfillmentKelompok
 async function getFulfillmentPerKelompok(req, res) {
@@ -1021,4 +1038,4 @@ async function getBatchesReport(req, res) {
   }
 }
 
-module.exports = { getBatchesReport, getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getPCTSummary, getOrderFulfillment, getStockReport, getofsummary, getPCTBreakdown, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getTahapanGroupCategories, getTahapanGroupAssignments, bulkUpsertTahapanGroups, getQCSummary, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getFGQCSummary, getFGQCInProcess, getFGQCByPeriod, getFGQCCompletedByPeriod, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig, getOF1TargetVersion, getOF1TargetAudit, getExpiredMaterials, getDeptProductionOutputYield, getDeptProductionFulfillment, getProductionMonitoring, getProductCategoryGroups, getProductionOutput, getProductionOutputRange };
+module.exports = { getBatchesReport, getBatchRoute, getLostSales, getOTA, getMaterial, getWip, getDailySales, getbbbk, getAlur, getForecast, getMonthlyForecast, getBatchAlur, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly ,getProductCycleTimeAverage, getPCTSummary, getOrderFulfillment, getStockReport, getofsummary, getPCTBreakdown, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getTahapanGroupCategories, getTahapanGroupAssignments, bulkUpsertTahapanGroups, getQCSummary, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getFGQCSummary, getFGQCInProcess, getFGQCByPeriod, getFGQCCompletedByPeriod, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig, getOF1TargetVersion, getOF1TargetAudit, getExpiredMaterials, getDeptProductionOutputYield, getDeptProductionFulfillment, getProductionMonitoring, getProductCategoryGroups, getProductionOutput, getProductionOutputRange };

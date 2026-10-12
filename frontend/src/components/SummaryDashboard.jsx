@@ -10,6 +10,7 @@ import ContextualHelpModal from './ContextualHelpModal';
 import { useHelp } from '../context/HelpContext';
 import { useAuth } from '../context/AuthContext';
 import OF1TargetModal from './OF1TargetModal';
+import BatchRouteModal from './BatchRouteModal';
 import ProductionOutputModal from './ProductionOutputModal';
 import BatchesReportModal from './BatchesReportModal';
 import { sortByProductThenBatch, compareBatchNo } from '../utils/batchSort';
@@ -3257,10 +3258,11 @@ const OF_STAGE_COLORS = {
 // batch number as far as ordering goes.
 const batchSortKey = (batchNo) => String(batchNo ?? '').trim().replace(/\.+$/, '');
 
-const OFDetailsModal = ({ isOpen, onClose, stageName, ofRawData, refYear }) => {
+const OFDetailsModal = ({ isOpen, onClose, stageName, ofRawData, refYear, historical }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [view, setView] = useState('all'); // 'pending' | 'done' | 'all'
   const [sortBy, setSortBy] = useState('name'); // 'name' | 'pending'
+  const [routeBatch, setRouteBatch] = useState(null); // batch whose alur proses is open on top
 
   if (!isOpen || !stageName) return null;
 
@@ -3423,13 +3425,15 @@ const OFDetailsModal = ({ isOpen, onClose, stageName, ofRawData, refYear }) => {
                 </div>
                 <div className="of1-detail-chips">
                   {visible.map((b, i) => (
-                    <span
+                    <button
+                      type="button"
                       key={`${b.batchNo}-${i}`}
                       className={`of1-batch-chip ${b.done ? 'done' : 'pending'} ${batchMatches(b) ? 'match' : ''}`}
-                      title={`${b.batchNo} · ${b.done ? 'sudah' : 'belum'} ${stageName}`}
+                      title={`${b.batchNo} · ${b.done ? 'sudah' : 'belum'} ${stageName} · klik untuk lihat alur proses`}
+                      onClick={() => setRouteBatch({ productId: p.id, productName: p.name, batchNo: b.batchNo })}
                     >
                       {b.batchNo}
-                    </span>
+                    </button>
                   ))}
                   {hidden > 0 && (
                     <span className="of1-batch-more">
@@ -3442,6 +3446,16 @@ const OFDetailsModal = ({ isOpen, onClose, stageName, ofRawData, refYear }) => {
           })}
         </div>
       </div>
+
+      {routeBatch && (
+        <BatchRouteModal
+          productId={routeBatch.productId}
+          productName={routeBatch.productName}
+          batchNo={routeBatch.batchNo}
+          historical={historical}
+          onClose={() => setRouteBatch(null)}
+        />
+      )}
     </div>
   );
 };
@@ -8375,6 +8389,7 @@ function SummaryDashboard() {
           onClose={() => setOfModalOpen(false)}
           stageName={selectedOfStage}
           ofRawData={ofRawData}
+          historical={isHistoricalData}
           refYear={(isHistoricalData && historicalReferenceDate ? new Date(historicalReferenceDate) : new Date()).getFullYear()}
         />
         

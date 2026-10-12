@@ -644,6 +644,18 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   border: 1px solid;
   line-height: 1.4;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.of1-batch-chip:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
+}
+
+.of1-batch-chip:focus-visible {
+  outline: 2px solid var(--of1-accent);
+  outline-offset: 1px;
 }
 
 .of1-batch-chip.pending {

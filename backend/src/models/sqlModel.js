@@ -128,6 +128,30 @@ async function AlurProsesBatch(batchNo) {
   return result.recordset;
 }
 
+// One batch's full route (every planned step, future ones included) for the
+// batch route modal. Batch numbers don't repeat across products, but the product
+// is still part of the key; if a batch was registered under more than one
+// Batch_Date, the latest registration is the one in play.
+async function getBatchRoute(productId, batchNo) {
+  const db = await connect();
+  const request = db.request();
+  request.input('productId', sql.VarChar, productId);
+  request.input('batchNo', sql.VarChar, batchNo);
+  const result = await request.query(`
+    SELECT a.PK_ID, a.Product_ID, a.Batch_No, a.Batch_Date, a.Urutan, a.kode_tahapan,
+           LTRIM(RTRIM(a.nama_tahapan)) AS nama_tahapan, a.dept, a.Prev_Step,
+           a.StartDate, a.EndDate, g.tahapan_group, p.Product_Name
+    FROM t_alur_proses a
+    LEFT JOIN m_tahapan_group g ON g.kode_tahapan = a.kode_tahapan
+    LEFT JOIN m_product p ON p.Product_ID = a.Product_ID
+    WHERE a.Product_ID = @productId AND a.Batch_No = @batchNo
+      AND a.Batch_Date = (SELECT MAX(x.Batch_Date) FROM t_alur_proses x
+                          WHERE x.Product_ID = @productId AND x.Batch_No = @batchNo)
+    ORDER BY a.Urutan, a.PK_ID
+  `);
+  return result.recordset;
+}
+
 async function getFulfillment() {
   const db = await connect();
   const result = await db.request().query(`EXEC sp_Dashboard_OF1 'SummaryTotal';`);
@@ -3695,4 +3719,4 @@ async function getBatchesReport(from, to) {
     UOM: r.UOM,
   }));
 }
-module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTBreakdownLegacy, getPCTBreakdownV2, getPCTSummary, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getTahapanGroupCategories, getTahapanGroupAssignments, bulkUpsertTahapanGroups, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getQCSummary, getFGQCInProcess, getFGQCByPeriod, getFGQCCompletedByPeriod, getFGQCSummary, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig, getOF1TargetVersion, getOF1TargetAudit, getExpiredMaterials, getDeptProductionOutputYield, getDeptProductionFulfillment, getProductionMonitoring, getProductCategoryGroups, getProductionOutput, getProductionOutputRange, getBatchesReport};
+module.exports = { WorkInProgress, getMaterial ,getOTA, getDailySales, getLostSales, getbbbk, WorkInProgressAlur, AlurProsesBatch, getBatchRoute, getFulfillmentPerKelompok, getFulfillment, getFulfillmentPerDept, getOrderFulfillment, getWipProdByDept, getWipByGroup, getProductCycleTime, getProductCycleTimeYearly, getStockReport, getMonthlyForecast, getForecast, getofsummary, getPCTBreakdown, getPCTBreakdownLegacy, getPCTBreakdownV2, getPCTSummary, getPCTRawData, getWIPData, getProductList, getOTCProducts, getProductGroupDept, getReleasedBatches, getReleasedBatchesYTD, getDailyProduction, getLeadTime, getOF1Target, getBatchExpiry, getHolidays, getProductTypes, getProductTypeAssignments, getProductsWithoutType, getWIPProductsWithoutType, upsertProductType, bulkUpsertProductTypes, deleteProductType, getTahapanGroupCategories, getTahapanGroupAssignments, bulkUpsertTahapanGroups, getQCInProcess, getQCByPeriod, getQCCompletedByPeriod, getQCSummary, getFGQCInProcess, getFGQCByPeriod, getFGQCCompletedByPeriod, getFGQCSummary, getOF1TargetProducts, getOF1TargetConfig, saveOF1TargetConfig, getOF1TargetVersion, getOF1TargetAudit, getExpiredMaterials, getDeptProductionOutputYield, getDeptProductionFulfillment, getProductionMonitoring, getProductCategoryGroups, getProductionOutput, getProductionOutputRange, getBatchesReport};
