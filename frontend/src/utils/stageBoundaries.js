@@ -33,13 +33,15 @@
  *                          "Kemas Sekunder ..." step (e.g. LABUMIN KAPSUL), fall back to the
  *                          old rule: MIN EndDate among prevSteps of the "Kemas Sekunder" group.
  *                  end   = EndDate of "Pengiriman Obat Jadi"
- *   QC             start = StartDate of "Pickup Sample QC"
- *                  end   = EndDate   of "Penyerahan Hasil Uji QC"
+ *   QC             start = StartDate of the sample pickup (kode 138: "Terima Sampel QC",
+ *                          formerly "Pickup Sample QC")
+ *                  end   = EndDate   of the result handover (kode 141: "Serah Terima Hasil
+ *                          QC Ke QA", formerly "Penyerahan Hasil Uji QC")
  *   Mikro          start = MIN StartDate of the MC test steps (kode 215 / 216:
  *                          "Analisa Non Steril MC" / "Analisa Steril MC", formerly
  *                          "Pengujian MC" / "Pengujian Sterilitas MC")
  *                  end   = MAX EndDate   of the same steps
- *   QA             start = MIN StartDate of "Penyerahan PPI ke QA" / "Penyerahan Hasil Uji QC"
+ *   QA             start = MIN StartDate of "Penyerahan PPI ke QA" / the QC result handover
  *                  end   = EndDate of "Tempel Label Realese"
  *
  * PCT-only combined group "Produksi" = Proses.start -> Kemas Sekunder.end
@@ -76,12 +78,10 @@ const STEP = {
   PENYIAPAN_BB: 'Penyiapan BB',
   PENGIRIMAN_BB: 'Pengiriman Bahan Baku',
   TERIMA_BAHAN_BAKU: 'Terima Bahan Baku',
-  PICKUP_SAMPLE_QC: 'Pickup Sample QC',
-  PENYERAHAN_HASIL_UJI_QC: 'Penyerahan Hasil Uji QC',
   PENYERAHAN_PPI_KE_QA: 'Penyerahan PPI ke QA',
   // The PPI-handoff step is misspelled "Penyerahaan PPI ke QA" (double-a) in the source
   // data. Match both spellings so QA's window opens for batches that only carry the typo'd
-  // variant (e.g. routes with no "Penyerahan Hasil Uji QC" step).
+  // variant (e.g. routes with no QC result handover step).
   PENYERAHAN_PPI_KE_QA_TYPO: 'Penyerahaan PPI ke QA',
   TEMPEL_LABEL_REALESE: 'Tempel Label Realese',
   PENGIRIMAN_OBAT_JADI: 'Pengiriman Obat Jadi',
@@ -158,6 +158,16 @@ const MIKRO_TEST_NAMES = new Set(
 const isMikroTestStep = (e) =>
   MIKRO_TEST_CODES.has(Number(e.kode_tahapan)) ||
   MIKRO_TEST_NAMES.has(norm(e.nama_tahapan).toLowerCase());
+
+// The QC sample pickup and result handover were renamed the same way: 138 was
+// "Pickup Sample QC" (now "Terima Sampel QC"), 141 was "Penyerahan Hasil Uji QC" (now
+// "Serah Terima Hasil QC Ke QA"). Matched by code, names as the fallback.
+const stepByCodeOrName = (code, names) => {
+  const lower = new Set(names.map((n) => norm(n).toLowerCase()));
+  return (e) => Number(e.kode_tahapan) === code || lower.has(norm(e.nama_tahapan).toLowerCase());
+};
+const isQcPickupStep = stepByCodeOrName(138, ['Pickup Sample QC', 'Terima Sampel QC', 'Pick Up Sampel QC']);
+const isQcHandoverStep = stepByCodeOrName(141, ['Penyerahan Hasil Uji QC', 'Serah Terima Hasil QC Ke QA']);
 
 /**
  * Build the set of prevStep names for a given tahapan_group within this batch.
@@ -350,15 +360,18 @@ export const computeStageBoundaries = (batchEntries) => {
       end: ks.end,
     },
     'QC': {
-      start: minDate(startsOf(entries, [STEP.PICKUP_SAMPLE_QC])),
-      end: maxDate(endsOf(entries, [STEP.PENYERAHAN_HASIL_UJI_QC])),
+      start: minDate(entries.filter(isQcPickupStep).map((e) => e.StartDate)),
+      end: maxDate(entries.filter(isQcHandoverStep).map((e) => e.EndDate)),
     },
     'Mikro': {
       start: minDate(entries.filter(isMikroTestStep).map((e) => e.StartDate)),
       end: maxDate(entries.filter(isMikroTestStep).map((e) => e.EndDate)),
     },
     'QA': {
-      start: minDate(startsOf(entries, [STEP.PENYERAHAN_PPI_KE_QA, STEP.PENYERAHAN_PPI_KE_QA_TYPO, STEP.PENYERAHAN_HASIL_UJI_QC])),
+      start: minDate([
+        ...startsOf(entries, [STEP.PENYERAHAN_PPI_KE_QA, STEP.PENYERAHAN_PPI_KE_QA_TYPO]),
+        ...entries.filter(isQcHandoverStep).map((e) => e.StartDate),
+      ]),
       end: maxDate(endsOf(entries, [STEP.TEMPEL_LABEL_REALESE])),
     },
   };

@@ -179,7 +179,12 @@ const BatchRouteModal = ({ productId, batchNo, productName, onClose, historical 
         ) : steps === null ? (
           <div className="brm-empty">Memuat alur proses...</div>
         ) : rows.length === 0 ? (
-          <div className="brm-empty">Tidak ada alur proses untuk batch ini.</div>
+          // The route is created when stock is cut for the batch (Potong Stock), not
+          // when it is registered, so a batch with its PPI issued can have none yet.
+          <div className="brm-empty">
+            Alur proses batch ini belum dibuat. Alur proses baru terbentuk setelah stok
+            dipotong (Potong Stock); batch yang baru Turun PPI belum memilikinya.
+          </div>
         ) : (
           <>
             <div className="brm-top">

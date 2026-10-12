@@ -427,9 +427,9 @@ export const helpContent = {
             details: [
               'Timbang: mulai "Penyiapan BB" → selesai "Pengiriman Bahan Baku"',
               'Produksi: mulai "Terima Bahan Baku" → selesai "Pengiriman Obat Jadi"',
-              'QC: mulai "Pickup Sample QC" → selesai "Penyerahan Hasil Uji QC"',
+              'QC: mulai "Terima Sampel QC" → selesai "Serah Terima Hasil QC Ke QA" (dulu "Pickup Sample QC" / "Penyerahan Hasil Uji QC")',
               'Mikro: dari uji pertama sampai uji terakhir ("Analisa Non Steril MC" / "Analisa Steril MC", dulu "Pengujian MC" / "Pengujian Sterilitas MC")',
-              'QA: mulai "Penyerahan PPI ke QA" / "Penyerahan Hasil Uji QC" → selesai "Tempel Label Realese"',
+              'QA: mulai "Penyerahan PPI ke QA" / "Serah Terima Hasil QC Ke QA" → selesai "Tempel Label Realese"',
               'Memakai hari kalender (termasuk akhir pekan & libur)',
               'Periode: MTD = batch selesai bulan ini; YTD = batch selesai tahun ini'
             ]
@@ -481,9 +481,9 @@ export const helpContent = {
               'Proses: mulai "Terima Bahan Baku" → selesai tepat saat Kemas Primer dimulai',
               'Kemas Primer: mulai saat semua prasyarat pengemasan primer selesai → selesai saat proses pengemasan primer selesai',
               'Kemas Sekunder: mulai saat prasyarat pengemasan sekunder selesai → selesai "Pengiriman Obat Jadi"',
-              'QC: mulai "Pickup Sample QC" → selesai "Penyerahan Hasil Uji QC"',
+              'QC: mulai "Terima Sampel QC" → selesai "Serah Terima Hasil QC Ke QA" (dulu "Pickup Sample QC" / "Penyerahan Hasil Uji QC")',
               'Mikro: dari uji pertama hingga uji terakhir ("Analisa Non Steril MC" / "Analisa Steril MC", dulu "Pengujian MC" / "Pengujian Sterilitas MC")',
-              'QA: mulai "Penyerahan PPI ke QA" / "Penyerahan Hasil Uji QC" → selesai "Tempel Label Realese"'
+              'QA: mulai "Penyerahan PPI ke QA" / "Serah Terima Hasil QC Ke QA" → selesai "Tempel Label Realese"'
             ]
           },
           {
@@ -638,9 +638,9 @@ export const helpContent = {
               'Proses: mulai "Terima Bahan Baku" → selesai tepat saat Kemas Primer dimulai',
               'Kemas Primer: mulai saat semua prasyarat pengemasan primer selesai → selesai saat proses pengemasan primer selesai',
               'Kemas Sekunder: mulai saat prasyarat pengemasan sekunder selesai → selesai "Pengiriman Obat Jadi"',
-              'QC: mulai "Pickup Sample QC" → selesai "Penyerahan Hasil Uji QC"',
+              'QC: mulai "Terima Sampel QC" → selesai "Serah Terima Hasil QC Ke QA" (dulu "Pickup Sample QC" / "Penyerahan Hasil Uji QC")',
               'Mikro: dari uji pertama hingga uji terakhir ("Analisa Non Steril MC" / "Analisa Steril MC", dulu "Pengujian MC" / "Pengujian Sterilitas MC")',
-              'QA: mulai "Penyerahan PPI ke QA" / "Penyerahan Hasil Uji QC" → selesai "Tempel Label Realese"'
+              'QA: mulai "Penyerahan PPI ke QA" / "Serah Terima Hasil QC Ke QA" → selesai "Tempel Label Realese"'
             ]
           },
           {
@@ -831,9 +831,9 @@ export const helpContent = {
               'Proses: mulai "Terima Bahan Baku" → selesai tepat saat Kemas Primer dimulai',
               'Kemas Primer: mulai saat semua prasyarat pengemasan primer selesai → selesai saat proses pengemasan primer selesai',
               'Kemas Sekunder: mulai saat prasyarat pengemasan sekunder selesai → selesai "Pengiriman Obat Jadi"',
-              'QC: mulai "Pickup Sample QC" → selesai "Penyerahan Hasil Uji QC"',
+              'QC: mulai "Terima Sampel QC" → selesai "Serah Terima Hasil QC Ke QA" (dulu "Pickup Sample QC" / "Penyerahan Hasil Uji QC")',
               'Mikro: dari uji pertama hingga uji terakhir ("Analisa Non Steril MC" / "Analisa Steril MC", dulu "Pengujian MC" / "Pengujian Sterilitas MC")',
-              'QA: mulai "Penyerahan PPI ke QA" / "Penyerahan Hasil Uji QC" → selesai "Tempel Label Realese"'
+              'QA: mulai "Penyerahan PPI ke QA" / "Serah Terima Hasil QC Ke QA" → selesai "Tempel Label Realese"'
             ]
           },
           {
@@ -1048,7 +1048,7 @@ export const helpContent = {
             description: 'Sistem mengambil batch aktif, menentukan tahap tiap batch dari langkah proses yang sudah/belum berjalan, lalu menghitung lama di tahap = hari kalender sejak tahap dimulai hingga hari ini.',
             details: [
               'Batch aktif = batch berstatus "Open" yang belum menyelesaikan "Tempel Label Realese"',
-              'Awal & akhir tiap tahap ditentukan dari langkah proses spesifik (mis. QC dimulai saat "Pickup Sample QC")',
+              'Awal & akhir tiap tahap ditentukan dari langkah proses spesifik (mis. QC dimulai saat "Terima Sampel QC")',
               'Durasi di tahap = jumlah hari kalender dari tahap dimulai sampai hari ini',
               '"Menunggu" vs "Berjalan": jendela tahap terbuka tetapi langkahnya belum dimulai = Menunggu; sudah dimulai = Berjalan'
             ]
@@ -1061,9 +1061,9 @@ export const helpContent = {
               'Proses: mulai "Terima Bahan Baku" → selesai tepat saat Kemas Primer dimulai',
               'Kemas Primer: mulai saat semua prasyarat pengemasan primer selesai → selesai saat proses pengemasan primer selesai',
               'Kemas Sekunder: mulai saat prasyarat pengemasan sekunder selesai → selesai "Pengiriman Obat Jadi"',
-              'QC: mulai "Pickup Sample QC" → selesai "Penyerahan Hasil Uji QC"',
+              'QC: mulai "Terima Sampel QC" → selesai "Serah Terima Hasil QC Ke QA" (dulu "Pickup Sample QC" / "Penyerahan Hasil Uji QC")',
               'Mikro: dari uji pertama hingga uji terakhir ("Analisa Non Steril MC" / "Analisa Steril MC", dulu "Pengujian MC" / "Pengujian Sterilitas MC")',
-              'QA: mulai "Penyerahan PPI ke QA" / "Penyerahan Hasil Uji QC" → selesai "Tempel Label Realese"'
+              'QA: mulai "Penyerahan PPI ke QA" / "Serah Terima Hasil QC Ke QA" → selesai "Tempel Label Realese"'
             ]
           },
           {

@@ -672,6 +672,12 @@ async function getPCTBreakdownLegacy(period = 'MTD') {
 // with, so older batches still carry the old names; the code covers both.
 const MIKRO_TEST_CODES = [215, 216];
 
+// The QC sample pickup and result handover, matched by code for the same reason:
+// 138 was "Pickup Sample QC" (now "Terima Sampel QC"), 141 was "Penyerahan Hasil
+// Uji QC" (now "Serah Terima Hasil QC Ke QA").
+const QC_PICKUP_CODE = 138;
+const QC_HANDOVER_CODE = 141;
+
 // New PCT breakdown: 5 groups (Timbang, Produksi, QC, Mikro, QA) with step-name-based
 // boundaries per the redefined stage-grouping rules. "Produksi" combines Proses +
 // Kemas Primer + Kemas Sekunder (Terima Bahan Baku start -> Pengiriman Obat Jadi end).
@@ -732,19 +738,19 @@ async function getPCTBreakdownV2(period = 'MTD') {
         MIN(CASE WHEN fa.nama_trim = 'Terima Bahan Baku' THEN fa.StartDate END),
         MAX(CASE WHEN fa.nama_trim = 'Pengiriman Obat Jadi' THEN fa.EndDate END)
       ) AS Produksi_Days,
-      -- QC: Pickup Sample QC start -> Penyerahan Hasil Uji QC end
+      -- QC: sample pickup (138) start -> result handover (141) end
       DATEDIFF(DAY,
-        MIN(CASE WHEN fa.nama_trim = 'Pickup Sample QC' THEN fa.StartDate END),
-        MAX(CASE WHEN fa.nama_trim = 'Penyerahan Hasil Uji QC' THEN fa.EndDate END)
+        MIN(CASE WHEN fa.kode_tahapan = ${QC_PICKUP_CODE} THEN fa.StartDate END),
+        MAX(CASE WHEN fa.kode_tahapan = ${QC_HANDOVER_CODE} THEN fa.EndDate END)
       ) AS QC_Days,
       -- Mikro: MIN start / MAX end of the MC test steps (Analisa Non Steril / Steril MC)
       DATEDIFF(DAY,
         MIN(CASE WHEN fa.kode_tahapan IN (${MIKRO_TEST_CODES.join(', ')}) THEN fa.StartDate END),
         MAX(CASE WHEN fa.kode_tahapan IN (${MIKRO_TEST_CODES.join(', ')}) THEN fa.EndDate END)
       ) AS Mikro_Days,
-      -- QA: MIN start of (Penyerahan PPI ke QA [also matches the misspelled "Penyerahaan PPI ke QA"], Penyerahan Hasil Uji QC) -> Tempel Label Realese end
+      -- QA: MIN start of (Penyerahan PPI ke QA [also matches the misspelled "Penyerahaan PPI ke QA"], QC result handover) -> Tempel Label Realese end
       DATEDIFF(DAY,
-        MIN(CASE WHEN fa.nama_trim IN ('Penyerahan PPI ke QA', 'Penyerahaan PPI ke QA', 'Penyerahan Hasil Uji QC') THEN fa.StartDate END),
+        MIN(CASE WHEN fa.nama_trim IN ('Penyerahan PPI ke QA', 'Penyerahaan PPI ke QA') OR fa.kode_tahapan = ${QC_HANDOVER_CODE} THEN fa.StartDate END),
         MAX(CASE WHEN fa.nama_trim = 'Tempel Label Realese' THEN fa.EndDate END)
       ) AS QA_Days
     FROM FilteredAlur fa
@@ -758,13 +764,13 @@ async function getPCTBreakdownV2(period = 'MTD') {
         MIN(CASE WHEN fa.nama_trim = 'Terima Bahan Baku' THEN fa.StartDate END),
         MAX(CASE WHEN fa.nama_trim = 'Pengiriman Obat Jadi' THEN fa.EndDate END)) IS NOT NULL
       OR DATEDIFF(DAY,
-        MIN(CASE WHEN fa.nama_trim = 'Pickup Sample QC' THEN fa.StartDate END),
-        MAX(CASE WHEN fa.nama_trim = 'Penyerahan Hasil Uji QC' THEN fa.EndDate END)) IS NOT NULL
+        MIN(CASE WHEN fa.kode_tahapan = ${QC_PICKUP_CODE} THEN fa.StartDate END),
+        MAX(CASE WHEN fa.kode_tahapan = ${QC_HANDOVER_CODE} THEN fa.EndDate END)) IS NOT NULL
       OR DATEDIFF(DAY,
         MIN(CASE WHEN fa.kode_tahapan IN (${MIKRO_TEST_CODES.join(', ')}) THEN fa.StartDate END),
         MAX(CASE WHEN fa.kode_tahapan IN (${MIKRO_TEST_CODES.join(', ')}) THEN fa.EndDate END)) IS NOT NULL
       OR DATEDIFF(DAY,
-        MIN(CASE WHEN fa.nama_trim IN ('Penyerahan PPI ke QA', 'Penyerahaan PPI ke QA', 'Penyerahan Hasil Uji QC') THEN fa.StartDate END),
+        MIN(CASE WHEN fa.nama_trim IN ('Penyerahan PPI ke QA', 'Penyerahaan PPI ke QA') OR fa.kode_tahapan = ${QC_HANDOVER_CODE} THEN fa.StartDate END),
         MAX(CASE WHEN fa.nama_trim = 'Tempel Label Realese' THEN fa.EndDate END)) IS NOT NULL
     )
     ORDER BY fa.Batch_No
@@ -870,7 +876,7 @@ async function getWIPData(asOf = null) {
   const query = `
     -- Step 1: Core data - join only the essential indexed tables first
     SELECT a.Product_ID, a.Batch_No, a.Batch_Date, a.nama_tahapan, a.kode_tahapan,
-           a.StartDate, a.EndDate, a.urutan, a.Prev_Step, a.Display,
+           a.StartDate, a.EndDate, a.urutan, a.Prev_Step, a.Display, a.lead_time,
            prod.Product_Name
     INTO #tmpData
     FROM t_alur_proses a
@@ -991,11 +997,12 @@ async function getWIPData(asOf = null) {
       ) n
     ) x;
 
-    -- Final result: same columns as original query
+    -- Final result: same columns as original query, plus lead_time (minutes, as
+    -- planned on this batch's route) for the MC analysis completion estimate.
     SELECT Product_ID, Batch_No, Batch_Date, nama_tahapan, kode_tahapan,
            StartDate, EndDate, urutan, tahapan_group,
            Product_Name, Group_Dept, Jenis_Sediaan, Prev_Step, Display,
-           IdleStartDate
+           IdleStartDate, lead_time
     FROM #tmpData;
 
     DROP TABLE #tmpData;
@@ -2076,7 +2083,7 @@ const FG_QC_CTE = `
   WITH pickup AS (
     SELECT Product_ID, Batch_No, Batch_Date, Prev_Step, StartDate AS PickupStart
     FROM t_alur_proses
-    WHERE LTRIM(RTRIM(nama_tahapan)) = 'Pickup Sample QC'
+    WHERE kode_tahapan = ${QC_PICKUP_CODE}
   ),
   alur AS (
     -- A couple of batches carry duplicate Pickup / Penyerahan rows, so aggregate per batch.
@@ -2113,7 +2120,7 @@ const FG_QC_CTE = `
       WHERE e.Product_ID = p.Product_ID
         AND e.Batch_No = p.Batch_No
         AND e.Batch_Date = p.Batch_Date
-        AND LTRIM(RTRIM(e.nama_tahapan)) = 'Penyerahan Hasil Uji QC'
+        AND e.kode_tahapan = ${QC_HANDOVER_CODE}
     ) ex
     GROUP BY p.Product_ID, p.Batch_No, p.Batch_Date
   ),

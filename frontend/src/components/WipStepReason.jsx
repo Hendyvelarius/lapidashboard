@@ -13,7 +13,8 @@ import React from 'react';
  *                                says when the last prerequisite finished
  *
  * Deliberately terse: at most two blockers are named, the rest collapse into "+N more".
- * A step that is in progress or completed renders nothing — the question doesn't apply.
+ * A step that is in progress or completed renders nothing — the question doesn't apply —
+ * with one exception: an MC analysis in progress shows when it is expected to finish.
  */
 
 // Match stageBoundaries.js: trim + collapse internal whitespace before comparing names.
@@ -39,9 +40,61 @@ const prevStepNames = (task) =>
     .map(norm)
     .filter(Boolean);
 
+// The MC analyses: 215 "Analisa Non Steril MC" (formerly "Pengujian MC") and 216
+// "Analisa Steril MC" (formerly "Pengujian Sterilitas MC"). Older batches keep the old
+// names, so both are recognised; the code covers rows from either era.
+const MC_ANALYSIS_CODES = new Set([215, 216]);
+const MC_ANALYSIS_NAMES = new Set(
+  ['Analisa Non Steril MC', 'Analisa Steril MC', 'Pengujian MC', 'Pengujian Sterilitas MC']
+    .map((n) => n.toLowerCase())
+);
+const isMcAnalysis = (task) =>
+  MC_ANALYSIS_CODES.has(Number(task.kode_tahapan)) ||
+  MC_ANALYSIS_NAMES.has(norm(task.nama_tahapan).toLowerCase());
+
+const longDate = (d) =>
+  d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+
+const Caption = ({ text, tone }) => (
+  <div style={{
+    marginTop: '8px',
+    paddingTop: '8px',
+    borderTop: '1px dashed #d1d5db',
+    fontSize: '0.75rem',
+    color: tone,
+    lineHeight: 1.4,
+  }}>
+    {text}
+  </div>
+);
+
+// Expected finish of an MC analysis in progress: its start plus the lead time the
+// batch's route plans for it (minutes). Date only; without a lead time there is
+// nothing to estimate from.
+const McEstimate = ({ task }) => {
+  const started = parseStepDate(task.StartDate);
+  const leadMinutes = Number(task.lead_time);
+  if (!started || !(leadMinutes > 0)) return null;
+
+  const due = new Date(started.getTime() + leadMinutes * 60 * 1000);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dueDay = new Date(due);
+  dueDay.setHours(0, 0, 0, 0);
+  const lateDays = Math.round((today - dueDay) / (1000 * 60 * 60 * 24));
+
+  return (
+    <Caption
+      text={`Estimasi selesai pengujian pada tanggal ${longDate(due)}${lateDays > 0 ? ` (lewat ${lateDays} hari)` : ''}.`}
+      tone={lateDays > 0 ? '#b91c1c' : '#7c3aed'}
+    />
+  );
+};
+
 const WipStepReason = ({ task, tasks }) => {
   const isCompleted = !!(task.StartDate && task.EndDate);
   const isInProgress = !!(task.StartDate && !task.EndDate);
+  if (isInProgress && isMcAnalysis(task)) return <McEstimate task={task} />;
   if (isCompleted || isInProgress) return null;
 
   const now = new Date();
@@ -92,18 +145,7 @@ const WipStepReason = ({ task, tasks }) => {
     }
   }
 
-  return (
-    <div style={{
-      marginTop: '8px',
-      paddingTop: '8px',
-      borderTop: '1px dashed #d1d5db',
-      fontSize: '0.75rem',
-      color: tone,
-      lineHeight: 1.4,
-    }}>
-      {text}
-    </div>
-  );
+  return <Caption text={text} tone={tone} />;
 };
 
 export default WipStepReason;
