@@ -2416,11 +2416,18 @@ const QualityDashboard = () => {
   // QA document sets: how far each batch is from having a complete PN + MC + QC
   // document set in QA's hands.
   //
+  // The set is whatever the batch's own route asks for. Not every product goes
+  // through all three departments — L-BIO is routed without QC, a number of
+  // tablets without MC — and such a route simply has no 'Cek Dokumen <dept> oleh QA'
+  // step. t_alur_proses carries the whole planned route up front, future steps
+  // included, so a department with no step row is one the batch skips, not one
+  // that is late: it is left out of the set entirely rather than waited on.
+  //
   // A batch is counted under *every* department whose document has already reached
   // QA, and it stays there whether or not QA has checked that document — a checked
   // document is not progress the batch can be released on, only a complete set is.
-  // Once all three have arrived the batch leaves the per-department cards and moves
-  // to FULL SET, where it stays until the batch is actually released.
+  // Once every required document has arrived the batch leaves the per-department
+  // cards and moves to FULL SET, where it stays until the batch is actually released.
   //
   // Consequence worth stating: the per-department cards are read as "documents QA
   // is holding while the set is still short", not as a QA work queue. A batch whose
@@ -2510,27 +2517,18 @@ const QualityDashboard = () => {
       const { docs, ...batchInfo } = batch;
       if (releasedBatches.has(releaseKey(batch.productId, batch.batchNo))) return;
 
-      // A stable three-slot view of the batch, so the lights can show a document
-      // that has no step row at all as "not reached".
-      const all = depts.map(d => docs[d] || {
-        key: `${batch.key}|${d}`,
-        dept: d,
-        status: 'waiting',
-        reachedAt: null,
-        startedAt: null,
-        endedAt: null,
-        daysWaiting: 0,
-        daysWorked: null,
-      });
+      // The documents this batch's route requires, in a fixed PN, MC, QC order.
+      // A department the route skips has no entry and gets no light in the modal.
+      const all = depts.filter(d => docs[d]).map(d => docs[d]);
 
       const arrived = all.filter(d => d.status !== 'waiting');
       // Nothing has reached QA yet — the batch is still out in production and is
-      // not QA's concern. Without this the whole of WIP would land on all three cards.
+      // not QA's concern. Without this the whole of WIP would land on every card.
       if (arrived.length === 0) return;
 
-      if (arrived.length === depts.length) {
-        // The set became complete when the *last* of the three landed, so that is
-        // the date the ageing is measured from.
+      if (arrived.length === all.length) {
+        // The set became complete when the *last* required document landed, so
+        // that is the date the ageing is measured from.
         const reachedAt = all.reduce(
           (latest, d) => (d.reachedAt && (!latest || d.reachedAt > latest) ? d.reachedAt : latest),
           null,
@@ -3357,9 +3355,9 @@ const QualityDashboard = () => {
                 <h3>QA Document Sets</h3>
                 <span
                   className="qa-docset-subtitle"
-                  title="A batch is counted under every department whose document has reached QA, checked or not. Once PN, MC and QC have all arrived it moves to FULL SET, and stays there until the batch is released."
+                  title="A batch is counted under every department whose document has reached QA, checked or not. Once every document its route requires has arrived (PN, MC and QC, minus any department the product is not routed through) it moves to FULL SET, and stays there until the batch is released."
                 >
-                  Documents in QA — a batch moves to FULL SET once PN, MC and QC have all arrived
+                  Documents in QA — a batch moves to FULL SET once every required document (PN, MC, QC) has arrived
                 </span>
               </div>
               <div className="qa-docset-grid">
@@ -3372,7 +3370,7 @@ const QualityDashboard = () => {
                     disabled={count === 0}
                     title={count > 0
                       ? (dept === 'FULL SET'
-                        ? `View the ${count} batch${count === 1 ? '' : 'es'} where PN, MC and QC have all reached QA`
+                        ? `View the ${count} batch${count === 1 ? '' : 'es'} where every required document has reached QA`
                         : `View the ${count} ${dept} document${count === 1 ? '' : 's'} in QA waiting on the rest of the set`)
                       : undefined}
                   >
@@ -3833,11 +3831,11 @@ const QualityDashboard = () => {
             const batches = group?.batches || [];
             const isFullSet = qaDocSetModalDept === 'FULL SET';
             const checked = isFullSet
-              ? batches.filter(b => b.checkedCount === 3).length
+              ? batches.filter(b => b.checkedCount === b.docs.length).length
               : batches.filter(b => b.status === 'done').length;
             const fmt = d => (d ? d.toLocaleDateString('en-GB') : 'N/A');
             const accent = isFullSet ? '#7c3aed' : '#4f8cff';
-            // Traffic-light read on each of the three documents: green once QA has
+            // Traffic-light read on each required document: green once QA has
             // closed it, amber while it sits in QA's queue, red before it arrives.
             const docLight = {
               done: { dot: '#16a34a', bg: '#dcfce7', text: '#15803d', label: 'checked by QA' },
@@ -3856,7 +3854,7 @@ const QualityDashboard = () => {
                 }}>
                   <div style={{ fontSize: '0.9rem', color: '#6c757d', marginBottom: '4px' }}>
                     {isFullSet
-                      ? <>PN, MC and QC have all reached QA - awaiting release</>
+                      ? <>Every required document has reached QA - awaiting release</>
                       : <><strong>Step:</strong> Cek Dokumen {qaDocSetModalDept} oleh QA - in QA, set still incomplete</>}
                   </div>
                   <div style={{ fontSize: '1.1rem', fontWeight: '600', color: accent }}>
@@ -3873,9 +3871,9 @@ const QualityDashboard = () => {
                   {batches.map(batch => {
                     // On a department card the badge reports QA's progress on *this*
                     // document; on FULL SET it reports how much of the set QA has closed.
-                    const isChecked = isFullSet ? batch.checkedCount === 3 : batch.status === 'done';
+                    const isChecked = isFullSet ? batch.checkedCount === batch.docs.length : batch.status === 'done';
                     const badgeLabel = isFullSet
-                      ? `${batch.checkedCount}/3 checked`
+                      ? `${batch.checkedCount}/${batch.docs.length} checked`
                       : (isChecked ? 'Checked by QA' : 'Awaiting QA check');
 
                     return (
@@ -3964,7 +3962,7 @@ const QualityDashboard = () => {
                           <div>
                             <div style={{ color: '#9ca3af' }}>Awaiting</div>
                             <div style={{ color: '#374151', fontWeight: '600' }}>
-                              {batch.checkedCount === 3 ? 'Release' : 'QA check + release'}
+                              {batch.checkedCount === batch.docs.length ? 'Release' : 'QA check + release'}
                             </div>
                           </div>
                         ) : (

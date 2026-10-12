@@ -12,7 +12,7 @@ import { useAuth } from '../context/AuthContext';
 import OF1TargetModal from './OF1TargetModal';
 import ProductionOutputModal from './ProductionOutputModal';
 import BatchesReportModal from './BatchesReportModal';
-import { sortByProductThenBatch } from '../utils/batchSort';
+import { sortByProductThenBatch, compareBatchNo } from '../utils/batchSort';
 import './SummaryDashboard.css';
 
 // Register Chart.js components
@@ -3227,127 +3227,219 @@ const StockOutDetailsModal = ({ isOpen, onClose, lostSalesData }) => {
 };
 
 // OF Details Modal Component
-const OFDetailsModal = ({ isOpen, onClose, stageName, ofRawData }) => {
+//
+// One row per product instead of one card per batch: a stage can hold a couple
+// of hundred batches, but far fewer products, and a planner reads the stage
+// product by product anyway. Each row carries the product's progress on the
+// stage and its batch numbers as chips, in batch order (see utils/batchSort).
+const OF_STAGE_FIELDS = {
+  'Turun PPI': 'TurunPPI',
+  'Potong Stock': 'PotongStock',
+  'Proses': 'Proses',
+  'Kemas': 'Kemas',
+  'Dokumen': 'Dok',
+  'Rilis QC': 'QC',
+  'Rilis QA': 'QA'
+};
+
+// Same colours as the stage gauges on the OF1 card.
+const OF_STAGE_COLORS = {
+  'Turun PPI': '#f59e0b',
+  'Potong Stock': '#10b981',
+  'Proses': '#6b7280',
+  'Kemas': '#8b5cf6',
+  'Dokumen': '#06b6d4',
+  'Rilis QC': '#f97316',
+  'Rilis QA': '#ef4444'
+};
+
+// A few released batches come back as '84066.'; the dot is not part of the
+// batch number as far as ordering goes.
+const batchSortKey = (batchNo) => String(batchNo ?? '').trim().replace(/\.+$/, '');
+
+const OFDetailsModal = ({ isOpen, onClose, stageName, ofRawData, refYear }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  
+  const [view, setView] = useState('all'); // 'pending' | 'done' | 'all'
+  const [sortBy, setSortBy] = useState('name'); // 'name' | 'pending'
+
   if (!isOpen || !stageName) return null;
 
-  const stageFieldMap = {
-    'Turun PPI': 'TurunPPI',
-    'Potong Stock': 'PotongStock', 
-    'Proses': 'Proses',
-    'Kemas': 'Kemas',
-    'Dokumen': 'Dok',
-    'Rilis QC': 'QC',
-    'Rilis QA': 'QA'
-  };
-  
-  const fieldName = stageFieldMap[stageName];
+  const fieldName = OF_STAGE_FIELDS[stageName];
   if (!fieldName) return null;
-  
-  const allCompleted = ofRawData.filter(item => item[fieldName] === 1);
-  const allPending = ofRawData.filter(item => item[fieldName] === 0);
+  const accent = OF_STAGE_COLORS[stageName] || '#4f8cff';
 
-  // Filter based on search term
-  const filterBatches = (batches) => {
-    if (!searchTerm.trim()) return batches;
-    
-    return batches.filter(batch => {
-      const batchNo = (batch.ListBet || '').toLowerCase();
-      const productId = (batch.ProductID || '').toString().toLowerCase();
-      const productName = (batch.Product_Name || '').toLowerCase();
-      const search = searchTerm.toLowerCase();
-      
-      return batchNo.includes(search) || 
-             productId.includes(search) || 
-             productName.includes(search);
-    });
-  };
+  // Group by product, batches in batch-number order.
+  const productMap = new Map();
+  ofRawData.forEach(item => {
+    if (item[fieldName] !== 0 && item[fieldName] !== 1) return;
+    const id = String(item.ProductID ?? '').trim();
+    if (!productMap.has(id)) {
+      productMap.set(id, { id, name: item.Product_Name || id || 'N/A', batches: [] });
+    }
+    productMap.get(id).batches.push({ batchNo: item.ListBet, done: item[fieldName] === 1 });
+  });
 
-  const completed = filterBatches(allCompleted);
-  const pending = filterBatches(allPending);
+  const products = [...productMap.values()].map(p => {
+    p.batches.sort((a, b) => compareBatchNo(batchSortKey(a.batchNo), batchSortKey(b.batchNo), p.id, refYear));
+    const doneCount = p.batches.filter(b => b.done).length;
+    return { ...p, doneCount, pendingCount: p.batches.length - doneCount };
+  });
+
+  const totalBatches = products.reduce((s, p) => s + p.batches.length, 0);
+  const totalDone = products.reduce((s, p) => s + p.doneCount, 0);
+  const totalPending = totalBatches - totalDone;
+  const productsComplete = products.filter(p => p.pendingCount === 0).length;
+  const productsPartial = products.filter(p => p.doneCount > 0 && p.pendingCount > 0).length;
+  const productsNotStarted = products.filter(p => p.doneCount === 0).length;
+  // Matches the gauge: each product's completion, averaged over products.
+  const stagePercent = products.length
+    ? Math.round(products.reduce((s, p) => s + (p.doneCount / p.batches.length) * 100, 0) / products.length)
+    : 0;
+
+
+  const search = searchTerm.trim().toLowerCase();
+  const batchMatches = (b) => !!search && String(b.batchNo ?? '').toLowerCase().includes(search);
+
+  const rows = products
+    .filter(p => {
+      if (view === 'pending' && p.pendingCount === 0) return false;
+      if (view === 'done' && p.doneCount === 0) return false;
+      if (!search) return true;
+      return p.name.toLowerCase().includes(search)
+        || p.id.toLowerCase().includes(search)
+        || p.batches.some(batchMatches);
+    })
+    .sort((a, b) => (sortBy === 'pending' ? b.pendingCount - a.pendingCount : 0)
+      || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
+      || a.id.localeCompare(b.id));
+
+  const shownBatches = rows.reduce((s, p) => s + (
+    view === 'pending' ? p.pendingCount : view === 'done' ? p.doneCount : p.batches.length
+  ), 0);
+
+  const tabs = [
+    { key: 'pending', label: `Belum ${stageName}`, count: totalPending },
+    { key: 'done', label: `Sudah ${stageName}`, count: totalDone },
+    { key: 'all', label: 'Semua', count: totalBatches }
+  ];
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content of-modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
+      <div
+        className="modal-content of-modal of1-detail-modal"
+        style={{ '--of1-accent': accent }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="modal-header of1-detail-header">
           <h2>Detail {stageName}</h2>
           <button className="modal-close" onClick={onClose}>&times;</button>
         </div>
-        <div className="modal-body">
-          {/* Search Bar */}
-          <div className="search-container" style={{ marginBottom: '20px' }}>
-            <input
-              type="text"
-              placeholder="Search by batch number, product ID, or product name..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '10px 15px',
-                border: '1px solid #d1d5db',
-                borderRadius: '8px',
-                fontSize: '14px',
-                outline: 'none',
-                boxSizing: 'border-box'
-              }}
-            />
-          </div>
-          
-          {/* Search Results Summary */}
-          {searchTerm.trim() && (
-            <div style={{ marginBottom: '15px', fontSize: '14px', color: '#6b7280' }}>
-              Found {completed.length + pending.length} results for "{searchTerm}"
-              {completed.length + pending.length !== allCompleted.length + allPending.length && 
-                ` (filtered from ${allCompleted.length + allPending.length} total)`}
-            </div>
-          )}
-          
-          <div className="of-details-container">
-            {/* Completed Batches */}
-            <div className="of-details-section">
-              <h3 className="of-section-title completed">
-                ✅ Batch sudah {stageName} ({completed.length})
-              </h3>
-              <div className="of-batch-list">
-                {completed.length > 0 ? (
-                  completed.map((batch, index) => (
-                    <div key={index} className="of-batch-item completed">
-                      <div className="batch-code">Batch: {batch.ListBet}</div>
-                      <div className="product-info">
-                        <span className="product-id">ID: {batch.ProductID}</span>
-                        <span className="product-name">{batch.Product_Name || 'N/A'}</span>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="no-data">Tidak ada batch yang telah selesai</div>
-                )}
-              </div>
-            </div>
 
-            {/* Pending Batches */}
-            <div className="of-details-section">
-              <h3 className="of-section-title pending">
-                ⏳ Batch belum {stageName} ({pending.length})
-              </h3>
-              <div className="of-batch-list">
-                {pending.length > 0 ? (
-                  pending.map((batch, index) => (
-                    <div key={index} className="of-batch-item pending">
-                      <div className="batch-code">Batch: {batch.ListBet}</div>
-                      <div className="product-info">
-                        <span className="product-id">ID: {batch.ProductID}</span>
-                        <span className="product-name">{batch.Product_Name || 'N/A'}</span>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="no-data">Semua batch telah selesai</div>
-                )}
-              </div>
-            </div>
+        <div className="of1-detail-summary">
+          <div className="of1-detail-stat">
+            <span className="of1-detail-stat-value">{stagePercent}%</span>
+            <span className="of1-detail-stat-label">rata-rata per produk</span>
           </div>
+          <div className="of1-detail-stat">
+            <span className="of1-detail-stat-value">{totalDone}<small>/{totalBatches}</small></span>
+            <span className="of1-detail-stat-label">batch sudah {stageName}</span>
+          </div>
+          <div className="of1-detail-stat">
+            <span className="of1-detail-stat-value">{products.length}</span>
+            <span className="of1-detail-stat-label">
+              produk · {productsComplete} tuntas · {productsPartial} sebagian · {productsNotStarted} belum
+            </span>
+          </div>
+        </div>
+
+        <div className="of1-detail-controls">
+          <input
+            type="text"
+            className="of1-detail-search"
+            placeholder="Cari produk, ID, atau nomor batch..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+          <div className="of1-detail-tabs" role="tablist">
+            {tabs.map(t => (
+              <button
+                key={t.key}
+                type="button"
+                role="tab"
+                aria-selected={view === t.key}
+                className={`of1-detail-tab ${t.key} ${view === t.key ? 'active' : ''}`}
+                onClick={() => setView(t.key)}
+              >
+                {t.label} <span className="of1-detail-tab-count">{t.count}</span>
+              </button>
+            ))}
+          </div>
+          <select
+            className="of1-detail-sort"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            title="Urutan produk"
+          >
+            <option value="name">Nama produk A–Z</option>
+            <option value="pending">Terbanyak belum</option>
+          </select>
+        </div>
+
+        <div className="of1-detail-listhead">
+          <span>{rows.length} produk · {shownBatches} batch</span>
+          {search && <span>hasil pencarian "{searchTerm.trim()}"</span>}
+        </div>
+
+        <div className="of1-detail-list">
+          {rows.length === 0 ? (
+            <div className="no-data">
+              {search
+                ? 'Tidak ada produk atau batch yang cocok'
+                : view === 'pending' ? 'Semua batch telah selesai'
+                  : view === 'done' ? 'Tidak ada batch yang telah selesai' : 'Tidak ada batch'}
+            </div>
+          ) : rows.map(p => {
+            const visible = p.batches.filter(b =>
+              view === 'all' || (view === 'pending' ? !b.done : b.done));
+            const hidden = p.batches.length - visible.length;
+            const pct = (p.doneCount / p.batches.length) * 100;
+
+            return (
+              <div key={p.id} className="of1-detail-row">
+                <div className="of1-detail-product">
+                  <span className="of1-detail-product-name" title={p.name}>{p.name}</span>
+                  <span className="of1-detail-product-id">{p.id}</span>
+                </div>
+                <div
+                  className="of1-detail-progress"
+                  title={`${p.doneCount} dari ${p.batches.length} batch sudah ${stageName}`}
+                >
+                  <span className={`of1-detail-progress-text ${p.pendingCount === 0 ? 'complete' : ''}`}>
+                    {p.doneCount}/{p.batches.length}
+                  </span>
+                  <span className="of1-detail-progress-bar">
+                    <span style={{ width: `${pct}%` }} />
+                  </span>
+                </div>
+                <div className="of1-detail-chips">
+                  {visible.map((b, i) => (
+                    <span
+                      key={`${b.batchNo}-${i}`}
+                      className={`of1-batch-chip ${b.done ? 'done' : 'pending'} ${batchMatches(b) ? 'match' : ''}`}
+                      title={`${b.batchNo} · ${b.done ? 'sudah' : 'belum'} ${stageName}`}
+                    >
+                      {b.batchNo}
+                    </span>
+                  ))}
+                  {hidden > 0 && (
+                    <span className="of1-batch-more">
+                      +{hidden} {view === 'pending' ? 'sudah' : 'belum'}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -8277,11 +8369,13 @@ function SummaryDashboard() {
         </div>
         
         {/* OF Details Modal */}
-        <OFDetailsModal 
+        <OFDetailsModal
+          key={selectedOfStage}
           isOpen={ofModalOpen}
           onClose={() => setOfModalOpen(false)}
           stageName={selectedOfStage}
           ofRawData={ofRawData}
+          refYear={(isHistoricalData && historicalReferenceDate ? new Date(historicalReferenceDate) : new Date()).getFullYear()}
         />
         
         {/* Stock Out Details Modal */}
