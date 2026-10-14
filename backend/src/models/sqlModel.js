@@ -2867,7 +2867,9 @@ const START_TIER = (a) => `CASE
            -- Vial washing and sterilisation run hours ahead of the fill.
            AND (${a}.tahapan_group <> 'Filling' OR ${IS_FILL(a)}) THEN 0
           WHEN ${a}.tahapan_group = 'Kemas Primer' AND ${IS_KEMAS_PRIMER(a)} THEN 1
-          WHEN ${a}.tahapan_group = 'Kemas Sekunder' AND ${a}.nama_tahapan LIKE 'Kemas Sekunder%' THEN 2
+          -- "KS Solid" is the Oct 2026 name for "Kemas Sekunder Solid ...".
+          WHEN ${a}.tahapan_group = 'Kemas Sekunder'
+           AND (${a}.nama_tahapan LIKE 'Kemas Sekunder%' OR ${a}.nama_tahapan LIKE 'KS %') THEN 2
         END`;
 
 /** Product categories (jenis sediaan) used by the Production Monitoring filter. */

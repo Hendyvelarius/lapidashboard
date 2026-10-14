@@ -273,12 +273,16 @@ const kemasPrimerStarted = (entries, ref) => {
 /**
  * Identify a batch's SECONDARY PACKAGING step — the "Kemas Sekunder <...>" step that marks
  * the actual secondary-packing work (e.g. "Kemas Sekunder Solid 1-5000", "Kemas Sekunder
- * Liquid ...", "Kemas Sekunder Injeksi ..."). Mirrors isPackagingStep for Kemas Primer.
- * The admin/prep steps that live in the same group ("Terima Bahan Kemas Sekunder",
- * "Persiapan Kemas Sekunder", "Approve ...", "Cek kelengkapan PPI PN", etc.) are NOT the
- * packing step — they are its prerequisites.
+ * Liquid ...", "Kemas Sekunder Injeksi ..."; since Oct 2026 also abbreviated, "KS Solid").
+ * Mirrors isPackagingStep for Kemas Primer. The admin/prep steps that live in the same
+ * group ("Terima Bahan Kemas Sekunder" / "Terima BKS", "Persiapan Kemas Sekunder" /
+ * "Change Over KS", "Approve ...", "Cek kelengkapan PPI PN", etc.) are NOT the packing
+ * step — they are its prerequisites.
  */
-const isSecondaryPackagingStep = (name) => norm(name).toLowerCase().startsWith('kemas sekunder');
+const isSecondaryPackagingStep = (name) => {
+  const n = norm(name).toLowerCase();
+  return n.startsWith('kemas sekunder') || n.startsWith('ks ');
+};
 
 const secondaryPackagingSteps = (entries) => entries.filter((e) => isSecondaryPackagingStep(e.nama_tahapan));
 

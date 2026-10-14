@@ -11,8 +11,10 @@
  *
  * Renames and new codes go here, and in the mirror at
  * frontend/src/config/routeSteps.js. The SQL objects inline the names only:
- * sp_Dashboard_OF1 and sp_Dashboard_WIP for APPROVE_TERIMA_BB, vw_wip_produksi
- * for TERIMA_BB (backend/migrations/*_step_aliases.sql). Their joins are not
+ * sp_Dashboard_OF1 and sp_Dashboard_WIP for APPROVE_TERIMA_BB, sp_Dashboard_WIP
+ * for PERSIAPAN_KS, vw_wip_produksi for TERIMA_BB (backend/migrations/*_aliases.sql).
+ * Step families matched by name prefix ("Kemas Sekunder ..." / "KS ...", "KP Solid
+ * ...") are handled where they are used, in sqlModel.js and stageBoundaries.js. Their joins are not
  * all aggregated, and a code also carries numbered rows ("Terima Bahan Baku 5")
  * that would add a second row per batch there. Here every match sits inside
  * MIN/MAX/EXISTS, so code matching is safe.
@@ -29,6 +31,8 @@ const ROUTE_STEPS = {
   TERIMA_BB: { codes: [135, 331], names: ['Terima Bahan Baku', 'Terima BB'] },
   // OF1's Potong Stock flag and sp_Dashboard_WIP's Proses status. PN 212, PN 332.
   APPROVE_TERIMA_BB: { codes: [212, 332], names: ['Approve Terima Bahan Baku', 'Approve Terima BB'] },
+  // sp_Dashboard_WIP's Kemas status. PN 68, PN 348; PIC plans to shorten 348 to "Change Over KS".
+  PERSIAPAN_KS: { codes: [68, 348], names: ['Persiapan Kemas Sekunder', 'Change Over Kemas Sekunder', 'Change Over KS'] },
   // QA release; the batch leaves WIP. Renamed in place (typo fix), same code.
   TEMPEL_LABEL_RELEASE: { codes: [170], names: ['Tempel Label Realese', 'Tempel Label Release'] },
 };
