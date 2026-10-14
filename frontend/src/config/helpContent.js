@@ -304,7 +304,7 @@ export const helpContent = {
             details: [
               'PCT rata-rata = jumlah (PCT rata-rata produk × jumlah batch) ÷ total batch',
               'PCT terlama = nilai PCT rata-rata produk tertinggi',
-              'Hanya batch yang sudah selesai (lulus "Tempel Label Realese") yang dihitung'
+              'Hanya batch yang sudah selesai (lulus "Tempel Label Release") yang dihitung'
             ]
           },
           {
@@ -411,7 +411,7 @@ export const helpContent = {
         pages: [
           {
             subtitle: 'Apa itu PCT (Production Cycle Time) Breakdown?',
-            description: 'Menampilkan rata-rata waktu (dalam hari) yang dihabiskan pada tiap tahapan besar proses, dari Timbang hingga QA. Hanya batch yang sudah selesai penuh (sudah "Tempel Label Realese") yang dihitung.',
+            description: 'Menampilkan rata-rata waktu (dalam hari) yang dihabiskan pada tiap tahapan besar proses, dari Timbang hingga QA. Hanya batch yang sudah selesai penuh (sudah "Tempel Label Release") yang dihitung.',
             details: [
               'Timbang: penyiapan & penimbangan bahan baku',
               'Produksi: proses inti — dari terima bahan baku hingga barang jadi dikirim (mencakup Proses, Kemas Primer, dan Kemas Sekunder)',
@@ -425,11 +425,11 @@ export const helpContent = {
             subtitle: 'Bagaimana Cara Menghitungnya?',
             description: 'Untuk tiap batch, lama sebuah tahap = selisih hari kalender antara langkah awal dan langkah akhir tahap tersebut. Angka pada dashboard adalah rata-rata dari seluruh batch yang selesai pada periode terpilih (MTD/YTD).',
             details: [
-              'Timbang: mulai "Penyiapan BB" → selesai "Pengiriman Bahan Baku"',
-              'Produksi: mulai "Terima Bahan Baku" → selesai "Pengiriman Obat Jadi"',
+              'Timbang: mulai "Penyiapan BB" → selesai "Pengiriman BB" / "Pengiriman Bahan Baku"',
+              'Produksi: mulai "Terima BB" / "Terima Bahan Baku" → selesai "Pengiriman Obat Jadi"',
               'QC: mulai "Terima Sampel QC" → selesai "Serah Terima Hasil QC Ke QA" (dulu "Pickup Sample QC" / "Penyerahan Hasil Uji QC")',
-              'Mikro: dari uji pertama sampai uji terakhir ("Analisa Non Steril MC" / "Analisa Steril MC", dulu "Pengujian MC" / "Pengujian Sterilitas MC")',
-              'QA: mulai "Penyerahan PPI ke QA" / "Serah Terima Hasil QC Ke QA" → selesai "Tempel Label Realese"',
+              'Mikro: dari uji pertama sampai uji terakhir ("Pengujian Non Steril MC" / "Pengujian Steril MC", dulu "Analisa Non Steril MC" / "Analisa Steril MC" atau "Pengujian MC" / "Pengujian Sterilitas MC")',
+              'QA: mulai "Penyerahan PPI ke QA" / "Serah Terima Hasil QC Ke QA" → selesai "Tempel Label Release"',
               'Memakai hari kalender (termasuk akhir pekan & libur)',
               'Periode: MTD = batch selesai bulan ini; YTD = batch selesai tahun ini'
             ]
@@ -441,7 +441,7 @@ export const helpContent = {
               'Pelacakan Proses Produksi (t_alur_proses): waktu mulai & selesai tiap langkah pada tiap batch',
               'Master Produk (m_Product): nama & informasi produk',
               'Master Kelompok Tahapan (m_tahapan_group): pemetaan langkah ke kelompok tahapan',
-              'Filter: hanya batch yang sudah menyelesaikan "Tempel Label Realese" pada periode terpilih; produk "Granulat" dikecualikan'
+              'Filter: hanya batch yang sudah menyelesaikan "Tempel Label Release" pada periode terpilih; produk "Granulat" dikecualikan'
             ]
           }
         ]
@@ -466,8 +466,8 @@ export const helpContent = {
             subtitle: 'Bagaimana Cara Menghitungnya?',
             description: 'Sistem mengambil batch yang masih aktif, menentukan tahap tiap batch dari langkah proses yang sudah/belum berjalan, lalu menghitung lama di tahap = hari kalender sejak tahap dimulai hingga hari ini.',
             details: [
-              'Batch aktif = batch berstatus "Open" yang belum menyelesaikan "Tempel Label Realese" (belum dilulus & belum dibatalkan)',
-              'Awal & akhir tiap tahap ditentukan dari langkah proses spesifik (contoh: Proses dimulai saat "Terima Bahan Baku"), bukan sekadar pengelompokan kasar',
+              'Batch aktif = batch berstatus "Open" yang belum menyelesaikan "Tempel Label Release" (belum dilulus & belum dibatalkan)',
+              'Awal & akhir tiap tahap ditentukan dari langkah proses spesifik (contoh: Proses dimulai saat "Terima BB" / "Terima Bahan Baku"), bukan sekadar pengelompokan kasar',
               'Durasi di tahap = jumlah hari kalender dari tahap dimulai sampai hari ini',
               '"Menunggu" vs "Berjalan": jendela tahap sudah terbuka tetapi langkahnya belum dimulai = Menunggu; sudah dimulai = Berjalan',
               'Ambang warna (hijau/kuning/merah) berbeda-beda per departemen dan per tahap'
@@ -477,13 +477,13 @@ export const helpContent = {
             subtitle: 'Batas Tiap Tahap (Kapan Mulai & Selesai)',
             description: 'Setiap tahap punya titik mulai dan selesai yang jelas, ditentukan dari langkah proses tertentu:',
             details: [
-              'Timbang: mulai "Penyiapan BB" → selesai "Pengiriman Bahan Baku"',
-              'Proses: mulai "Terima Bahan Baku" → selesai tepat saat Kemas Primer dimulai',
+              'Timbang: mulai "Penyiapan BB" → selesai "Pengiriman BB" / "Pengiriman Bahan Baku"',
+              'Proses: mulai "Terima BB" / "Terima Bahan Baku" → selesai tepat saat Kemas Primer dimulai',
               'Kemas Primer: mulai saat semua prasyarat pengemasan primer selesai → selesai saat proses pengemasan primer selesai',
               'Kemas Sekunder: mulai saat prasyarat pengemasan sekunder selesai → selesai "Pengiriman Obat Jadi"',
               'QC: mulai "Terima Sampel QC" → selesai "Serah Terima Hasil QC Ke QA" (dulu "Pickup Sample QC" / "Penyerahan Hasil Uji QC")',
-              'Mikro: dari uji pertama hingga uji terakhir ("Analisa Non Steril MC" / "Analisa Steril MC", dulu "Pengujian MC" / "Pengujian Sterilitas MC")',
-              'QA: mulai "Penyerahan PPI ke QA" / "Serah Terima Hasil QC Ke QA" → selesai "Tempel Label Realese"'
+              'Mikro: dari uji pertama hingga uji terakhir ("Pengujian Non Steril MC" / "Pengujian Steril MC", dulu "Analisa Non Steril MC" / "Analisa Steril MC" atau "Pengujian MC" / "Pengujian Sterilitas MC")',
+              'QA: mulai "Penyerahan PPI ke QA" / "Serah Terima Hasil QC Ke QA" → selesai "Tempel Label Release"'
             ]
           },
           {
@@ -623,8 +623,8 @@ export const helpContent = {
             subtitle: 'Bagaimana Cara Menghitungnya?',
             description: 'Sistem mengambil batch aktif Line PN1, menentukan tahap tiap batch dari langkah proses yang sudah/belum berjalan, lalu menghitung lama di tahap = hari kalender sejak tahap dimulai hingga hari ini.',
             details: [
-              'Batch aktif = batch berstatus "Open" yang belum menyelesaikan "Tempel Label Realese"',
-              'Awal & akhir tiap tahap ditentukan dari langkah proses spesifik (mis. Proses dimulai saat "Terima Bahan Baku")',
+              'Batch aktif = batch berstatus "Open" yang belum menyelesaikan "Tempel Label Release"',
+              'Awal & akhir tiap tahap ditentukan dari langkah proses spesifik (mis. Proses dimulai saat "Terima BB" / "Terima Bahan Baku")',
               'Durasi di tahap = jumlah hari kalender dari tahap dimulai sampai hari ini',
               '"Menunggu" vs "Berjalan": jendela tahap terbuka tetapi langkahnya belum dimulai = Menunggu; sudah dimulai = Berjalan',
               'Hanya batch milik Line PN1'
@@ -634,13 +634,13 @@ export const helpContent = {
             subtitle: 'Batas Tiap Tahap (Kapan Mulai & Selesai)',
             description: 'Setiap tahap punya titik mulai dan selesai yang jelas, ditentukan dari langkah proses tertentu:',
             details: [
-              'Timbang: mulai "Penyiapan BB" → selesai "Pengiriman Bahan Baku"',
-              'Proses: mulai "Terima Bahan Baku" → selesai tepat saat Kemas Primer dimulai',
+              'Timbang: mulai "Penyiapan BB" → selesai "Pengiriman BB" / "Pengiriman Bahan Baku"',
+              'Proses: mulai "Terima BB" / "Terima Bahan Baku" → selesai tepat saat Kemas Primer dimulai',
               'Kemas Primer: mulai saat semua prasyarat pengemasan primer selesai → selesai saat proses pengemasan primer selesai',
               'Kemas Sekunder: mulai saat prasyarat pengemasan sekunder selesai → selesai "Pengiriman Obat Jadi"',
               'QC: mulai "Terima Sampel QC" → selesai "Serah Terima Hasil QC Ke QA" (dulu "Pickup Sample QC" / "Penyerahan Hasil Uji QC")',
-              'Mikro: dari uji pertama hingga uji terakhir ("Analisa Non Steril MC" / "Analisa Steril MC", dulu "Pengujian MC" / "Pengujian Sterilitas MC")',
-              'QA: mulai "Penyerahan PPI ke QA" / "Serah Terima Hasil QC Ke QA" → selesai "Tempel Label Realese"'
+              'Mikro: dari uji pertama hingga uji terakhir ("Pengujian Non Steril MC" / "Pengujian Steril MC", dulu "Analisa Non Steril MC" / "Analisa Steril MC" atau "Pengujian MC" / "Pengujian Sterilitas MC")',
+              'QA: mulai "Penyerahan PPI ke QA" / "Serah Terima Hasil QC Ke QA" → selesai "Tempel Label Release"'
             ]
           },
           {
@@ -816,8 +816,8 @@ export const helpContent = {
             subtitle: 'Bagaimana Cara Menghitungnya?',
             description: 'Sistem mengambil batch aktif Line PN2, menentukan tahap tiap batch dari langkah proses yang sudah/belum berjalan, lalu menghitung lama di tahap = hari kalender sejak tahap dimulai hingga hari ini.',
             details: [
-              'Batch aktif = batch berstatus "Open" yang belum menyelesaikan "Tempel Label Realese"',
-              'Awal & akhir tiap tahap ditentukan dari langkah proses spesifik (mis. Proses dimulai saat "Terima Bahan Baku")',
+              'Batch aktif = batch berstatus "Open" yang belum menyelesaikan "Tempel Label Release"',
+              'Awal & akhir tiap tahap ditentukan dari langkah proses spesifik (mis. Proses dimulai saat "Terima BB" / "Terima Bahan Baku")',
               'Durasi di tahap = jumlah hari kalender dari tahap dimulai sampai hari ini',
               '"Menunggu" vs "Berjalan": jendela tahap terbuka tetapi langkahnya belum dimulai = Menunggu; sudah dimulai = Berjalan',
               'Hanya batch milik Line PN2'
@@ -827,13 +827,13 @@ export const helpContent = {
             subtitle: 'Batas Tiap Tahap (Kapan Mulai & Selesai)',
             description: 'Setiap tahap punya titik mulai dan selesai yang jelas, ditentukan dari langkah proses tertentu:',
             details: [
-              'Timbang: mulai "Penyiapan BB" → selesai "Pengiriman Bahan Baku"',
-              'Proses: mulai "Terima Bahan Baku" → selesai tepat saat Kemas Primer dimulai',
+              'Timbang: mulai "Penyiapan BB" → selesai "Pengiriman BB" / "Pengiriman Bahan Baku"',
+              'Proses: mulai "Terima BB" / "Terima Bahan Baku" → selesai tepat saat Kemas Primer dimulai',
               'Kemas Primer: mulai saat semua prasyarat pengemasan primer selesai → selesai saat proses pengemasan primer selesai',
               'Kemas Sekunder: mulai saat prasyarat pengemasan sekunder selesai → selesai "Pengiriman Obat Jadi"',
               'QC: mulai "Terima Sampel QC" → selesai "Serah Terima Hasil QC Ke QA" (dulu "Pickup Sample QC" / "Penyerahan Hasil Uji QC")',
-              'Mikro: dari uji pertama hingga uji terakhir ("Analisa Non Steril MC" / "Analisa Steril MC", dulu "Pengujian MC" / "Pengujian Sterilitas MC")',
-              'QA: mulai "Penyerahan PPI ke QA" / "Serah Terima Hasil QC Ke QA" → selesai "Tempel Label Realese"'
+              'Mikro: dari uji pertama hingga uji terakhir ("Pengujian Non Steril MC" / "Pengujian Steril MC", dulu "Analisa Non Steril MC" / "Analisa Steril MC" atau "Pengujian MC" / "Pengujian Sterilitas MC")',
+              'QA: mulai "Penyerahan PPI ke QA" / "Serah Terima Hasil QC Ke QA" → selesai "Tempel Label Release"'
             ]
           },
           {
@@ -1047,7 +1047,7 @@ export const helpContent = {
             subtitle: 'Bagaimana Cara Menghitungnya?',
             description: 'Sistem mengambil batch aktif, menentukan tahap tiap batch dari langkah proses yang sudah/belum berjalan, lalu menghitung lama di tahap = hari kalender sejak tahap dimulai hingga hari ini.',
             details: [
-              'Batch aktif = batch berstatus "Open" yang belum menyelesaikan "Tempel Label Realese"',
+              'Batch aktif = batch berstatus "Open" yang belum menyelesaikan "Tempel Label Release"',
               'Awal & akhir tiap tahap ditentukan dari langkah proses spesifik (mis. QC dimulai saat "Terima Sampel QC")',
               'Durasi di tahap = jumlah hari kalender dari tahap dimulai sampai hari ini',
               '"Menunggu" vs "Berjalan": jendela tahap terbuka tetapi langkahnya belum dimulai = Menunggu; sudah dimulai = Berjalan'
@@ -1057,13 +1057,13 @@ export const helpContent = {
             subtitle: 'Batas Tiap Tahap (Kapan Mulai & Selesai)',
             description: 'Setiap tahap punya titik mulai dan selesai yang jelas, ditentukan dari langkah proses tertentu:',
             details: [
-              'Timbang: mulai "Penyiapan BB" → selesai "Pengiriman Bahan Baku"',
-              'Proses: mulai "Terima Bahan Baku" → selesai tepat saat Kemas Primer dimulai',
+              'Timbang: mulai "Penyiapan BB" → selesai "Pengiriman BB" / "Pengiriman Bahan Baku"',
+              'Proses: mulai "Terima BB" / "Terima Bahan Baku" → selesai tepat saat Kemas Primer dimulai',
               'Kemas Primer: mulai saat semua prasyarat pengemasan primer selesai → selesai saat proses pengemasan primer selesai',
               'Kemas Sekunder: mulai saat prasyarat pengemasan sekunder selesai → selesai "Pengiriman Obat Jadi"',
               'QC: mulai "Terima Sampel QC" → selesai "Serah Terima Hasil QC Ke QA" (dulu "Pickup Sample QC" / "Penyerahan Hasil Uji QC")',
-              'Mikro: dari uji pertama hingga uji terakhir ("Analisa Non Steril MC" / "Analisa Steril MC", dulu "Pengujian MC" / "Pengujian Sterilitas MC")',
-              'QA: mulai "Penyerahan PPI ke QA" / "Serah Terima Hasil QC Ke QA" → selesai "Tempel Label Realese"'
+              'Mikro: dari uji pertama hingga uji terakhir ("Pengujian Non Steril MC" / "Pengujian Steril MC", dulu "Analisa Non Steril MC" / "Analisa Steril MC" atau "Pengujian MC" / "Pengujian Sterilitas MC")',
+              'QA: mulai "Penyerahan PPI ke QA" / "Serah Terima Hasil QC Ke QA" → selesai "Tempel Label Release"'
             ]
           },
           {

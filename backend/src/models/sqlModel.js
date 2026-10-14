@@ -1,5 +1,6 @@
 const { connect } = require('../../config/sqlserver');
 const sql = require('mssql');
+const { stepIs } = require('../utils/routeSteps');
 
 // Rollback switch for the redefined stage-group boundaries (mirrors the frontend
 // USE_NEW_STAGE_LOGIC constant in frontend/src/utils/stageBoundaries.js).
@@ -560,11 +561,11 @@ async function getPCTBreakdownLegacy(period = 'MTD') {
         AND ISDATE(ap.Batch_Date) = 1
         AND mp.Product_Name NOT LIKE '%granulat%'
     ),
-    -- Get only batches that have completed "Tempel Label Realese" with EndDate based on period (MTD or YTD)
+    -- Get only batches that have completed "Tempel Label Release" with EndDate based on period (MTD or YTD)
     CompletedBatches AS (
       SELECT DISTINCT Batch_No
-      FROM FilteredAlur
-      WHERE LOWER(nama_tahapan) LIKE '%tempel%label%realese%'
+      FROM FilteredAlur fa
+      WHERE ${stepIs('fa', 'TEMPEL_LABEL_RELEASE')}
         AND EndDate IS NOT NULL
         ${dateFilter}
     )
@@ -574,11 +575,11 @@ async function getPCTBreakdownLegacy(period = 'MTD') {
       fa.Batch_Date,
       fa.Product_ID,
       fa.Product_Name,
-      -- Total calendar days from earliest StartDate to Tempel Label Realese EndDate
+      -- Total calendar days from earliest StartDate to Tempel Label Release EndDate
       DATEDIFF(
         DAY,
         MIN(fa.StartDate),
-        MAX(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%tempel%label%realese%' THEN fa.EndDate END)
+        MAX(CASE WHEN ${stepIs('fa', 'TEMPEL_LABEL_RELEASE')} THEN fa.EndDate END)
       ) AS Total_Days,
       -- Timbang stage calendar days
       DATEDIFF(
@@ -667,8 +668,9 @@ async function getPCTBreakdownLegacy(period = 'MTD') {
 }
 
 // The Mikro test steps, matched by code because their names changed: 215 was
-// "Pengujian MC" (now "Analisa Non Steril MC"), 216 was "Pengujian Sterilitas MC"
-// (now "Analisa Steril MC"). t_alur_proses keeps the name a batch was created
+// "Pengujian MC" (then "Analisa Non Steril MC", now "Pengujian Non Steril MC"), 216
+// was "Pengujian Sterilitas MC" (then "Analisa Steril MC", now "Pengujian Steril
+// MC"). t_alur_proses keeps the name a batch was created
 // with, so older batches still carry the old names; the code covers both.
 const MIKRO_TEST_CODES = [215, 216];
 
@@ -712,8 +714,8 @@ async function getPCTBreakdownV2(period = 'MTD') {
     ),
     CompletedBatches AS (
       SELECT DISTINCT Batch_No
-      FROM FilteredAlur
-      WHERE LOWER(nama_tahapan) LIKE '%tempel%label%realese%'
+      FROM FilteredAlur fa
+      WHERE ${stepIs('fa', 'TEMPEL_LABEL_RELEASE')}
         AND EndDate IS NOT NULL
         ${dateFilter}
     )
@@ -722,20 +724,20 @@ async function getPCTBreakdownV2(period = 'MTD') {
       fa.Batch_Date,
       fa.Product_ID,
       fa.Product_Name,
-      -- Total calendar days from earliest StartDate to Tempel Label Realese EndDate
+      -- Total calendar days from earliest StartDate to Tempel Label Release EndDate
       DATEDIFF(DAY,
         MIN(fa.StartDate),
-        MAX(CASE WHEN fa.nama_trim = 'Tempel Label Realese' THEN fa.EndDate END)
+        MAX(CASE WHEN ${stepIs('fa', 'TEMPEL_LABEL_RELEASE')} THEN fa.EndDate END)
       ) AS Total_Days,
-      -- Timbang: Penyiapan BB start -> Pengiriman Bahan Baku end
+      -- Timbang: Penyiapan BB start -> Pengiriman BB (formerly Pengiriman Bahan Baku) end
       DATEDIFF(DAY,
-        MIN(CASE WHEN fa.nama_trim = 'Penyiapan BB' THEN fa.StartDate END),
-        MAX(CASE WHEN fa.nama_trim = 'Pengiriman Bahan Baku' THEN fa.EndDate END)
+        MIN(CASE WHEN ${stepIs('fa', 'PENYIAPAN_BB')} THEN fa.StartDate END),
+        MAX(CASE WHEN ${stepIs('fa', 'PENGIRIMAN_BB')} THEN fa.EndDate END)
       ) AS Timbang_Days,
       -- Produksi (Proses + Kemas Primer + Kemas Sekunder):
-      -- Terima Bahan Baku start -> Pengiriman Obat Jadi end
+      -- Terima BB (formerly Terima Bahan Baku) start -> Pengiriman Obat Jadi end
       DATEDIFF(DAY,
-        MIN(CASE WHEN fa.nama_trim = 'Terima Bahan Baku' THEN fa.StartDate END),
+        MIN(CASE WHEN ${stepIs('fa', 'TERIMA_BB')} THEN fa.StartDate END),
         MAX(CASE WHEN fa.nama_trim = 'Pengiriman Obat Jadi' THEN fa.EndDate END)
       ) AS Produksi_Days,
       -- QC: sample pickup (138) start -> result handover (141) end
@@ -748,20 +750,20 @@ async function getPCTBreakdownV2(period = 'MTD') {
         MIN(CASE WHEN fa.kode_tahapan IN (${MIKRO_TEST_CODES.join(', ')}) THEN fa.StartDate END),
         MAX(CASE WHEN fa.kode_tahapan IN (${MIKRO_TEST_CODES.join(', ')}) THEN fa.EndDate END)
       ) AS Mikro_Days,
-      -- QA: MIN start of (Penyerahan PPI ke QA [also matches the misspelled "Penyerahaan PPI ke QA"], QC result handover) -> Tempel Label Realese end
+      -- QA: MIN start of (Penyerahan PPI ke QA [also matches the misspelled "Penyerahaan PPI ke QA"], QC result handover) -> Tempel Label Release end
       DATEDIFF(DAY,
         MIN(CASE WHEN fa.nama_trim IN ('Penyerahan PPI ke QA', 'Penyerahaan PPI ke QA') OR fa.kode_tahapan = ${QC_HANDOVER_CODE} THEN fa.StartDate END),
-        MAX(CASE WHEN fa.nama_trim = 'Tempel Label Realese' THEN fa.EndDate END)
+        MAX(CASE WHEN ${stepIs('fa', 'TEMPEL_LABEL_RELEASE')} THEN fa.EndDate END)
       ) AS QA_Days
     FROM FilteredAlur fa
     INNER JOIN CompletedBatches cb ON fa.Batch_No = cb.Batch_No
     GROUP BY fa.Batch_No, fa.Batch_Date, fa.Product_ID, fa.Product_Name
     HAVING (
       DATEDIFF(DAY,
-        MIN(CASE WHEN fa.nama_trim = 'Penyiapan BB' THEN fa.StartDate END),
-        MAX(CASE WHEN fa.nama_trim = 'Pengiriman Bahan Baku' THEN fa.EndDate END)) IS NOT NULL
+        MIN(CASE WHEN ${stepIs('fa', 'PENYIAPAN_BB')} THEN fa.StartDate END),
+        MAX(CASE WHEN ${stepIs('fa', 'PENGIRIMAN_BB')} THEN fa.EndDate END)) IS NOT NULL
       OR DATEDIFF(DAY,
-        MIN(CASE WHEN fa.nama_trim = 'Terima Bahan Baku' THEN fa.StartDate END),
+        MIN(CASE WHEN ${stepIs('fa', 'TERIMA_BB')} THEN fa.StartDate END),
         MAX(CASE WHEN fa.nama_trim = 'Pengiriman Obat Jadi' THEN fa.EndDate END)) IS NOT NULL
       OR DATEDIFF(DAY,
         MIN(CASE WHEN fa.kode_tahapan = ${QC_PICKUP_CODE} THEN fa.StartDate END),
@@ -771,7 +773,7 @@ async function getPCTBreakdownV2(period = 'MTD') {
         MAX(CASE WHEN fa.kode_tahapan IN (${MIKRO_TEST_CODES.join(', ')}) THEN fa.EndDate END)) IS NOT NULL
       OR DATEDIFF(DAY,
         MIN(CASE WHEN fa.nama_trim IN ('Penyerahan PPI ke QA', 'Penyerahaan PPI ke QA') OR fa.kode_tahapan = ${QC_HANDOVER_CODE} THEN fa.StartDate END),
-        MAX(CASE WHEN fa.nama_trim = 'Tempel Label Realese' THEN fa.EndDate END)) IS NOT NULL
+        MAX(CASE WHEN ${stepIs('fa', 'TEMPEL_LABEL_RELEASE')} THEN fa.EndDate END)) IS NOT NULL
     )
     ORDER BY fa.Batch_No
   `;
@@ -916,7 +918,7 @@ async function getWIPData(asOf = null) {
       WHERE #tmpData.Batch_No = wb.wip_batchno AND #tmpData.Product_ID = wb.wip_productID
     );
 
-    -- Step 5: Keep only batches where Timbang has started OR Terima Bahan Baku is completed
+    -- Step 5: Keep only batches where Timbang has started OR Terima BB (formerly Terima Bahan Baku) is completed
     DELETE FROM #tmpData
     WHERE NOT EXISTS (
       SELECT 1 FROM t_alur_proses ap
@@ -926,7 +928,7 @@ async function getWIPData(asOf = null) {
     )
     AND NOT EXISTS (
       SELECT 1 FROM t_alur_proses ap2
-      WHERE LTRIM(RTRIM(ap2.nama_tahapan)) = 'Terima Bahan Baku' AND ap2.EndDate IS NOT NULL ${isHist ? 'AND ap2.EndDate <= @asOf' : ''}
+      WHERE ${stepIs('ap2', 'TERIMA_BB')} AND ap2.EndDate IS NOT NULL ${isHist ? 'AND ap2.EndDate <= @asOf' : ''}
         AND ap2.Batch_Date = #tmpData.Batch_Date AND ap2.Batch_No = #tmpData.Batch_No AND ap2.Product_ID = #tmpData.Product_ID
     );
 
@@ -1036,11 +1038,11 @@ async function getPCTSummary() {
         AND ISDATE(ap.Batch_Date) = 1
         AND mp.Product_Name NOT LIKE '%granulat%'
     ),
-    -- Get only batches that have completed "Tempel Label Realese" with EndDate (MTD)
+    -- Get only batches that have completed "Tempel Label Release" with EndDate (MTD)
     CompletedBatches AS (
       SELECT DISTINCT Batch_No
-      FROM FilteredAlur
-      WHERE LOWER(nama_tahapan) LIKE '%tempel%label%realese%'
+      FROM FilteredAlur fa
+      WHERE ${stepIs('fa', 'TEMPEL_LABEL_RELEASE')}
         AND EndDate IS NOT NULL
         ${dateFilter}
     ),
@@ -1050,11 +1052,11 @@ async function getPCTSummary() {
         fa.Batch_No,
         fa.Product_ID,
         fa.Product_Name,
-        -- Total calendar days from earliest StartDate to Tempel Label Realese EndDate (no holiday exclusions)
+        -- Total calendar days from earliest StartDate to Tempel Label Release EndDate (no holiday exclusions)
         CAST(DATEDIFF(
           DAY,
           MIN(fa.StartDate),
-          MAX(CASE WHEN LOWER(fa.nama_tahapan) LIKE '%tempel%label%realese%' THEN fa.EndDate END)
+          MAX(CASE WHEN ${stepIs('fa', 'TEMPEL_LABEL_RELEASE')} THEN fa.EndDate END)
         ) AS FLOAT) AS Total_Days
       FROM FilteredAlur fa
       INNER JOIN CompletedBatches cb ON fa.Batch_No = cb.Batch_No
@@ -1371,7 +1373,7 @@ async function getHolidays() {
   return result.recordset;
 }
 
-// Get raw t_alur_proses data for PCT-eligible batches (batches that completed Tempel Label Realese)
+// Get raw t_alur_proses data for PCT-eligible batches (batches that completed Tempel Label Release)
 async function getPCTRawData(period = 'MTD') {
   const db = await connect();
   
@@ -1399,11 +1401,11 @@ async function getPCTRawData(period = 'MTD') {
         AND ISDATE(ap.Batch_Date) = 1
         AND mp.Product_Name NOT LIKE '%granulat%'
     ),
-    -- Get only batches that have completed "Tempel Label Realese" with EndDate based on period
+    -- Get only batches that have completed "Tempel Label Release" with EndDate based on period
     CompletedBatches AS (
       SELECT DISTINCT Batch_No
-      FROM FilteredAlur
-      WHERE LOWER(nama_tahapan) LIKE '%tempel%label%realese%'
+      FROM FilteredAlur fa
+      WHERE ${stepIs('fa', 'TEMPEL_LABEL_RELEASE')}
         AND EndDate IS NOT NULL
         ${dateFilter}
     )
@@ -3052,7 +3054,7 @@ async function getProductionMonitoring(from, to, dept = 'ALL', groupIds = []) {
     OUTER APPLY (SELECT MIN(s.StartDate) d FROM steps s WHERE s.Product_ID=b.Product_ID AND s.Batch_No=b.Batch_No AND s.Batch_Date=b.Batch_Date AND s.kode_tahapan=${QA_DOC_PN}) qpn
     OUTER APPLY (SELECT MIN(s.StartDate) d FROM steps s WHERE s.Product_ID=b.Product_ID AND s.Batch_No=b.Batch_No AND s.Batch_Date=b.Batch_Date AND s.kode_tahapan=${QA_DOC_QC}) qqc
     OUTER APPLY (SELECT MIN(s.StartDate) d FROM steps s WHERE s.Product_ID=b.Product_ID AND s.Batch_No=b.Batch_No AND s.Batch_Date=b.Batch_Date AND s.kode_tahapan=${QA_DOC_MC}) qmc
-    OUTER APPLY (SELECT MAX(s.EndDate) d FROM steps s WHERE s.Product_ID=b.Product_ID AND s.Batch_No=b.Batch_No AND s.Batch_Date=b.Batch_Date AND s.kode_tahapan=170) rel
+    OUTER APPLY (SELECT MAX(s.EndDate) d FROM steps s WHERE s.Product_ID=b.Product_ID AND s.Batch_No=b.Batch_No AND s.Batch_Date=b.Batch_Date AND ${stepIs('s', 'TEMPEL_LABEL_RELEASE')}) rel
     -- Fallback for batches released while their process flow was still waiting
     -- on an earlier step (often Cek Dokumen MC): the release is recorded in
     -- t_dnc_product but step 170 never gets an EndDate (~1.5% of 2026 releases).
@@ -3499,7 +3501,7 @@ async function getBatchesReport(from, to) {
                       AND a.kode_tahapan NOT IN (${PREP_STEP_CODES.join(', ')})
                       AND (${NOT_PREP_NAME('a')})
                      THEN a.StartDate END)                    AS Started,
-            MAX(CASE WHEN a.kode_tahapan = 170 THEN a.EndDate END) AS Released
+            MAX(CASE WHEN ${stepIs('a', 'TEMPEL_LABEL_RELEASE')} THEN a.EndDate END) AS Released
     INTO    #st
     FROM    #hdr h
     JOIN    t_alur_proses a ON a.Product_ID = h.pid AND a.Batch_No = h.bn AND a.Batch_Date = h.bd

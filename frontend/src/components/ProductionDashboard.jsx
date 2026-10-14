@@ -13,6 +13,7 @@ import {
   getStageMembership,
   computeDaysInStageForGroup,
 } from '../utils/stageBoundaries';
+import { isReleasedRow } from '../config/routeSteps';
 import DashboardLoading from './DashboardLoading';
 import Sidebar from './Sidebar';
 import Modal from './Modal';
@@ -910,10 +911,10 @@ const ProductionDashboard = () => {
       fullEntriesByBatch[bn].push(entry);
     });
 
-    // Step 1: Filter out batches that have completed "Tempel Label Realese"
+    // Step 1: Filter out batches that have completed "Tempel Label Release"
     const batchesWithTempelLabelRelease = new Set();
     rawData.forEach(entry => {
-      if (entry.nama_tahapan === 'Tempel Label Realese' && entry.EndDate) {
+      if (isReleasedRow(entry)) {
         batchesWithTempelLabelRelease.add(entry.Batch_No);
       }
     });
@@ -1115,7 +1116,7 @@ const ProductionDashboard = () => {
     // Filter out completed batches
     const batchesWithTempelLabelRelease = new Set();
     rawData.forEach(entry => {
-      if (entry.nama_tahapan === 'Tempel Label Realese' && entry.EndDate) {
+      if (isReleasedRow(entry)) {
         batchesWithTempelLabelRelease.add(entry.Batch_No);
       }
     });
@@ -1305,7 +1306,7 @@ const ProductionDashboard = () => {
     // Filter raw data for this dept and any of the original stages
     const batchesWithTempelLabelRelease = new Set();
     rawWipData.forEach(entry => {
-      if (entry.nama_tahapan === 'Tempel Label Realese' && entry.EndDate) {
+      if (isReleasedRow(entry)) {
         batchesWithTempelLabelRelease.add(entry.Batch_No);
       }
     });
@@ -1447,7 +1448,7 @@ const ProductionDashboard = () => {
   const unknownPNGroupProducts = useMemo(() => {
     const batchesWithTempelLabelRelease = new Set();
     rawWipData.forEach(entry => {
-      if (entry.nama_tahapan === 'Tempel Label Realese' && entry.EndDate) {
+      if (isReleasedRow(entry)) {
         batchesWithTempelLabelRelease.add(entry.Batch_No);
       }
     });
@@ -1780,10 +1781,10 @@ const ProductionDashboard = () => {
     const prosesStages = Object.keys(stageMapping).filter(key => stageMapping[key] === 'Proses');
     const validStages = Object.keys(stageMapping); // All mapped stages are valid
     
-    // Step 1: Filter out batches that have completed "Tempel Label Realese"
+    // Step 1: Filter out batches that have completed "Tempel Label Release"
     const batchesWithTempelLabelRelease = new Set();
     rawWipData.forEach(entry => {
-      if (entry.nama_tahapan === 'Tempel Label Realese' && entry.EndDate) {
+      if (isReleasedRow(entry)) {
         batchesWithTempelLabelRelease.add(entry.Batch_No);
       }
     });
@@ -2484,7 +2485,7 @@ const ProductionDashboard = () => {
     // Filter raw data for this specific dept, jenisSediaan, and stage
     const batchesWithTempelLabelRelease = new Set();
     rawWipData.forEach(entry => {
-      if (entry.nama_tahapan === 'Tempel Label Realese' && entry.EndDate) {
+      if (isReleasedRow(entry)) {
         batchesWithTempelLabelRelease.add(entry.Batch_No);
       }
     });

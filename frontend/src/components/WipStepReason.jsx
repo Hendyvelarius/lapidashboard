@@ -40,12 +40,12 @@ const prevStepNames = (task) =>
     .map(norm)
     .filter(Boolean);
 
-// The MC analyses: 215 "Analisa Non Steril MC" (formerly "Pengujian MC") and 216
-// "Analisa Steril MC" (formerly "Pengujian Sterilitas MC"). Older batches keep the old
+// The MC analyses: 215 "Pengujian Non Steril MC" (earlier "Analisa Non Steril MC", originally "Pengujian MC") and 216
+// "Pengujian Steril MC" (earlier "Analisa Steril MC", originally "Pengujian Sterilitas MC"). Older batches keep the old
 // names, so both are recognised; the code covers rows from either era.
 const MC_ANALYSIS_CODES = new Set([215, 216]);
 const MC_ANALYSIS_NAMES = new Set(
-  ['Analisa Non Steril MC', 'Analisa Steril MC', 'Pengujian MC', 'Pengujian Sterilitas MC']
+  ['Pengujian Non Steril MC', 'Pengujian Steril MC', 'Analisa Non Steril MC', 'Analisa Steril MC', 'Pengujian MC', 'Pengujian Sterilitas MC']
     .map((n) => n.toLowerCase())
 );
 const isMcAnalysis = (task) =>

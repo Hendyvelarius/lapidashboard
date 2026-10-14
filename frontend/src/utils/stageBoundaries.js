@@ -7,10 +7,11 @@
  * WIP view (Production overview, PN1/PN2 line dashboards, Quality dashboard) computes
  * group boundaries identically.
  *
- * Definitions (per batch):
+ * Definitions (per batch). Steps that were renamed or moved to new codes are matched
+ * through config/routeSteps.js, under both their old and new code and name.
  *   Timbang        start = StartDate of "Penyiapan BB"
- *                  end   = EndDate   of "Pengiriman Bahan Baku"
- *   Proses         start = StartDate of "Terima Bahan Baku"
+ *                  end   = EndDate   of "Pengiriman BB" (formerly "Pengiriman Bahan Baku")
+ *   Proses         start = StartDate of "Terima BB" (formerly "Terima Bahan Baku")
  *                  end   = same instant Kemas Primer starts (see below)
  *   Kemas Primer   Keyed off the batch's PRIMARY PACKAGING step (see isPackagingStep):
  *                  "KP Solid"/"Kemas Primer Solid" (solids), any "Filling ..." except
@@ -38,14 +39,14 @@
  *                  end   = EndDate   of the result handover (kode 141: "Serah Terima Hasil
  *                          QC Ke QA", formerly "Penyerahan Hasil Uji QC")
  *   Mikro          start = MIN StartDate of the MC test steps (kode 215 / 216:
- *                          "Analisa Non Steril MC" / "Analisa Steril MC", formerly
+ *                          "Pengujian Non Steril MC" / "Pengujian Steril MC", formerly "Analisa ... MC" and before that
  *                          "Pengujian MC" / "Pengujian Sterilitas MC")
  *                  end   = MAX EndDate   of the same steps
  *   QA             start = MIN StartDate of "Penyerahan PPI ke QA" / the QC result handover
- *                  end   = EndDate of "Tempel Label Realese"
+ *                  end   = EndDate of "Tempel Label Release" (formerly "Tempel Label Realese")
  *
  * PCT-only combined group "Produksi" = Proses.start -> Kemas Sekunder.end
- *   (= StartDate of "Terima Bahan Baku" -> EndDate of "Pengiriman Obat Jadi").
+ *   (= StartDate of "Terima BB" -> EndDate of "Pengiriman Obat Jadi").
  *
  * ROLLBACK: set USE_NEW_STAGE_LOGIC = false to make every consumer fall back to the
  * previous per-`tahapan_group` (MIN StartDate -> MAX EndDate / earliest IdleStartDate)
@@ -53,6 +54,7 @@
  */
 
 import { calculateCalendarDaysTo } from './workingDays';
+import { isStep } from '../config/routeSteps';
 
 // -------------------------------------------------------------------------------------
 // Rollback switch — flip to false to restore the legacy stage-grouping behaviour.
@@ -73,17 +75,14 @@ export const GROUP_ORDER = [
 // PCT breakdown display order (Proses + Kemas Primer + Kemas Sekunder collapse to Produksi).
 export const PCT_GROUP_ORDER = ['Timbang', 'Produksi', 'QC', 'Mikro', 'QA'];
 
-// Named steps used by the boundary rules (canonical, single-spaced).
+// Named steps used by the boundary rules (canonical, single-spaced). Steps that have
+// been renamed live in config/routeSteps.js instead and are matched with isStep.
 const STEP = {
-  PENYIAPAN_BB: 'Penyiapan BB',
-  PENGIRIMAN_BB: 'Pengiriman Bahan Baku',
-  TERIMA_BAHAN_BAKU: 'Terima Bahan Baku',
   PENYERAHAN_PPI_KE_QA: 'Penyerahan PPI ke QA',
   // The PPI-handoff step is misspelled "Penyerahaan PPI ke QA" (double-a) in the source
   // data. Match both spellings so QA's window opens for batches that only carry the typo'd
   // variant (e.g. routes with no QC result handover step).
   PENYERAHAN_PPI_KE_QA_TYPO: 'Penyerahaan PPI ke QA',
-  TEMPEL_LABEL_REALESE: 'Tempel Label Realese',
   PENGIRIMAN_OBAT_JADI: 'Pengiriman Obat Jadi',
 };
 
@@ -146,13 +145,17 @@ const endsOf = (entries, names) => {
   return entries.filter((e) => set.has(norm(e.nama_tahapan))).map((e) => e.EndDate);
 };
 
+// StartDate / EndDate values of the entries that are route step `key` (config/routeSteps.js).
+const stepStarts = (entries, key) => entries.filter((e) => isStep(e, key)).map((e) => e.StartDate);
+const stepEnds = (entries, key) => entries.filter((e) => isStep(e, key)).map((e) => e.EndDate);
+
 // The Mikro test steps, matched by kode_tahapan because their names changed: 215 was
-// "Pengujian MC" (now "Analisa Non Steril MC"), 216 was "Pengujian Sterilitas MC" (now
-// "Analisa Steril MC"). Each batch keeps the name it was created with, so both spellings
+// "Pengujian MC" (then "Analisa Non Steril MC", now "Pengujian Non Steril MC"), 216 was "Pengujian Sterilitas MC" (then
+// "Analisa Steril MC", now "Pengujian Steril MC"). Each batch keeps the name it was created with, so both spellings
 // occur. The names are a fallback for rows without a code (e.g. older snapshots).
 const MIKRO_TEST_CODES = new Set([215, 216]);
 const MIKRO_TEST_NAMES = new Set(
-  ['Pengujian MC', 'Pengujian Sterilitas MC', 'Analisa Non Steril MC', 'Analisa Steril MC']
+  ['Pengujian MC', 'Pengujian Sterilitas MC', 'Analisa Non Steril MC', 'Analisa Steril MC', 'Pengujian Non Steril MC', 'Pengujian Steril MC']
     .map((n) => n.toLowerCase())
 );
 const isMikroTestStep = (e) =>
@@ -344,11 +347,11 @@ export const computeStageBoundaries = (batchEntries) => {
 
   return {
     'Timbang': {
-      start: minDate(startsOf(entries, [STEP.PENYIAPAN_BB])),
-      end: maxDate(endsOf(entries, [STEP.PENGIRIMAN_BB])),
+      start: minDate(stepStarts(entries, 'PENYIAPAN_BB')),
+      end: maxDate(stepEnds(entries, 'PENGIRIMAN_BB')),
     },
     'Proses': {
-      start: minDate(startsOf(entries, [STEP.TERIMA_BAHAN_BAKU])),
+      start: minDate(stepStarts(entries, 'TERIMA_BB')),
       end: kp.start, // Proses ends when Kemas Primer starts (packaging prereqs all done)
     },
     'Kemas Primer': {
@@ -372,7 +375,7 @@ export const computeStageBoundaries = (batchEntries) => {
         ...startsOf(entries, [STEP.PENYERAHAN_PPI_KE_QA, STEP.PENYERAHAN_PPI_KE_QA_TYPO]),
         ...entries.filter(isQcHandoverStep).map((e) => e.StartDate),
       ]),
-      end: maxDate(endsOf(entries, [STEP.TEMPEL_LABEL_REALESE])),
+      end: maxDate(stepEnds(entries, 'TEMPEL_LABEL_RELEASE')),
     },
   };
 };
@@ -396,8 +399,8 @@ const displayGroupHasStartedStep = (entries, group, ref) => {
   // Kemas Sekunder "started" = the secondary packing step ("Kemas Sekunder ...") has started,
   // not merely the Terima Bahan / Persiapan admin steps that open its window.
   if (group === 'Kemas Sekunder') return kemasSekunderStarted(entries, ref);
-  // QA is a document-review stage: its steps ("Cek Dokumen ... oleh QA", "Approve Realese",
-  // "Tempel Label Realese") NEVER record a StartDate — they are tracked via Display=1 /
+  // QA is a document-review stage: its steps ("Cek Dokumen ... oleh QA", "Approve Release",
+  // "Tempel Label Release") NEVER record a StartDate — they are tracked via Display=1 /
   // IdleStartDate once QC/MC results are handed to QA. A StartDate-based check therefore never
   // fires for QA and wrongly parks every batch in "waiting" (in-progress count = 0). A batch is
   // genuinely "in QA" as soon as its QA window is open (Penyerahan Hasil Uji QC / PPI ke QA

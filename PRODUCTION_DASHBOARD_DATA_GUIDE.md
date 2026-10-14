@@ -38,12 +38,12 @@ Dashboard Produksi secara otomatis melakukan refresh setiap jam dan menampilkan 
 
 **Batch dianggap "dalam WIP" jika:**
 - Memiliki status open di `t_rfid_batch_card`
-- BELUM menyelesaikan tahap "Tempel Label Realese"
+- BELUM menyelesaikan tahap "Tempel Label Release"
 - Dimulai dalam 12 bulan terakhir
 - Merupakan produk jadi (bukan granulat)
 
 **Batch dikeluarkan dari WIP ketika:**
-- Tahap "Tempel Label Realese" memiliki EndDate
+- Tahap "Tempel Label Release" memiliki EndDate
 - ATAU muncul di tabel `t_dnc_product` (batch yang sudah dirilis)
 - ATAU jenis sediaannya `Import FG` / `Toll Out` — produk ini tidak diproduksi di pabrik sendiri sehingga tidak punya proses produksi
 
@@ -101,13 +101,13 @@ Dashboard Produksi secara otomatis melakukan refresh setiap jam dan menampilkan 
 ### Logika Utama
 
 **Hanya mencakup batch yang:**
-- Telah menyelesaikan "Tempel Label Realese" dengan EndDate
+- Telah menyelesaikan "Tempel Label Release" dengan EndDate
 - Selesai bulan ini (MTD) atau tahun ini (YTD)
 - BUKAN produk granulat
 - Memiliki tanggal batch yang valid
 
 **Perhitungan:**
-- **Total_Days** = Hari dari StartDate pertama hingga EndDate "Tempel Label Realese"
+- **Total_Days** = Hari dari StartDate pertama hingga EndDate "Tempel Label Release"
 - **Hari per Tahap** = DATEDIFF antara StartDate paling awal dan EndDate paling akhir untuk tahap tersebut
 - **Rata-rata** = Mean dari semua durasi batch untuk setiap tahap
 
@@ -206,7 +206,7 @@ Dashboard Produksi secara otomatis melakukan refresh setiap jam dan menampilkan 
 ### Siklus Hidup Batch
 ```
 Batch Baru → Timbang → Proses → Kemas Primer → Kemas Sekunder 
-→ QC → Mikro → QA → Tempel Label Realese → Released (Keluar dari WIP)
+→ QC → Mikro → QA → Tempel Label Release → Released (Keluar dari WIP)
 ```
 
 ### Pertanyaan Umum
@@ -215,17 +215,17 @@ Batch Baru → Timbang → Proses → Kemas Primer → Kemas Sekunder
 J: Untuk tahap QA, SEMUA 4 pengecekan dokumen harus memiliki IdleStartDate sebelum durasi dihitung. Jika ada yang kosong, akan menampilkan "Not Started".
 
 **T: Mengapa PCT menampilkan YTD bukan MTD?**
-J: Jika tidak ada batch yang diselesaikan dengan "Tempel Label Realese" bulan ini, dashboard otomatis beralih ke YTD untuk menampilkan data terbaru.
+J: Jika tidak ada batch yang diselesaikan dengan "Tempel Label Release" bulan ini, dashboard otomatis beralih ke YTD untuk menampilkan data terbaru.
 
 **T: Apa arti flag "Display"?**
 J: Batch dengan Display='1' adalah batch yang dijadwalkan/direncanakan yang muncul dalam hitungan tetapi belum memulai produksi.
 
 **T: Kapan batch dianggap "selesai"?**
-J: Ketika tahap "Tempel Label Realese" memiliki EndDate di `t_alur_proses`.
+J: Ketika tahap "Tempel Label Release" memiliki EndDate di `t_alur_proses`.
 
 **T: Mengapa saya tidak melihat batch di WIP lagi?**
 J: Batch telah:
-   - Menyelesaikan "Tempel Label Realese" (selesai produksi)
+   - Menyelesaikan "Tempel Label Release" (selesai produksi)
    - Ditambahkan ke tabel `t_dnc_product` (dirilis)
    - Tidak aktif lebih dari 12 bulan
 
@@ -241,7 +241,7 @@ J: Batch telah:
 - EndDate kosong pada tahap yang sudah selesai → Batch tetap di WIP
 - IdleStartDate kosong → Menampilkan "Not Started"
 - Pemetaan departemen salah → Batch muncul di speedometer yang salah
-- EndDate "Tempel Label Realese" kosong → Batch tidak pernah keluar dari WIP
+- EndDate "Tempel Label Release" kosong → Batch tidak pernah keluar dari WIP
 
 ---
 

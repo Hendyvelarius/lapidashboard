@@ -14,6 +14,7 @@ import { hasPageAccess } from '../config/AccessSettings';
 import { loadQualityCache, saveQualityCache, clearQualityCache, isQualityCacheValid } from '../utils/dashboardCache';
 import { calculateCalendarDaysToToday, calculateCalendarDaysTo, setHolidays } from '../utils/workingDays';
 import { USE_NEW_STAGE_LOGIC, GROUP_ORDER, groupStartFor, getStageMembership, computeDaysInStageForGroup } from '../utils/stageBoundaries';
+import { isReleasedRow } from '../config/routeSteps';
 import { apiUrl, apiUrlWithRefresh } from '../api';
 import { sediaanLabel } from '../config/sediaanGroups';
 import './QualityDashboard.css';
@@ -906,7 +907,7 @@ const QualityDashboard = () => {
     // Filter out completed batches (those with Tempel Label Release completed)
     const batchesWithTempelLabelRelease = new Set();
     rawData.forEach(entry => {
-      if (entry.nama_tahapan === 'Tempel Label Realese' && entry.EndDate) {
+      if (isReleasedRow(entry)) {
         batchesWithTempelLabelRelease.add(entry.Batch_No);
       }
     });
@@ -2100,7 +2101,7 @@ const QualityDashboard = () => {
     // Filter raw data for this department and specific stage
     const batchesWithTempelLabelRelease = new Set();
     wipData.forEach(entry => {
-      if (entry.nama_tahapan === 'Tempel Label Realese' && entry.EndDate) {
+      if (isReleasedRow(entry)) {
         batchesWithTempelLabelRelease.add(entry.Batch_No);
       }
     });
@@ -2273,7 +2274,7 @@ const QualityDashboard = () => {
     // First, fetch all batches for this stage (same as handleWipStageClick)
     const batchesWithTempelLabelRelease = new Set();
     wipData.forEach(entry => {
-      if (entry.nama_tahapan === 'Tempel Label Realese' && entry.EndDate) {
+      if (isReleasedRow(entry)) {
         batchesWithTempelLabelRelease.add(entry.Batch_No);
       }
     });
@@ -2449,7 +2450,7 @@ const QualityDashboard = () => {
     const stepPattern = /^Cek Dokumen (PN|MC|QC) oleh QA\b/i;
 
     // Release closes the batch out of this view entirely, from either card. Two
-    // independent records say a batch is released: the 'Tempel Label Realese' step
+    // independent records say a batch is released: the 'Tempel Label Release' step
     // having an EndDate, and the batch appearing in t_dnc_product (ofActualData).
     // Either alone can lag, so both are honoured.
     const releaseKey = (productId, batchNo) =>
@@ -2457,12 +2458,12 @@ const QualityDashboard = () => {
     const releasedBatches = new Set();
 
     wipData.forEach(entry => {
-      if ((entry.nama_tahapan || '').trim() === 'Tempel Label Realese' && entry.EndDate) {
+      if (isReleasedRow(entry)) {
         releasedBatches.add(releaseKey(entry.Product_ID, entry.Batch_No));
       }
     });
     // ofActualData is YTD only; a batch released in an earlier year will have long
-    // since had its 'Tempel Label Realese' EndDate recorded, so nothing leaks through.
+    // since had its 'Tempel Label Release' EndDate recorded, so nothing leaks through.
     ofActualData.forEach(item => {
       releasedBatches.add(releaseKey(item.DNc_ProductID, item.DNc_BatchNo));
     });

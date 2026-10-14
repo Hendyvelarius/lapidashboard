@@ -11,6 +11,7 @@ import { useAuth } from '../context/AuthContext';
 import { loadLinePN2Cache, saveLinePN2Cache, clearLinePN2Cache, isLinePN2CacheValid } from '../utils/dashboardCache';
 import { calculateCalendarDaysToToday, setHolidays } from '../utils/workingDays';
 import { USE_NEW_STAGE_LOGIC, GROUP_ORDER, groupStartFor, getStageMembership, computeDaysInStageForGroup } from '../utils/stageBoundaries';
+import { isReleasedRow } from '../config/routeSteps';
 import { apiUrl, apiUrlWithRefresh } from '../api';
 import { sediaanLabel } from '../config/sediaanGroups';
 import './LinePN2Dashboard.css';
@@ -828,7 +829,7 @@ const LinePN2Dashboard = () => {
     // Filter for PN1 only and exclude completed batches
     const batchesWithTempelLabelRelease = new Set();
     rawData.forEach(entry => {
-      if (entry.nama_tahapan === 'Tempel Label Realese' && entry.EndDate) {
+      if (isReleasedRow(entry)) {
         batchesWithTempelLabelRelease.add(entry.Batch_No);
       }
     });
@@ -1762,7 +1763,7 @@ const LinePN2Dashboard = () => {
     // Filter raw data for PN1 and this specific stage
     const batchesWithTempelLabelRelease = new Set();
     wipData.forEach(entry => {
-      if (entry.nama_tahapan === 'Tempel Label Realese' && entry.EndDate) {
+      if (isReleasedRow(entry)) {
         batchesWithTempelLabelRelease.add(entry.Batch_No);
       }
     });
@@ -1910,7 +1911,7 @@ const LinePN2Dashboard = () => {
     // First, fetch all batches for this stage (same as handleWipStageClick)
     const batchesWithTempelLabelRelease = new Set();
     wipData.forEach(entry => {
-      if (entry.nama_tahapan === 'Tempel Label Realese' && entry.EndDate) {
+      if (isReleasedRow(entry)) {
         batchesWithTempelLabelRelease.add(entry.Batch_No);
       }
     });
