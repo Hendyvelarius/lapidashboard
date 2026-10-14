@@ -2905,6 +2905,27 @@ async function getProductionMonitoring(from, to, dept = 'ALL', groupIds = []) {
     : '';
 
   const query = `
+    SET NOCOUNT ON;
+
+    -- Tanggal potong stock: the first time the warehouse handed over material
+    -- for any of the batch's PPI sections (BB, BKP or BKS). Same source and
+    -- scope as the batches report, which splits it per section. Not the OF1
+    -- "Approve Terima BB" route step -- that is production confirming receipt,
+    -- usually a day or more after the handover. Staged up front: the aggregate
+    -- costs ~1s alone, but inlined into the query below it skews the plan and
+    -- nearly doubles the runtime of a long period.
+    SELECT  c.MR_ProductID AS pid, c.MR_BatchNo AS bn, c.MR_BatchDate AS bd,
+            MIN(a.MR_SerahTerima) AS d
+    INTO    #cut
+    FROM    t_Bon_Keluar_Bahan_Awal_Detail a
+    JOIN    t_Bon_Keluar_Bahan_Awal_Header c ON c.MR_No = a.MR_No
+    WHERE ${BON_SCOPE}
+      AND   a.MI_Amount > 0
+      AND   a.MR_SerahTerima IS NOT NULL
+      AND   (${SECTION_EXPR('c.MR_PPIid')}) IS NOT NULL
+    GROUP BY c.MR_ProductID, c.MR_BatchNo, c.MR_BatchDate;
+    CREATE CLUSTERED INDEX ix_cut ON #cut (pid, bn, bd);
+
     WITH steps AS (
         SELECT  a.Product_ID, a.Batch_No, a.Batch_Date,
                 a.kode_tahapan, a.nama_tahapan, a.Urutan, a.No_urut, a.seq_id,
@@ -2964,6 +2985,7 @@ async function getProductionMonitoring(from, to, dept = 'ALL', groupIds = []) {
           ELSE ${PP_TOKEN('f.pp_a')} + '; ' + ${PP_TOKEN('f.pp_b')}
         END + '; ' + ISNULL(f.pk_a, '-') + '; ' + ISNULL(f.pk_b, '-')
                                                              AS FormulaPPI,
+        cut.d                                                AS PotongStock,
         gr.d                                                 AS Granulasi,
         mx.d                                                 AS Mixing,
         fk.d                                                 AS Filling,
@@ -3011,6 +3033,7 @@ async function getProductionMonitoring(from, to, dept = 'ALL', groupIds = []) {
         WHERE typ IS NOT NULL AND seg IN ('A', 'B')
         GROUP BY Reg_ProductID, Reg_BatchNo, Reg_BatchDate
     ) f ON f.Reg_ProductID = b.Product_ID AND f.Reg_BatchNo = b.Batch_No AND f.Reg_BatchDate = b.Batch_Date
+    LEFT JOIN #cut cut ON cut.pid = b.Product_ID AND cut.bn = b.Batch_No AND cut.bd = b.Batch_Date
     OUTER APPLY (SELECT MIN(s.StartDate) d FROM steps s
                  WHERE s.Product_ID=b.Product_ID AND s.Batch_No=b.Batch_No AND s.Batch_Date=b.Batch_Date
                    AND ${IS_GRANULASI('s')}
@@ -3075,7 +3098,9 @@ async function getProductionMonitoring(from, to, dept = 'ALL', groupIds = []) {
     ) pcg ON pcg.Product_id = b.Product_ID
     WHERE (@dept = 'ALL' OR ISNULL(pn.Group_Dept, '') = @dept)
       ${groupFilter}
-    ORDER BY b.ProsesProduksi, ProductName, b.Batch_No
+    ORDER BY b.ProsesProduksi, ProductName, b.Batch_No;
+
+    DROP TABLE #cut;
   `;
 
   const result = await request.query(query);

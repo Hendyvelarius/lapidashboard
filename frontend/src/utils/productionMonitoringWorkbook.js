@@ -15,6 +15,7 @@ export const COLUMNS = [
   { header: 'Nomor Batch', key: 'BatchNo', width: 13, align: 'center', band: 'Identitas Batch' },
   { header: 'Turun PPI', key: 'TurunPPI', width: 13, date: true, band: 'PPI' },
   { header: 'Formula PPI', key: 'FormulaPPI', width: 34, align: 'left', band: 'PPI' },
+  { header: 'Potong Stock', key: 'PotongStock', width: 13, date: true, band: 'PPI' },
   { header: 'Granulasi', key: 'Granulasi', width: 13, date: true, band: 'Proses Produksi' },
   { header: 'Mixing', key: 'Mixing', width: 13, date: true, band: 'Proses Produksi' },
   { header: 'Filling', key: 'Filling', width: 13, date: true, band: 'Proses Produksi' },
