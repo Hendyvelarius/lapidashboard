@@ -712,6 +712,96 @@
   }
 }
 
+/* Coverage Stock FG detail: built on the OF1 detail layout above, with
+   stock / forecast / coverage columns instead of batch chips. */
+.modal-content.of-modal.of1-detail-modal.coverage-detail-modal {
+  max-width: 960px;
+}
+
+.cov-detail-row,
+.of1-detail-row.cov-detail-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 90px 90px 200px;
+  align-items: center;
+  gap: 1rem;
+}
+
+.cov-detail-colhead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0.5rem 0 0.35rem;
+  background: white;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #9ca3af;
+}
+
+.cov-num {
+  text-align: right;
+  font-size: 0.8rem;
+  color: #4b5563;
+  font-variant-numeric: tabular-nums;
+}
+
+.cov-detail-colhead .cov-num {
+  font-size: inherit;
+  color: inherit;
+}
+
+.of1-detail-progress-text.cov-pct {
+  min-width: 3.2rem;
+  text-align: right;
+}
+
+/* Tick on the bar at the 130% line between under and normal (scale is 0–300%). */
+.of1-detail-progress-bar.cov-bar {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+}
+
+.of1-detail-progress-bar.cov-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 43.333%;
+  width: 1px;
+  background: rgba(17, 24, 39, 0.35);
+}
+
+.cov-noforecast {
+  font-size: 0.78rem;
+  font-style: italic;
+  color: #9ca3af;
+}
+
+.coverage-detail-modal .of1-detail-tab.active .of1-detail-tab-count {
+  background: color-mix(in srgb, var(--cov-band, #9ca3af) 18%, white);
+  color: var(--cov-band, #4b5563);
+}
+
+@media (max-width: 768px) {
+  .cov-detail-row,
+  .of1-detail-row.cov-detail-row {
+    grid-template-columns: 70px 70px minmax(0, 1fr);
+    gap: 0.25rem 0.75rem;
+  }
+
+  /* Product name sits on its own line above the numbers. */
+  .cov-detail-colhead > span:first-child {
+    display: none;
+  }
+
+  .cov-detail-row .of1-detail-product {
+    grid-column: 1 / -1;
+  }
+}
+
 /* Responsive Modal */
 @media (max-width: 768px) {
   .of-details-container {

@@ -1314,205 +1314,185 @@ const SalesTargetDetailsModal = ({ isOpen, onClose, forecastData, modalTitle, pr
 };
 
 // Coverage Details Modal Component
+//
+// One row per product, lowest coverage first, so the SKUs that need stock are
+// at the top. Same layout as the OF1 detail modal: summary and controls stay
+// put and only the list scrolls. Bands match the coverage card: under < 130%,
+// normal 130–299%, over >= 300%, products without a forecast left out of the
+// bands (the card skips them too).
+const COVERAGE_BANDS = {
+  under: { label: 'Under', range: '<130%', color: '#ef4444' },
+  normal: { label: 'Normal', range: '130–299%', color: '#10b981' },
+  over: { label: 'Over', range: '≥300%', color: '#f59e0b' }
+};
+
+// The bar is drawn on a 0–300% scale; anything over 300% is a full bar.
+const COVERAGE_BAR_MAX = 300;
+
+const getCoverageBand = (coverage) => {
+  if (coverage === null) return 'noforecast';
+  if (coverage < 130) return 'under';
+  if (coverage >= 300) return 'over';
+  return 'normal';
+};
+
 const CoverageDetailsModal = ({ isOpen, onClose, forecastData, productGroupFilter = null, modalTitle = "Detail Coverage Stock FG", referenceDate = null }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  
+  const [view, setView] = useState('all'); // 'under' | 'normal' | 'over' | 'noforecast' | 'all'
+
   if (!isOpen || !forecastData) return null;
 
   // Get current period for filtering - use referenceDate for historical data
   const currentDate = referenceDate ? new Date(referenceDate) : new Date();
   const currentPeriod = `${currentDate.getFullYear()}${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
-  
-  // Filter forecast data by current period and optionally by product group
-  let currentPeriodData = forecastData.filter(item => 
-    String(item.Periode || '').toString() === currentPeriod
-  );
 
-  // Apply product group filter if provided
-  if (productGroupFilter) {
-    currentPeriodData = currentPeriodData.filter(item => 
-      item.Product_Group === productGroupFilter
-    );
-  }
-
-  // Calculate coverage percentage for a product
-  const getCoverage = (product) => {
-    const forecast = product.Forecast || 0;
-    const stock = product.Release || 0;
-    return forecast > 0 ? Math.round((stock / forecast) * 100) : 0;
-  };
-
-  // Categorize products based on coverage percentage and sort by coverage descending
-  const allUnderProducts = currentPeriodData
-    .filter(item => {
-      const coverage = getCoverage(item);
-      return coverage < 130;
+  const products = forecastData
+    .filter(item => String(item.Periode || '') === currentPeriod)
+    .filter(item => !productGroupFilter || item.Product_Group === productGroupFilter)
+    .map(item => {
+      const forecast = item.Forecast || 0;
+      const stock = item.Release || 0;
+      // Unrounded, so a product at 129.6% lands in the same band as on the card.
+      const coverage = forecast > 0 ? (stock / forecast) * 100 : null;
+      return {
+        id: String(item.Product_ID ?? '').trim(),
+        name: item.Product_NM || 'N/A',
+        stock,
+        forecast,
+        coverage,
+        band: getCoverageBand(coverage)
+      };
     })
-    .sort((a, b) => getCoverage(b) - getCoverage(a));
+    // Lowest coverage on top; no-forecast products last.
+    .sort((a, b) => ((a.coverage ?? Infinity) - (b.coverage ?? Infinity))
+      || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
 
-  const allNormalProducts = currentPeriodData
-    .filter(item => {
-      const coverage = getCoverage(item);
-      return coverage >= 130 && coverage <= 299;
-    })
-    .sort((a, b) => getCoverage(b) - getCoverage(a));
+  const counts = { under: 0, normal: 0, over: 0, noforecast: 0 };
+  products.forEach(p => { counts[p.band]++; });
 
-  const allOverProducts = currentPeriodData
-    .filter(item => {
-      const coverage = getCoverage(item);
-      return coverage >= 300;
-    })
-    .sort((a, b) => getCoverage(b) - getCoverage(a));
+  const withForecast = products.filter(p => p.coverage !== null);
+  // Same figure as the card: average of each product's coverage.
+  const averageCoverage = withForecast.length
+    ? Math.round(withForecast.reduce((s, p) => s + p.coverage, 0) / withForecast.length)
+    : 0;
 
-  // Filter based on search term and maintain sorting by coverage
-  const filterProducts = (products) => {
-    if (!searchTerm.trim()) return products;
-    
-    return products
-      .filter(product => {
-        const productId = (product.Product_ID || '').toString().toLowerCase();
-        const productName = (product.Product_NM || '').toString().toLowerCase();
-        const searchLower = searchTerm.toLowerCase();
-        
-        return productId.includes(searchLower) || productName.includes(searchLower);
-      })
-      .sort((a, b) => getCoverage(b) - getCoverage(a));
-  };
+  const search = searchTerm.trim().toLowerCase();
+  const rows = products.filter(p => {
+    if (view !== 'all' && p.band !== view) return false;
+    if (!search) return true;
+    return p.id.toLowerCase().includes(search) || p.name.toLowerCase().includes(search);
+  });
 
-  const underProducts = filterProducts(allUnderProducts);
-  const normalProducts = filterProducts(allNormalProducts);
-  const overProducts = filterProducts(allOverProducts);
+  const tabs = [
+    ...Object.entries(COVERAGE_BANDS).map(([key, band]) => ({ key, label: `${band.label} ${band.range}`, count: counts[key] })),
+    ...(counts.noforecast > 0 ? [{ key: 'noforecast', label: 'Tanpa forecast', count: counts.noforecast }] : []),
+    { key: 'all', label: 'Semua', count: products.length }
+  ];
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content of-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '1200px', width: '90vw' }}>
-        <div className="modal-header">
+      <div
+        className="modal-content of-modal of1-detail-modal coverage-detail-modal"
+        style={{ '--of1-accent': '#4f8cff' }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="modal-header of1-detail-header">
           <h2>{modalTitle}</h2>
           <button className="modal-close" onClick={onClose}>&times;</button>
         </div>
-        <div className="modal-body">
-          <div className="modal-summary" style={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            marginBottom: '20px',
-            padding: '15px',
-            backgroundColor: '#f8f9fa',
-            borderRadius: '8px',
-            fontSize: '14px'
-          }}>
-            <div>
-              <strong>Total Products:</strong> {currentPeriodData.length}
-            </div>
-            <div style={{ color: '#ef4444' }}>
-              <strong>SKU Under (&lt;130%):</strong> {allUnderProducts.length}
-            </div>
-            <div style={{ color: '#10b981' }}>
-              <strong>SKU Normal (130-299%):</strong> {allNormalProducts.length}
-            </div>
-            <div style={{ color: '#f59e0b' }}>
-              <strong>SKU Over (≥300%):</strong> {allOverProducts.length}
-            </div>
+
+        <div className="of1-detail-summary">
+          <div className="of1-detail-stat">
+            <span className="of1-detail-stat-value">{averageCoverage}%</span>
+            <span className="of1-detail-stat-label">rata-rata coverage</span>
           </div>
-          
-          <div className="search-container" style={{ marginBottom: '20px' }}>
-            <input
-              type="text"
-              placeholder="Search by product ID or product name..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '10px 15px',
-                border: '1px solid #d1d5db',
-                borderRadius: '8px',
-                fontSize: '14px',
-                outline: 'none',
-                boxSizing: 'border-box'
-              }}
-            />
+          <div className="of1-detail-stat">
+            <span className="of1-detail-stat-value">{products.length}</span>
+            <span className="of1-detail-stat-label">produk</span>
           </div>
-          
-          {searchTerm.trim() && (
-            <div style={{ marginBottom: '15px', fontSize: '14px', color: '#6b7280' }}>
-              Found {underProducts.length + normalProducts.length + overProducts.length} results for "{searchTerm}"
-              {underProducts.length + normalProducts.length + overProducts.length !== allUnderProducts.length + allNormalProducts.length + allOverProducts.length && 
-                ` (filtered from ${allUnderProducts.length + allNormalProducts.length + allOverProducts.length} total)`}
+          {Object.entries(COVERAGE_BANDS).map(([key, band]) => (
+            <div key={key} className="of1-detail-stat">
+              <span className="of1-detail-stat-value" style={{ color: band.color }}>{counts[key]}</span>
+              <span className="of1-detail-stat-label">{band.label} ({band.range})</span>
             </div>
+          ))}
+        </div>
+
+        <div className="of1-detail-controls">
+          <input
+            type="text"
+            className="of1-detail-search"
+            placeholder="Cari ID atau nama produk..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+          <div className="of1-detail-tabs" role="tablist">
+            {tabs.map(t => (
+              <button
+                key={t.key}
+                type="button"
+                role="tab"
+                aria-selected={view === t.key}
+                className={`of1-detail-tab ${view === t.key ? 'active' : ''}`}
+                style={COVERAGE_BANDS[t.key] ? { '--cov-band': COVERAGE_BANDS[t.key].color } : undefined}
+                onClick={() => setView(t.key)}
+              >
+                {t.label} <span className="of1-detail-tab-count">{t.count}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="of1-detail-listhead">
+          <span>{rows.length} produk · urut coverage terendah ke tertinggi</span>
+          {search && <span>hasil pencarian "{searchTerm.trim()}"</span>}
+        </div>
+
+        <div className="of1-detail-list">
+          {rows.length === 0 ? (
+            <div className="no-data">
+              {search ? 'Tidak ada produk yang cocok' : 'Tidak ada produk'}
+            </div>
+          ) : (
+            <>
+              <div className="cov-detail-row cov-detail-colhead">
+                <span>Produk</span>
+                <span className="cov-num">Stock</span>
+                <span className="cov-num">Forecast</span>
+                <span>Coverage</span>
+              </div>
+              {rows.map((p, index) => {
+                const band = COVERAGE_BANDS[p.band];
+                return (
+                  <div key={`${p.id}-${index}`} className="of1-detail-row cov-detail-row">
+                    <div className="of1-detail-product">
+                      <span className="of1-detail-product-name" title={p.name}>{p.name}</span>
+                      <span className="of1-detail-product-id">{p.id}</span>
+                    </div>
+                    <span className="cov-num">{formatNumber(p.stock)}</span>
+                    <span className="cov-num">{formatNumber(p.forecast)}</span>
+                    {p.coverage === null ? (
+                      <span className="cov-noforecast">tanpa forecast</span>
+                    ) : (
+                      <div className="of1-detail-progress" title={`${band.label} (${band.range})`}>
+                        <span className="of1-detail-progress-text cov-pct" style={{ color: band.color }}>
+                          {Math.round(p.coverage)}%
+                        </span>
+                        <span className="of1-detail-progress-bar cov-bar">
+                          <span
+                            style={{
+                              width: `${Math.min(p.coverage, COVERAGE_BAR_MAX) / COVERAGE_BAR_MAX * 100}%`,
+                              background: band.color
+                            }}
+                          />
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </>
           )}
-          
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', minHeight: '400px' }}>
-            {/* SKU Under */}
-            <div className="of-details-section">
-              <h3 className="of-section-title" style={{ color: '#ef4444' }}>
-                📉 SKU Under (&lt;130%) ({underProducts.length})
-              </h3>
-              <div className="of-batch-list" style={{ maxHeight: '350px', overflowY: 'auto' }}>
-                {underProducts.length > 0 ? (
-                  underProducts.map((product, index) => (
-                    <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #ef4444', marginBottom: '8px' }}>
-                      <div className="batch-code">ID: {product.Product_ID}</div>
-                      <div className="product-info">
-                        <span className="product-name" style={{ fontSize: '12px' }}>{product.Product_NM || 'N/A'}</span>
-                        <span className="product-id" style={{ fontSize: '11px' }}>
-                          Coverage: {getCoverage(product)}% | Stock: {product.Release || 0} | Forecast: {product.Forecast || 0}
-                        </span>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="no-data">Tidak ada produk SKU Under</div>
-                )}
-              </div>
-            </div>
-
-            {/* SKU Normal */}
-            <div className="of-details-section">
-              <h3 className="of-section-title" style={{ color: '#10b981' }}>
-                📊 SKU Normal (130-299%) ({normalProducts.length})
-              </h3>
-              <div className="of-batch-list" style={{ maxHeight: '350px', overflowY: 'auto' }}>
-                {normalProducts.length > 0 ? (
-                  normalProducts.map((product, index) => (
-                    <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #10b981', marginBottom: '8px' }}>
-                      <div className="batch-code">ID: {product.Product_ID}</div>
-                      <div className="product-info">
-                        <span className="product-name" style={{ fontSize: '12px' }}>{product.Product_NM || 'N/A'}</span>
-                        <span className="product-id" style={{ fontSize: '11px' }}>
-                          Coverage: {getCoverage(product)}% | Stock: {product.Release || 0} | Forecast: {product.Forecast || 0}
-                        </span>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="no-data">Tidak ada produk SKU Normal</div>
-                )}
-              </div>
-            </div>
-
-            {/* SKU Over */}
-            <div className="of-details-section">
-              <h3 className="of-section-title" style={{ color: '#f59e0b' }}>
-                📈 SKU Over (≥300%) ({overProducts.length})
-              </h3>
-              <div className="of-batch-list" style={{ maxHeight: '350px', overflowY: 'auto' }}>
-                {overProducts.length > 0 ? (
-                  overProducts.map((product, index) => (
-                    <div key={index} className="of-batch-item" style={{ borderLeft: '4px solid #f59e0b', marginBottom: '8px' }}>
-                      <div className="batch-code">ID: {product.Product_ID}</div>
-                      <div className="product-info">
-                        <span className="product-name" style={{ fontSize: '12px' }}>{product.Product_NM || 'N/A'}</span>
-                        <span className="product-id" style={{ fontSize: '11px' }}>
-                          Coverage: {getCoverage(product)}% | Stock: {product.Release || 0} | Forecast: {product.Forecast || 0}
-                        </span>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="no-data">Tidak ada produk SKU Over</div>
-                )}
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
